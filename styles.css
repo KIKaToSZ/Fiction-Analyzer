@@ -248,9 +248,53 @@ textarea {
 
 .toolbar {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   margin-top: 10px;
+}
+
+/* ---- 同步状态点 ---- */
+.ds-status {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border);
+  transition: background var(--transition);
+}
+
+.ds-status[data-status="syncing"] {
+  background: #d4a843;
+  box-shadow: 0 0 0 0 rgba(212, 168, 67, 0.5);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.ds-status[data-status="success"] {
+  background: #6ba368;
+}
+
+.ds-status[data-status="error"] {
+  background: #c56262;
+}
+
+.ds-status[data-status="no-config"] {
+  background: var(--border);
+  border: 1px dashed var(--muted);
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 168, 67, 0.5); }
+  50% { box-shadow: 0 0 0 4px rgba(212, 168, 67, 0); }
+}
+
+.sync-icon.spinning {
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .tool-btn {
@@ -881,6 +925,56 @@ input[type="range"]::-moz-range-thumb {
 .form-field input {
   font-size: 14px;
   padding: 8px 10px;
+}
+
+.form-field .hint {
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 2px 0 0;
+}
+
+.form-collapsible {
+  margin: 14px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  background: var(--bg-soft, transparent);
+}
+
+.form-collapsible > summary {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-soft);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.form-collapsible > summary::before {
+  content: "▸";
+  font-size: 10px;
+  color: var(--muted);
+  transition: transform var(--transition);
+}
+
+.form-collapsible[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.form-collapsible[open] {
+  padding-bottom: 12px;
+}
+
+.form-collapsible[open] .form-field:last-child {
+  margin-bottom: 4px;
 }
 
 .form-row {
