@@ -36,6 +36,7 @@
           </div>
 
           <div class="ds-meta">
+            <span class="ds-status" id="ds-status" title="同步状态"></span>
             <span id="ds-meta-text" class="ds-meta-text">--</span>
             <a id="ds-bind-link" class="ds-bind-link" hidden>点此绑定飞书表格</a>
           </div>
@@ -55,6 +56,14 @@
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
               <span>导入</span>
+            </button>
+            <button id="btn-sync" class="tool-btn" title="从飞书多维表格同步最新数据">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" class="sync-icon">
+                <polyline points="23 4 23 10 17 10" />
+                <polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+              <span id="sync-label">同步</span>
             </button>
             <button id="btn-sort" class="tool-btn" title="切换正/倒序">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
@@ -232,6 +241,35 @@
             <label>备注</label>
             <input id="ds-note" type="text" placeholder="可选：来源 / 用途" />
           </div>
+          <details class="form-collapsible" id="ds-feishu-config">
+            <summary>飞书同步配置（自动从多维表格拉取章节用）</summary>
+            <div class="form-field">
+              <label>App ID</label>
+              <input id="ds-app-id" type="text" placeholder="cli_xxxxxx" autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label>App Secret</label>
+              <input id="ds-app-secret" type="password" placeholder="应用密钥" autocomplete="off" />
+              <p class="muted hint">仅保存在本地浏览器；用于获取 tenant_access_token 调飞书 OpenAPI。需在飞书开放平台为该应用开通「多维表格」只读权限。</p>
+            </div>
+            <div class="form-field">
+              <label>章节正文子表名</label>
+              <input id="ds-table-name" type="text" placeholder="章节正文" />
+              <p class="muted hint">多维表格中作为「章节正文」的子表名（精确匹配）。</p>
+            </div>
+            <div class="form-field">
+              <label>章节号字段名</label>
+              <input id="ds-field-no" type="text" placeholder="章节号" />
+            </div>
+            <div class="form-field">
+              <label>章节名字段名</label>
+              <input id="ds-field-title" type="text" placeholder="章节名" />
+            </div>
+            <div class="form-field">
+              <label>文章内容字段名</label>
+              <input id="ds-field-content" type="text" placeholder="文章内容" />
+            </div>
+          </details>
           <div class="form-actions">
             <button class="secondary-btn" data-close>取消</button>
             <button id="btn-ds-save" class="primary-btn">保存</button>
