@@ -1,0 +1,10 @@
+{
+  "name": "novel-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "小说文章分析 - 纯前端单页应用",
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve ."
+  }
+}
