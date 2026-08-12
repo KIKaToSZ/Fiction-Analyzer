@@ -10,7 +10,16 @@
      常量与默认数据
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
+  const FEISHU_API_BASE = "https://open.feishu.cn/open-apis";
+  const SYNC_DEBOUNCE_MS = 600; // 同步按钮节流
+
+  // 字段名兜底表：默认字段名找不到时，尝试这些同义词
+  const FIELD_FALLBACKS = {
+    no: ["章节号", "章号", "序章", "序号", "number", "no", "chapter_no"],
+    title: ["章节名", "章节名称", "标题", "title", "name", "chapter_name"],
+    content: ["文章内容", "内容", "正文", "content", "text", "body"],
+  };
 
   const DEFAULT_DATA_SOURCES = [
     {
@@ -19,6 +28,16 @@
       url: "",
       note: "内置示例，可删除",
       builtIn: true,
+      // 飞书同步配置（内置数据源不启用）
+      appId: "",
+      appSecret: "",
+      tableName: "章节正文",
+      fieldNo: "章节号",
+      fieldTitle: "章节名",
+      fieldContent: "文章内容",
+      lastSyncAt: null,
+      syncStatus: "idle", // idle | syncing | success | error | no-config
+      syncError: "",
       chapters: [
         {
           id: "ch_b1",
@@ -156,6 +175,20 @@
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
       state.ui = { sort: "asc", ...(data.ui || {}) };
 
+      // 给老数据源补齐 schema v2 新增字段
+      state.dataSources = state.dataSources.map((d) => ({
+        appId: "",
+        appSecret: "",
+        tableName: "章节正文",
+        fieldNo: "章节号",
+        fieldTitle: "章节名",
+        fieldContent: "文章内容",
+        lastSyncAt: null,
+        syncStatus: "idle",
+        syncError: "",
+        ...d,
+      }));
+
       // 保底：若没有数据源，加默认
       if (state.dataSources.length === 0) {
         state.dataSources = cloneDefault();
@@ -211,6 +244,221 @@
   }
 
   /* ============================================================
+     飞书多维表格同步
+     ============================================================ */
+
+  // 从飞书表格链接解析 app_token
+  // 例：https://xxx.feishu.cn/base/{app_token}?table=...
+  function parseAppTokenFromUrl(url) {
+    if (!url) return null;
+    try {
+      const u = new URL(url);
+      const m = u.pathname.match(/\/base\/([A-Za-z0-9]+)/);
+      return m ? m[1] : null;
+    } catch {
+      // 兼容非标准 URL
+      const m = String(url).match(/\/base\/([A-Za-z0-9]+)/);
+      return m ? m[1] : null;
+    }
+  }
+
+  // 1. 获取 tenant_access_token
+  async function getTenantAccessToken(appId, appSecret) {
+    const res = await fetch(`${FEISHU_API_BASE}/auth/v3/tenant_access_token/internal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+    });
+    const data = await res.json();
+    if (data.code !== 0) {
+      throw new Error(`获取 token 失败：${data.msg || "code=" + data.code}`);
+    }
+    return data.tenant_access_token;
+  }
+
+  // 2. 列出多维表格的所有数据表
+  async function listTables(token, appToken) {
+    const res = await fetch(
+      `${FEISHU_API_BASE}/bitable/v1/apps/${appToken}/tables?page_size=100`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const data = await res.json();
+    if (data.code !== 0) {
+      throw new Error(`列子表失败：${data.msg || "code=" + data.code}`);
+    }
+    return data.data?.items || [];
+  }
+
+  // 3. 列出数据表的所有记录（自动分页）
+  async function listRecords(token, appToken, tableId) {
+    const all = [];
+    let pageToken = null;
+    do {
+      const url = new URL(
+        `${FEISHU_API_BASE}/bitable/v1/apps/${appToken}/tables/${tableId}/records`
+      );
+      url.searchParams.set("page_size", "500");
+      url.searchParams.set("automatic_fields", "false");
+      if (pageToken) url.searchParams.set("page_token", pageToken);
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.code !== 0) {
+        throw new Error(`拉记录失败：${data.msg || "code=" + data.code}`);
+      }
+      all.push(...(data.data?.items || []));
+      pageToken = data.data?.has_more ? data.data.page_token : null;
+    } while (pageToken);
+    return all;
+  }
+
+  // 字段名匹配：先按用户配置的字段名，再回退到 FIELD_FALLBACKS 中的同义词
+  function pickFieldValue(fields, preferred, fallbacks) {
+    if (!fields) return null;
+    if (preferred && fields[preferred] !== undefined) return fields[preferred];
+    for (const name of fallbacks) {
+      if (fields[name] !== undefined) return fields[name];
+    }
+    return null;
+  }
+
+  // 把飞书记录转成章节对象
+  function recordToChapter(record, ds) {
+    const fields = record.fields || {};
+    const noRaw = pickFieldValue(fields, ds.fieldNo, FIELD_FALLBACKS.no);
+    const titleRaw = pickFieldValue(fields, ds.fieldTitle, FIELD_FALLBACKS.title);
+    const contentRaw = pickFieldValue(
+      fields,
+      ds.fieldContent,
+      FIELD_FALLBACKS.content
+    );
+    // 飞书文本字段可能是 {text, type} 嵌套对象；也可能是数组（多行文本/选项）
+    const unpack = (v) => {
+      if (v == null) return "";
+      if (Array.isArray(v)) return v.map(unpack).join("");
+      if (typeof v === "object") {
+        if (typeof v.text === "string") return v.text;
+        // 多选 / 关联 退化为转字符串
+        return JSON.stringify(v);
+      }
+      return String(v);
+    };
+    return {
+      id: uid("ch"),
+      no: Number(unpack(noRaw).trim()) || 0,
+      title: unpack(titleRaw).trim(),
+      content: unpack(contentRaw),
+    };
+  }
+
+  // 同步主流程（async）：拉取飞书多维表格 → 替换当前数据源的 chapters
+  async function syncDataSource(ds, opts = {}) {
+    const { silent = false } = opts;
+    if (!ds) return;
+    // 互斥锁：避免同一数据源并发
+    if (ds._syncing) {
+      if (!silent) toast("正在同步中…");
+      return;
+    }
+    ds._syncing = true;
+    ds.syncStatus = "syncing";
+    ds.syncError = "";
+    renderSyncStatus(ds);
+    try {
+      const appToken = parseAppTokenFromUrl(ds.url);
+      if (!appToken) {
+        throw new Error("URL 里解析不到 app_token（请用 https://xxx.feishu.cn/base/... 这种完整链接）");
+      }
+      if (!ds.appId || !ds.appSecret) {
+        ds.syncStatus = "no-config";
+        throw new Error("未配置 App ID / App Secret，请打开数据源编辑填写");
+      }
+      const token = await getTenantAccessToken(ds.appId, ds.appSecret);
+      const tables = await listTables(token, appToken);
+      const targetName = ds.tableName || "章节正文";
+      const target = tables.find((t) => t.name === targetName);
+      if (!target) {
+        const names = tables.map((t) => t.name).join("、") || "（无）";
+        throw new Error(`找不到子表「${targetName}」，多维表格中现有子表：${names}`);
+      }
+      const records = await listRecords(token, appToken, target.table_id);
+      if (records.length === 0) {
+        throw new Error(`子表「${targetName}」是空的，没有任何记录`);
+      }
+      const chapters = records
+        .map((r) => recordToChapter(r, ds))
+        .filter((c) => c.no > 0 || c.title || c.content) // 过滤空记录
+        .sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0));
+      if (chapters.length === 0) {
+        throw new Error("所有记录都缺少有效字段（章节号/章节名/内容）");
+      }
+      // 替换并保留当前选中章节（如果新数据里还有）
+      const prevId = state.currentChapterId;
+      ds.chapters = chapters;
+      if (prevId && !chapters.find((c) => c.id === prevId)) {
+        state.currentChapterId = chapters[0]?.id || null;
+      }
+      ds.lastSyncAt = new Date().toISOString();
+      ds.syncStatus = "success";
+      ds.syncError = "";
+      save();
+      renderAll();
+      if (!silent) toast(`同步成功：${chapters.length} 章`);
+    } catch (e) {
+      console.error("同步失败", e);
+      ds.syncStatus = ds.syncStatus === "syncing" ? "error" : ds.syncStatus;
+      ds.syncError = e.message || String(e);
+      renderSyncStatus(ds);
+      renderDataSourceMeta();
+      if (!silent) toast("同步失败：" + (e.message || "未知错误"), "error", 3500);
+    } finally {
+      ds._syncing = false;
+    }
+  }
+
+  // 渲染同步状态点（ds-meta 左侧的小圆点）
+  function renderSyncStatus(ds) {
+    const dot = $("#ds-status");
+    const label = $("#sync-label");
+    if (!dot) return;
+    dot.className = "ds-status"; // reset
+    if (!ds) {
+      dot.dataset.status = "";
+      dot.title = "";
+      if (label) label.textContent = "同步";
+      return;
+    }
+    const status = ds.syncStatus || "idle";
+    dot.dataset.status = status;
+    let title = "";
+    switch (status) {
+      case "syncing":
+        title = "同步中…";
+        if (label) label.textContent = "同步中";
+        break;
+      case "success":
+        title = ds.lastSyncAt
+          ? `已同步于 ${new Date(ds.lastSyncAt).toLocaleString()}`
+          : "已同步";
+        if (label) label.textContent = "已同步";
+        break;
+      case "error":
+        title = "同步失败：" + (ds.syncError || "未知错误");
+        if (label) label.textContent = "重试";
+        break;
+      case "no-config":
+        title = "未配置飞书同步凭证，点击「同步」打开数据源编辑";
+        if (label) label.textContent = "去配置";
+        break;
+      default:
+        title = "未同步";
+        if (label) label.textContent = "同步";
+    }
+    dot.title = title;
+  }
+
+  /* ============================================================
      渲染
      ============================================================ */
   function renderDataSourceSelect() {
@@ -232,6 +480,7 @@
     if (!ds) {
       el.textContent = "—";
       link.hidden = true;
+      renderSyncStatus(null);
       return;
     }
     const parts = [];
@@ -239,7 +488,7 @@
       parts.push(`${ds.chapters.length} 章`);
     }
     if (ds.url) {
-      parts.push("已绑定表格");
+      parts.push(ds.appId && ds.appSecret ? "已配置同步" : "已绑定表格");
     } else {
       parts.push("未绑定表格");
     }
@@ -248,7 +497,6 @@
     }
     el.textContent = parts.join(" · ");
     el.title = ds.note || "";
-    // 当未绑定表格时，显示「点此绑定」链接
     if (!ds.url) {
       link.hidden = false;
       link.dataset.dsId = ds.id;
@@ -256,6 +504,7 @@
       link.hidden = true;
       link.dataset.dsId = "";
     }
+    renderSyncStatus(ds);
   }
 
   function renderChapterList() {
@@ -411,25 +660,33 @@
       const name = $("#ds-name").value.trim();
       const url = $("#ds-url").value.trim();
       const note = $("#ds-note").value.trim();
+      const appId = $("#ds-app-id").value.trim();
+      const appSecret = $("#ds-app-secret").value;
+      const tableName = $("#ds-table-name").value.trim() || "章节正文";
+      const fieldNo = $("#ds-field-no").value.trim() || "章节号";
+      const fieldTitle = $("#ds-field-title").value.trim() || "章节名";
+      const fieldContent = $("#ds-field-content").value.trim() || "文章内容";
       if (!name) {
         toast("名称不能为空", "error");
         return;
       }
+      const fields = {
+        name, url, note,
+        appId, appSecret, tableName,
+        fieldNo, fieldTitle, fieldContent,
+      };
       if (editingId) {
         const ds = state.dataSources.find((d) => d.id === editingId);
-        if (ds) {
-          ds.name = name;
-          ds.url = url;
-          ds.note = note;
-        }
+        if (ds) Object.assign(ds, fields);
       } else {
         state.dataSources.push({
           id: uid("ds"),
-          name,
-          url,
-          note,
+          ...fields,
           builtIn: false,
           chapters: [],
+          lastSyncAt: null,
+          syncStatus: "idle",
+          syncError: "",
         });
       }
       save();
@@ -437,6 +694,29 @@
       renderAll();
       if ($("#modal-manage").hidden === false) renderDataSourceList();
       toast(editingId ? "已更新" : "已新增");
+    });
+
+    // 工具栏「同步」按钮
+    let syncDebounceTimer = null;
+    $("#btn-sync").addEventListener("click", () => {
+      const ds = getCurrentDataSource();
+      if (!ds) {
+        toast("请先选择数据源", "error");
+        return;
+      }
+      if (!ds.url) {
+        toast("当前数据源未绑定飞书表格链接，请先在编辑中配置");
+        return;
+      }
+      // 错误状态或未配置：点同步 → 打开编辑弹窗让用户配置
+      if (ds.syncStatus === "no-config" || (!ds.appId || !ds.appSecret)) {
+        openDataSourceEdit(ds);
+        toast("请先在「飞书同步配置」中填写 App ID / App Secret", "info", 3000);
+        return;
+      }
+      // 简单节流
+      clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = setTimeout(() => syncDataSource(ds), SYNC_DEBOUNCE_MS);
     });
   }
 
@@ -509,6 +789,12 @@
     $("#ds-name").value = ds ? ds.name : "";
     $("#ds-url").value = ds ? ds.url || "" : "";
     $("#ds-note").value = ds ? ds.note || "" : "";
+    $("#ds-app-id").value = ds ? ds.appId || "" : "";
+    $("#ds-app-secret").value = ds ? ds.appSecret || "" : "";
+    $("#ds-table-name").value = ds ? ds.tableName || "章节正文" : "章节正文";
+    $("#ds-field-no").value = ds ? ds.fieldNo || "章节号" : "章节号";
+    $("#ds-field-title").value = ds ? ds.fieldTitle || "章节名" : "章节名";
+    $("#ds-field-content").value = ds ? ds.fieldContent || "文章内容" : "文章内容";
     $("#btn-ds-save").dataset.editingId = ds ? ds.id : "";
     showModal("modal-ds-edit");
     setTimeout(() => $("#ds-name").focus(), 50);
@@ -846,6 +1132,19 @@
         $$(".modal").forEach((m) => (m.hidden = true));
       }
     });
+
+    // 打开页面时自动同步：当前数据源有 URL + 凭证时，异步拉取最新章节
+    // 失败/未配置 → 用本地缓存（已经在 renderAll 里渲染过了）
+    setTimeout(() => {
+      const ds = getCurrentDataSource();
+      if (ds && ds.url && ds.appId && ds.appSecret) {
+        syncDataSource(ds, { silent: true });
+      } else if (ds && ds.url) {
+        // 有 URL 但无凭证：标记为 no-config 让用户知道该去配置
+        ds.syncStatus = "no-config";
+        renderSyncStatus(ds);
+      }
+    }, 800);
   }
 
   if (document.readyState === "loading") {
