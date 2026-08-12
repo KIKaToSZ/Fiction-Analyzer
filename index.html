@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="小说文章分析 - 章节编辑阅读工具" />
+    <title>小说文章分析</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-bg="paper" data-accent="indigo">
+    <div class="app">
+      <!-- ===================== 左栏 ===================== -->
+      <aside class="pane pane-left">
+        <header class="pane-header">
+          <div class="ds-row">
+            <select id="ds-select" class="ds-select" title="切换数据源"></select>
+            <button id="ds-new" class="icon-btn" title="新建数据源（绑定飞书表格）">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+            <button id="ds-open" class="icon-btn" title="打开当前数据源对应的飞书表格">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </button>
+            <button id="ds-manage" class="icon-btn" title="管理数据源">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="ds-meta">
+            <span id="ds-meta-text" class="ds-meta-text">--</span>
+            <a id="ds-bind-link" class="ds-bind-link" hidden>点此绑定飞书表格</a>
+          </div>
+
+          <div class="toolbar">
+            <button id="btn-new" class="tool-btn" title="新增章节">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span>新增</span>
+            </button>
+            <button id="btn-import" class="tool-btn" title="从飞书表格复制后粘贴导入">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <span>导入</span>
+            </button>
+            <button id="btn-sort" class="tool-btn" title="切换正/倒序">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+              <span id="sort-label">正序</span>
+            </button>
+          </div>
+        </header>
+
+        <ul id="chapter-list" class="chapter-list"></ul>
+
+        <footer class="pane-footer">
+          <span id="chapter-count" class="muted">0 章</span>
+          <button id="btn-clear" class="link-btn" title="清空当前数据源的所有章节">清空</button>
+        </footer>
+      </aside>
+
+      <!-- ===================== 中栏 ===================== -->
+      <main class="pane pane-center">
+        <div id="editor-empty" class="empty-state">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          </svg>
+          <p>从左侧选一章开始阅读，或新增一章</p>
+        </div>
+
+        <article id="editor" class="editor" hidden>
+          <div class="editor-meta">
+            <div class="meta-field">
+              <label>章节号</label>
+              <input id="ch-no" type="number" min="0" step="1" />
+            </div>
+            <div class="meta-field meta-title">
+              <label>章节名称</label>
+              <input id="ch-title" type="text" placeholder="给本章起个名字" />
+            </div>
+            <div class="meta-actions">
+              <button id="btn-save" class="primary-btn">保存</button>
+              <button id="btn-delete" class="danger-btn">删除</button>
+            </div>
+          </div>
+
+          <div class="editor-body">
+            <label class="body-label">文章内容</label>
+            <textarea id="ch-content" placeholder="正文…"></textarea>
+            <div class="body-stats">
+              <span id="word-count" class="muted">0 字</span>
+              <span id="save-status" class="muted"></span>
+            </div>
+          </div>
+        </article>
+      </main>
+
+      <!-- ===================== 右栏 ===================== -->
+      <aside class="pane pane-right">
+        <header class="pane-header">
+          <h3 class="right-title">相关内容</h3>
+          <nav class="tabs">
+            <button class="tab active" data-tab="characters">人物</button>
+            <button class="tab" data-tab="analysis">分析</button>
+            <button class="tab" data-tab="outline">大纲</button>
+          </nav>
+        </header>
+
+        <div class="tab-panels">
+          <div class="tab-panel active" data-panel="characters">
+            <div class="placeholder-block">
+              <p class="muted">本章出现的人物</p>
+              <p class="hint">选中章节后，此处可展示人物卡片 / 关系图谱 / 出场记录等。内容形态待你定义。</p>
+            </div>
+          </div>
+          <div class="tab-panel" data-panel="analysis">
+            <div class="placeholder-block">
+              <p class="muted">本章内容分析</p>
+              <p class="hint">可放：情节摘要 / 情绪曲线 / 关键事件 / AI 解读等。</p>
+            </div>
+          </div>
+          <div class="tab-panel" data-panel="outline">
+            <div class="placeholder-block">
+              <p class="muted">本章大纲 / 备注</p>
+              <p class="hint">可放：创作笔记 / 章纲 / 灵感碎片 / 待补充内容。</p>
+            </div>
+          </div>
+        </div>
+
+        <footer class="pane-footer pane-footer-stack">
+          <details class="settings">
+            <summary>主题设置</summary>
+            <div class="settings-body">
+              <div class="setting-row">
+                <label>背景</label>
+                <div class="seg">
+                  <button class="seg-btn" data-bg="paper">宣纸</button>
+                  <button class="seg-btn" data-bg="light">亮</button>
+                  <button class="seg-btn" data-bg="dark">暗</button>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label>强调色</label>
+                <div class="seg">
+                  <button class="seg-btn seg-color" data-accent="indigo" style="--c:#5B7FB9"></button>
+                  <button class="seg-btn seg-color" data-accent="sage" style="--c:#7A9B7E"></button>
+                  <button class="seg-btn seg-color" data-accent="amber" style="--c:#B89060"></button>
+                  <button class="seg-btn seg-color" data-accent="rose" style="--c:#B57A8A"></button>
+                  <button class="seg-btn seg-color" data-accent="slate" style="--c:#5C6B7A"></button>
+                </div>
+              </div>
+              <div class="setting-row">
+                <label>字号 <span id="font-size-val" class="muted">16</span></label>
+                <input id="font-size" type="range" min="13" max="22" step="1" />
+              </div>
+              <div class="setting-row">
+                <label>行高 <span id="line-height-val" class="muted">1.7</span></label>
+                <input id="line-height" type="range" min="1.3" max="2.2" step="0.05" />
+              </div>
+              <div class="setting-row">
+                <label>数据</label>
+                <div class="seg seg-data">
+                  <button id="btn-export" class="seg-btn" title="导出全部数据为 JSON">导出</button>
+                  <label for="file-import" class="seg-btn" title="从 JSON 文件恢复">导入</label>
+                  <input id="file-import" type="file" accept="application/json" hidden />
+                </div>
+              </div>
+            </div>
+          </details>
+        </footer>
+      </aside>
+    </div>
+
+    <!-- ===================== 弹窗：管理数据源 ===================== -->
+    <div id="modal-manage" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-card">
+        <header class="modal-header">
+          <h3>管理数据源</h3>
+          <button class="icon-btn" data-close>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+        <div class="modal-body">
+          <ul id="ds-list" class="ds-list"></ul>
+          <button id="btn-ds-add" class="secondary-btn">+ 新增数据源</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 弹窗：编辑数据源 ===================== -->
+    <div id="modal-ds-edit" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-card modal-card-narrow">
+        <header class="modal-header">
+          <h3 id="ds-edit-title">新增数据源</h3>
+          <button class="icon-btn" data-close>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+        <div class="modal-body">
+          <div class="form-field">
+            <label>名称</label>
+            <input id="ds-name" type="text" placeholder="例如：示例小说 · 墨笺" />
+          </div>
+          <div class="form-field">
+            <label>飞书表格链接</label>
+            <input id="ds-url" type="url" placeholder="https://xxx.feishu.cn/base/..." />
+          </div>
+          <div class="form-field">
+            <label>备注</label>
+            <input id="ds-note" type="text" placeholder="可选：来源 / 用途" />
+          </div>
+          <div class="form-actions">
+            <button class="secondary-btn" data-close>取消</button>
+            <button id="btn-ds-save" class="primary-btn">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 弹窗：导入表格数据 ===================== -->
+    <div id="modal-import" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-card modal-card-wide">
+        <header class="modal-header">
+          <h3>导入表格数据</h3>
+          <button class="icon-btn" data-close>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+        <div class="modal-body">
+          <p class="muted hint">
+            在飞书多维表格中选中要导入的行（章节号 / 章节名 / 文章内容 三列），Ctrl/Cmd+C 复制后粘贴到下方文本框。
+            支持 Tab / 逗号 / 多空格分隔，可勾选「跳过首行表头」。
+          </p>
+          <textarea id="import-text" rows="6" placeholder="章节号\t章节名\t文章内容&#10;1\t寒江初雪\t……"></textarea>
+          <div class="form-row">
+            <label class="check">
+              <input id="import-skip-header" type="checkbox" checked />
+              <span>跳过首行表头</span>
+            </label>
+          </div>
+          <div id="import-preview" class="import-preview"></div>
+          <div class="form-actions">
+            <button class="secondary-btn" data-close>取消</button>
+            <button id="btn-import-confirm" class="primary-btn" disabled>确认导入</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== Toast ===================== -->
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
