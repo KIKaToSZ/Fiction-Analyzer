@@ -243,14 +243,31 @@
           </div>
           <details class="form-collapsible" id="ds-feishu-config">
             <summary>飞书同步配置（自动从多维表格拉取章节用）</summary>
+
+            <div class="sync-guide">
+              <p class="sync-guide-title">这俩凭证是干什么的？</p>
+              <p>填写后，本工具会用 <strong>App ID + App Secret</strong> 调飞书 OpenAPI，把你指定的飞书多维表格里的「章节正文」子表自动拉进页面。打开页面就能看到最新内容，不用每次手动导入。</p>
+              <p class="sync-guide-steps">
+                <strong>首次配置只需 3 步：</strong>
+                <span>① 去 <a href="https://open.feishu.cn/app" target="_blank" rel="noopener">飞书开放平台</a> 创建一个「企业自建应用」，复制它的 App ID 和 App Secret 填到下面</span>
+                <span>② 在应用的「权限管理」里开通 <code>bitable:app:readonly</code>（多维表格只读权限）</span>
+                <span>③ 把多维表格「分享给该应用」（表格右上角 ··· → 添加文档应用）</span>
+              </p>
+              <p class="sync-guide-tips">
+                <span class="sync-guide-dot sync-guide-dot-warn">安全</span>
+                凭证只存在你当前浏览器的 localStorage，不会上传任何服务器；不要把页面分享给同事用同一份凭证。
+                <a href="https://open.feishu.cn/document/server-docs/docs/bitable-v1/notification" target="_blank" rel="noopener">查看飞书多维表格 API 文档</a>
+              </p>
+            </div>
+
             <div class="form-field">
-              <label>App ID</label>
-              <input id="ds-app-id" type="text" placeholder="cli_xxxxxx" autocomplete="off" />
+              <label>App ID <span class="muted">（应用的唯一标识）</span></label>
+              <input id="ds-app-id" type="text" placeholder="cli_xxxxxxxxxxxxxxxx" autocomplete="off" />
             </div>
             <div class="form-field">
-              <label>App Secret</label>
+              <label>App Secret <span class="muted">（应用的密钥，调 API 用）</span></label>
               <input id="ds-app-secret" type="password" placeholder="应用密钥" autocomplete="off" />
-              <p class="muted hint">仅保存在本地浏览器；用于获取 tenant_access_token 调飞书 OpenAPI。需在飞书开放平台为该应用开通「多维表格」只读权限。</p>
+              <p class="muted hint">仅保存在本地浏览器；用于获取 tenant_access_token 调飞书 OpenAPI。</p>
             </div>
             <div class="form-field">
               <label>章节正文子表名</label>
