@@ -189,6 +189,21 @@
                   <input id="file-import" type="file" accept="application/json" hidden />
                 </div>
               </div>
+              <div class="setting-row setting-row-stack">
+                <label>飞书代理地址 <span class="muted hint">（高级，留空用默认本地代理）</span></label>
+                <input
+                  id="feishu-proxy"
+                  type="text"
+                  spellcheck="false"
+                  autocomplete="off"
+                  placeholder="http://localhost:8787/api/feishu"
+                />
+                <p class="muted hint">
+                  飞书 OpenAPI 不允许浏览器跨域直调，<strong>必须经本机代理</strong>。
+                  默认端口 8787：在项目目录跑 <code>npm run proxy</code> 启动。
+                  留空 = 用默认 <code>http://localhost:8787/api/feishu</code>。
+                </p>
+              </div>
             </div>
           </details>
         </footer>
@@ -246,16 +261,18 @@
 
             <div class="sync-guide">
               <p class="sync-guide-title">这俩凭证是干什么的？</p>
-              <p>填写后，本工具会用 <strong>App ID + App Secret</strong> 调飞书 OpenAPI，把你指定的飞书多维表格里的「章节正文」子表自动拉进页面。打开页面就能看到最新内容，不用每次手动导入。</p>
+              <p>填写后，本工具会用 <strong>App ID + App Secret</strong> 经本机代理调飞书 OpenAPI，把你指定的飞书多维表格里的「章节正文」子表自动拉进页面。打开页面就能看到最新内容，不用每次手动导入。</p>
               <p class="sync-guide-steps">
-                <strong>首次配置只需 3 步：</strong>
-                <span>① 去 <a href="https://open.feishu.cn/app" target="_blank" rel="noopener">飞书开放平台</a> 创建一个「企业自建应用」，复制它的 App ID 和 App Secret 填到下面</span>
-                <span>② 在应用的「权限管理」里开通 <code>bitable:app:readonly</code>（多维表格只读权限）</span>
-                <span>③ 把多维表格「分享给该应用」（表格右上角 ··· → 添加文档应用）</span>
+                <strong>首次配置共 4 步：</strong>
+                <span>① 在项目目录跑 <code>npm run proxy</code> 启动本地代理（默认 <code>http://localhost:8787</code>）——浏览器无法直连飞书 OpenAPI（CORS 拦截），必须经代理中转</span>
+                <span>② 去 <a href="https://open.feishu.cn/app" target="_blank" rel="noopener">飞书开放平台</a> 创建「企业自建应用」，复制 App ID 和 App Secret 填到下面</span>
+                <span>③ 在应用的「权限管理」里开通 <code>bitable:app:readonly</code>（多维表格只读权限）</span>
+                <span>④ 把多维表格「分享给该应用」（表格右上角 ··· → 添加文档应用）</span>
               </p>
               <p class="sync-guide-tips">
                 <span class="sync-guide-dot sync-guide-dot-warn">安全</span>
                 凭证只存在你当前浏览器的 localStorage，不会上传任何服务器；不要把页面分享给同事用同一份凭证。
+                代理只做透明转发，不记录任何 Authorization / 请求体；Secret 始终留在浏览器。
                 <a href="https://open.feishu.cn/document/server-docs/docs/bitable-v1/notification" target="_blank" rel="noopener">查看飞书多维表格 API 文档</a>
               </p>
             </div>

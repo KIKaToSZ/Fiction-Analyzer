@@ -5,6 +5,9 @@
   "description": "小说文章分析 - 纯前端单页应用",
   "scripts": {
     "dev": "npx serve .",
-    "start": "npx serve ."
+    "start": "npx serve .",
+    "proxy": "node proxy/feishu-proxy.js",
+    "proxy:9000": "node proxy/feishu-proxy.js --port 9000",
+    "test:proxy": "node test-proxy.js"
   }
 }

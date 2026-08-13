@@ -697,6 +697,35 @@ textarea {
   color: var(--text-soft);
 }
 
+/* 含输入框的长行：上下排版，标签在上、控件在下 */
+.setting-row-stack {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+}
+.setting-row-stack > label {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.setting-row-stack > input[type="text"] {
+  width: 100%;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface, transparent);
+  border: 1px solid var(--border, #d6c9b0);
+  border-radius: 4px;
+  outline: none;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+.setting-row-stack > input[type="text"]:focus {
+  border-color: var(--accent);
+}
+.setting-row-stack .hint {
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
 .seg {
   display: flex;
   gap: 4px;

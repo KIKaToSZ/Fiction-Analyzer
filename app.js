@@ -11,7 +11,10 @@
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
   const SCHEMA_VERSION = 2;
-  const FEISHU_API_BASE = "https://open.feishu.cn/open-apis";
+  // 默认飞书 OpenAPI 地址 = 本地代理（绕开浏览器 CORS 拦截）。
+  // 改回直连：把下方改为 "https://open.feishu.cn/open-apis"，
+  // 或在「主题设置 → 飞书代理地址」里改成自定义值。
+  const FEISHU_PROXY_DEFAULT = "http://localhost:8787/api/feishu";
   const SYNC_DEBOUNCE_MS = 600; // 同步按钮节流
 
   // 字段名兜底表：默认字段名找不到时，尝试这些同义词
@@ -89,6 +92,7 @@
     currentChapterId: null,
     theme: { ...DEFAULT_THEME },
     ui: { sort: "asc" },
+    settings: { feishuProxy: "" },
   };
 
   /* ============================================================
@@ -107,6 +111,12 @@
       t = setTimeout(() => fn(...args), ms);
     };
   };
+
+  // 飞书 OpenAPI 基地址：用户在「主题设置」里配则用配置值，否则用默认（本地代理）
+  function getFeishuApiBase() {
+    const v = state && state.settings && state.settings.feishuProxy;
+    return (v && String(v).trim()) || FEISHU_PROXY_DEFAULT;
+  }
 
   const escapeHtml = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -146,6 +156,7 @@
       currentChapterId: state.currentChapterId,
       theme: state.theme,
       ui: state.ui,
+      settings: state.settings,
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -174,6 +185,7 @@
       state.currentChapterId = data.currentChapterId || null;
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
       state.ui = { sort: "asc", ...(data.ui || {}) };
+      state.settings = { feishuProxy: "", ...(data.settings || {}) };
 
       // 给老数据源补齐 schema v2 新增字段
       state.dataSources = state.dataSources.map((d) => ({
@@ -213,6 +225,7 @@
     state.currentChapterId = null;
     state.theme = { ...DEFAULT_THEME };
     state.ui = { sort: "asc" };
+    state.settings = { feishuProxy: "" };
     save();
   }
 
@@ -266,17 +279,18 @@
   async function getTenantAccessToken(appId, appSecret) {
     let res;
     try {
-      res = await fetch(`${FEISHU_API_BASE}/auth/v3/tenant_access_token/internal`, {
+      res = await fetch(`${getFeishuApiBase()}/auth/v3/tenant_access_token/internal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
       });
     } catch (e) {
-      // "Failed to fetch" 在浏览器里最常见的原因：跨域（CORS）被拦截；
-      // 也有可能是网络断开 / DNS 失败 / HTTPS 证书问题 / 浏览器扩展拦截。
-      // 浏览器不允许 JS 读取具体原因，所以这里只能给通用解释。
+      // "Failed to fetch" 在浏览器里最常见的原因：跨域（CORS）被拦截。
+      // 本应用默认走本地代理（npm run proxy，端口 8787），所以这里更常见的
+      // 实际原因是：代理没启动 / 端口被改 / 防火墙拦截。
+      // 浏览器不允许 JS 读取具体原因，所以只能给通用解释。
       throw new Error(
-        `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：飞书 OpenAPI 不支持浏览器直接调用（CORS 跨域拦截），请用 CORS 代理或改走「导入」功能。`
+        `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：本地代理没启动（项目目录跑 npm run proxy，端口 8787）；或代理地址被改（看「主题设置 → 飞书代理地址」）。`
       );
     }
     const data = await res.json().catch(() => ({}));
@@ -291,12 +305,12 @@
     let res;
     try {
       res = await fetch(
-        `${FEISHU_API_BASE}/bitable/v1/apps/${appToken}/tables?page_size=100`,
+        `${getFeishuApiBase()}/bitable/v1/apps/${appToken}/tables?page_size=100`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
     } catch (e) {
       throw new Error(
-        `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：飞书 OpenAPI 跨域拦截。`
+        `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：本地代理没启动（项目目录跑 npm run proxy，端口 8787）。`
       );
     }
     const data = await res.json().catch(() => ({}));
@@ -312,7 +326,7 @@
     let pageToken = null;
     do {
       const url = new URL(
-        `${FEISHU_API_BASE}/bitable/v1/apps/${appToken}/tables/${tableId}/records`
+        `${getFeishuApiBase()}/bitable/v1/apps/${appToken}/tables/${tableId}/records`
       );
       url.searchParams.set("page_size", "500");
       url.searchParams.set("automatic_fields", "false");
@@ -324,7 +338,7 @@
         });
       } catch (e) {
         throw new Error(
-          `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：飞书 OpenAPI 跨域拦截。`
+          `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：本地代理没启动（项目目录跑 npm run proxy，端口 8787）。`
         );
       }
       const data = await res.json().catch(() => ({}));
@@ -608,6 +622,11 @@
     $("#font-size-val").textContent = state.theme.fontSize;
     $("#line-height").value = state.theme.lineHeight;
     $("#line-height-val").textContent = state.theme.lineHeight.toFixed(2);
+    const proxyInput = $("#feishu-proxy");
+    if (proxyInput) {
+      proxyInput.value = state.settings.feishuProxy || "";
+      proxyInput.placeholder = FEISHU_PROXY_DEFAULT;
+    }
   }
 
   function renderAll() {
@@ -1080,6 +1099,16 @@
       save();
       renderTheme();
     });
+
+    // 飞书代理地址：留空用默认
+    const proxyInput = $("#feishu-proxy");
+    if (proxyInput) {
+      proxyInput.addEventListener("change", (e) => {
+        state.settings.feishuProxy = String(e.target.value || "").trim();
+        save();
+        toast(state.settings.feishuProxy ? "已保存代理地址" : "已恢复默认代理", "info", 1500);
+      });
+    }
 
     // 导出
     $("#btn-export").addEventListener("click", () => {
