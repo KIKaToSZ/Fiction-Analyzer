@@ -62,7 +62,7 @@
               </svg>
               <span>新增</span>
             </button>
-            <button id="btn-import" class="tool-btn" title="从 xlsx 文件导入章节">
+            <button id="btn-import" class="tool-btn" title="从 xlsx 文件导入条目">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17 8 12 3 7 8" />
@@ -78,6 +78,8 @@
             </button>
           </div>
         </header>
+
+        <div id="page-tabs" class="page-tabs" role="tablist" aria-label="页面切换"></div>
 
         <div id="sheet-tabs" class="sheet-tabs" hidden role="tablist" aria-label="工作表切换"></div>
 
@@ -206,7 +208,7 @@
       <div class="modal-backdrop" data-close></div>
       <div class="modal-card modal-card-wide">
         <header class="modal-header">
-          <h3>导入 xlsx 章节</h3>
+          <h3>导入 xlsx 条目</h3>
           <button class="icon-btn" data-close>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -216,7 +218,7 @@
         </header>
         <div class="modal-body">
           <p class="muted hint">
-            选择一个本地 <code>.xlsx</code> 文件。表头需包含：<strong>章节号</strong> / <strong>章节名</strong> / <strong>文章内容</strong> 三列，列顺序可任意，解析器按表头名自动识别。
+            选择一个本地 <code>.xlsx</code> 文件。系统会按 sheet 名的特征自动归类到对应的页面（章节 / 伏笔管理 / 后续扩展），也可以手动指定。文本粘贴仅作为兜底，默认导入到「章节」页。
           </p>
 
           <!-- 主区：xlsx 上传 + 拖拽 -->
@@ -246,6 +248,14 @@
               <span>来源 sheet：</span>
               <select id="import-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
             </label>
+          </div>
+
+          <div id="import-target-wrap" class="form-row" hidden>
+            <label class="check">
+              <span>导入到：</span>
+              <select id="import-target-select" class="mini-select" aria-label="选择要导入到的页面"></select>
+            </label>
+            <span class="hint muted">每行会根据 sheet 名的特征自动归类，可以手动改</span>
           </div>
 
           <div class="form-row">

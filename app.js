@@ -1,5 +1,5 @@
 /* ============================================================
-   小说文章分析 - 应用主逻辑
+   小说文章分析 - 应用主逻辑（schema v5 - 多页面 / 多 sheet 归类）
    纯前端 SPA，无外部依赖（除 SheetJS CDN）
    ============================================================ */
 
@@ -10,16 +10,9 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 4;
+  const SCHEMA_VERSION = 5;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
-
-  // 字段名兜底表：xlsx 表头识别用
-  const FIELD_FALLBACKS = {
-    no: ["章节号", "章号", "序章", "序号", "number", "no", "chapter_no"],
-    title: ["章节名", "章节名称", "标题", "title", "name", "chapter_name"],
-    content: ["文章内容", "内容", "正文", "content", "text", "body"],
-  };
 
   const DEFAULT_THEME = {
     bg: "paper",
@@ -35,6 +28,176 @@
     rose: "#B57A8A",
     slate: "#5C6B7A",
   };
+
+  // 伏笔状态颜色 / 文案
+  const FS_STATUS_OPTIONS = ["活跃", "已回收", "已废弃"];
+
+  /* ============================================================
+     页面注册表 - 每个页面是独立的「数据 + UI + 识别」单元
+     后续要加新页面（人物 / 大纲等）只需在 PAGES 里加一项
+     ============================================================ */
+  const PAGES = {
+    chapter: {
+      id: "chapter",
+      label: "章节",
+      icon: "📖",
+      // sheet 名匹配：含"卷/章/节/章节/chapter/正文"或纯 SheetN 兜底为章节
+      matchName(name) {
+        if (!name) return false;
+        if (/伏笔|铺垫|线索|foreshadow|伏线|人物|角色|character/i.test(name)) return false;
+        return /章节|^第.{1,5}(章|节|卷)|卷|chapter|正文|contents?|^Sheet\d*$/i.test(name);
+      },
+      // 表头匹配：必须同时含"章节号/章号/no 之一"和"内容/正文/content 之一"
+      matchHeaders(header) {
+        const norm = (header || []).map((h) =>
+          String(h || "").replace(/\s+/g, "").toLowerCase()
+        );
+        const has = (cands) =>
+          cands.some((c) =>
+            norm.some((h) => h.includes(c.toLowerCase()))
+          );
+        return (
+          (has(["章", "章号", "节号", "no", "number", "序"]) ||
+            has(["章", "章名", "节名", "标题", "title", "name"])) &&
+          has(["内容", "正文", "content", "text", "body"])
+        );
+      },
+      fields: {
+        no: ["章节号", "章号", "序号", "number", "no", "chapter_no", "序章"],
+        title: ["章节名", "章节名称", "标题", "title", "name", "chapter_name"],
+        content: ["文章内容", "内容", "正文", "content", "text", "body"],
+      },
+      defaults() {
+        return { no: 0, title: "", content: "" };
+      },
+      makeItem(data, sheet) {
+        return {
+          id: uid("ch"),
+          no: data.no || 0,
+          title: data.title || "",
+          content: data.content || "",
+          sheet,
+        };
+      },
+      sortKey(item) {
+        return Number(item.no) || 0;
+      },
+      newItemLabel: "新增章节",
+      newItemToast(sheet, no) {
+        return sheet
+          ? `已新增第 ${no} 章 [${sheet}]`
+          : `已新增第 ${no} 章`;
+      },
+      emptyStateHtml() {
+        return `
+          <div class="empty-state-inner">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+            <p>从左侧选一章开始阅读，或新增一章</p>
+          </div>`;
+      },
+    },
+
+    foreshadowing: {
+      id: "foreshadowing",
+      label: "伏笔管理",
+      icon: "🔖",
+      matchName(name) {
+        if (!name) return false;
+        return /伏笔|铺垫|线索|foreshadow|伏线|plot.?thread/i.test(name);
+      },
+      matchHeaders(header) {
+        const norm = (header || []).map((h) =>
+          String(h || "").replace(/\s+/g, "").toLowerCase()
+        );
+        const has = (cands) =>
+          cands.some((c) =>
+            norm.some((h) => h.includes(c.toLowerCase()))
+          );
+        return has([
+          "伏笔",
+          "铺垫",
+          "foreshadow",
+          "plot",
+          "线索",
+          "伏线",
+        ]);
+      },
+      fields: {
+        no: ["序号", "编号", "no", "number", "id", "序", "伏笔号"],
+        name: ["名称", "伏笔名", "伏笔", "name", "title", "线索", "名字"],
+        setup: [
+          "铺设章节",
+          "铺设",
+          "埋设",
+          "埋设章节",
+          "setup",
+          "setup_chapter",
+          "埋点",
+          "出现章节",
+          "铺设章",
+          "开始章节",
+        ],
+        payoff: [
+          "回收章节",
+          "回收",
+          "揭晓",
+          "揭晓章节",
+          "payoff",
+          "payoff_chapter",
+          "回收章",
+          "结束章节",
+        ],
+        status: ["状态", "status", "state", "进度", "完成度"],
+        notes: ["备注", "说明", "notes", "description", "详情", "内容"],
+      },
+      defaults() {
+        return {
+          no: 0,
+          name: "",
+          setup: "",
+          payoff: "",
+          status: "活跃",
+          notes: "",
+        };
+      },
+      makeItem(data, sheet) {
+        return {
+          id: uid("fs"),
+          no: data.no || 0,
+          name: data.name || "",
+          setup: data.setup || "",
+          payoff: data.payoff || "",
+          status: data.status || "活跃",
+          notes: data.notes || "",
+          sheet,
+        };
+      },
+      sortKey(item) {
+        return Number(item.no) || 0;
+      },
+      newItemLabel: "新增伏笔",
+      newItemToast(sheet, no) {
+        return sheet
+          ? `已新增伏笔 #${no} [${sheet}]`
+          : `已新增伏笔 #${no}`;
+      },
+      emptyStateHtml() {
+        return `
+          <div class="empty-state-inner">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2">
+              <path d="M3 7h18M3 12h18M3 17h12" />
+            </svg>
+            <p>从左侧选一条伏笔查看，或新增一条</p>
+            <p class="hint">伏笔 = 故事里提前铺设、后续回收的剧情线索</p>
+          </div>`;
+      },
+    },
+  };
+  const PAGE_IDS = Object.keys(PAGES);
+  const DEFAULT_PAGE = "chapter";
 
   /* ============================================================
      工具函数
@@ -77,16 +240,28 @@
   };
 
   /* ============================================================
-     状态（schema v4 - 多 sheet 读写）
+     状态（schema v5 - 多页面）
      ============================================================ */
+  // pages[pageId] = {
+  //   sheets:        [{name, columns, rowCount, ok}]  // 归到本页面的 sheet
+  //   currentSheet:  string | null
+  //   items:         [...]                            // 本页面的条目
+  //   currentItemId: string | null
+  // }
+  // sheetsRaw:  [{name, rows2d, columns, rowCount, ok, page}]  // 全量 raw，写回用
+  function makePageState() {
+    return { sheets: [], currentSheet: null, items: [], currentItemId: null };
+  }
+
   const state = {
     schema: SCHEMA_VERSION,
-    chapters: [], // [{id, no, title, content, sheet}]
-    currentChapterId: null,
-    currentSheet: null, // 当前激活的 sheet 名；无文件时为 null
-    sheets: [], // [{name, columns, rowCount, ok}]  文件打开后填入
-    sheetsRaw: [], // [{name, rows2d}]           文件打开后填入，用于写回非章节 sheet
-    recentFiles: [], // [{name, lastOpened, mtime, size, handleKey, isMigrated, isDirectory}]
+    currentPage: DEFAULT_PAGE,
+    pages: {
+      chapter: makePageState(),
+      foreshadowing: makePageState(),
+    },
+    sheetsRaw: [], // [{name, rows2d, columns, rowCount, ok, page}]
+    recentFiles: [],
     currentFileName: null,
     theme: { ...DEFAULT_THEME },
     ui: { sort: "asc" },
@@ -98,9 +273,8 @@
   function save() {
     const data = {
       schema: SCHEMA_VERSION,
-      chapters: state.chapters,
-      currentChapterId: state.currentChapterId,
-      currentSheet: state.currentSheet,
+      currentPage: state.currentPage,
+      pages: state.pages,
       recentFiles: state.recentFiles.map((f) => ({
         name: f.name,
         lastOpened: f.lastOpened,
@@ -128,20 +302,28 @@
       if (!raw) return;
       const data = JSON.parse(raw);
 
-      // 旧数据迁移（schema v1/v2 - dataSources 数组 → v3 单文件）
+      // 极旧数据迁移（v1/v2 - dataSources 数组 → v3 单文件 → v5）
       if (Array.isArray(data.dataSources)) {
         const target =
           data.dataSources.find((d) => d.id === data.currentDataSourceId) ||
           data.dataSources.find((d) => (d.chapters || []).length > 0) ||
           data.dataSources[0];
         if (target) {
-          state.chapters = target.chapters || [];
-          state.currentChapterId =
+          // 把旧章节全归到 chapter 页
+          state.pages.chapter.items = (target.chapters || []).map((c) => ({
+            id: c.id || uid("ch"),
+            no: c.no ?? 0,
+            title: c.title || "",
+            content: c.content || "",
+            sheet: c.sheet || "Sheet1",
+          }));
+          state.pages.chapter.currentItemId =
             data.currentChapterId &&
-            state.chapters.find((c) => c.id === data.currentChapterId)
+            state.pages.chapter.items.find((c) => c.id === data.currentChapterId)
               ? data.currentChapterId
               : null;
-          // 旧数据没有 handleKey，作为"已迁移"标记，不能 remove
+          state.pages.chapter.currentSheet =
+            state.pages.chapter.items[0]?.sheet || null;
           state.recentFiles = [
             {
               name: target.name || "已迁移的旧数据源",
@@ -153,14 +335,60 @@
             },
           ];
         }
-        state.schema = SCHEMA_VERSION;
         save();
         return;
       }
 
-      // v3 直接读
-      state.chapters = Array.isArray(data.chapters) ? data.chapters : [];
-      state.currentChapterId = data.currentChapterId || null;
+      // v4 迁移：state.chapters / state.sheets / state.currentSheet → pages.chapter
+      if (Array.isArray(data.chapters)) {
+        state.pages.chapter.items = data.chapters.map((c) => ({
+          id: c.id || uid("ch"),
+          no: c.no ?? 0,
+          title: c.title || "",
+          content: c.content || "",
+          sheet: c.sheet || "Sheet1",
+        }));
+        state.pages.chapter.currentItemId =
+          data.currentChapterId &&
+          state.pages.chapter.items.find((c) => c.id === data.currentChapterId)
+            ? data.currentChapterId
+            : null;
+        state.pages.chapter.currentSheet =
+          data.currentSheet || state.pages.chapter.items[0]?.sheet || null;
+        // v4 的 sheets 元数据 → pages.chapter.sheets
+        if (Array.isArray(data.sheets)) {
+          state.pages.chapter.sheets = data.sheets.map((s) => ({
+            ...s,
+            // 兜底：v4 时期所有 sheet 都算 chapter
+            page: s.page || "chapter",
+          }));
+        }
+        // v4 的 sheetsRaw → 全量 sheetsRaw
+        if (Array.isArray(data.sheetsRaw)) {
+          state.sheetsRaw = data.sheetsRaw.map((s) => ({
+            ...s,
+            page: s.page || "chapter",
+          }));
+        }
+      }
+
+      // v5 直接读
+      if (data.pages) {
+        for (const pid of PAGE_IDS) {
+          if (data.pages[pid]) {
+            state.pages[pid] = {
+              ...makePageState(),
+              ...data.pages[pid],
+            };
+          }
+        }
+      }
+      if (Array.isArray(data.sheetsRaw)) {
+        state.sheetsRaw = data.sheetsRaw;
+      }
+      if (data.currentPage && PAGE_IDS.includes(data.currentPage)) {
+        state.currentPage = data.currentPage;
+      }
       state.recentFiles = Array.isArray(data.recentFiles)
         ? data.recentFiles
         : [];
@@ -168,20 +396,18 @@
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
       state.ui = { sort: "asc", ...(data.ui || {}) };
 
-      // v3 → v4 迁移：旧章节无 sheet 字段，补 "Sheet1" 占位
-      let needResave = false;
-      for (const c of state.chapters) {
-        if (!c.sheet) {
-          c.sheet = "Sheet1";
-          needResave = true;
-        }
+      // 兜底：确保每个 page 至少有基本结构
+      for (const pid of PAGE_IDS) {
+        if (!state.pages[pid]) state.pages[pid] = makePageState();
+        if (!Array.isArray(state.pages[pid].items))
+          state.pages[pid].items = [];
+        if (!Array.isArray(state.pages[pid].sheets))
+          state.pages[pid].sheets = [];
       }
-      // currentSheet 迁移：取第一个章节的 sheet
-      if (!state.currentSheet) {
-        state.currentSheet = state.chapters[0]?.sheet || null;
-        needResave = true;
+      // 兜底：sheetsRaw 里的 sheet 必须有 page 字段（默认 chapter）
+      for (const s of state.sheetsRaw) {
+        if (!s.page) s.page = "chapter";
       }
-      if (needResave) save();
     } catch (e) {
       console.error("读取失败，使用默认状态", e);
     }
@@ -189,8 +415,6 @@
 
   /* ============================================================
      IndexedDB - File System handles 持久化
-     FileSystemFileHandle 支持 structured clone，
-     可直接 put 到 IndexedDB 跨会话恢复。
      ============================================================ */
   let _dbPromise = null;
   function openFsDb() {
@@ -224,7 +448,7 @@
       const tx = db.transaction(FS_STORE, "readonly");
       const req = tx.objectStore(FS_STORE).get(key);
       req.onsuccess = () => resolve(req.result ? req.result.value : null);
-      req.onerror = () => reject(req.error);
+      req.onerror = () => reject(tx.error);
     });
   }
   async function fsDel(key) {
@@ -236,6 +460,7 @@
       tx.onerror = () => reject(tx.error);
     });
   }
+
 
   /* ============================================================
      File System Access API
@@ -249,7 +474,6 @@
     return await file.arrayBuffer();
   }
 
-  // 恢复 handle 时，浏览器需要用户重新确认读权限
   async function ensureReadPermission(handle, interactive = true) {
     if (!handle) return false;
     if (handle.queryPermission) {
@@ -312,7 +536,7 @@
   }
 
   /* ============================================================
-     状态写入辅助
+     最近文件
      ============================================================ */
   function upsertRecentFile(meta) {
     const idx = state.recentFiles.findIndex((f) => f.name === meta.name);
@@ -341,539 +565,80 @@
     state.recentFiles = state.recentFiles.filter((f) => f.name !== name);
     if (state.currentFileName === name) {
       state.currentFileName = null;
-      state.chapters = [];
-      state.currentChapterId = null;
-      state.currentSheet = null;
-      state.sheets = [];
+      for (const pid of PAGE_IDS) {
+        state.pages[pid] = makePageState();
+      }
       state.sheetsRaw = [];
     }
     save();
   }
 
   /* ============================================================
-     章节访问
+     状态访问 - 简化模板
      ============================================================ */
-  function getCurrentChapter() {
-    return (
-      state.chapters.find((c) => c.id === state.currentChapterId) || null
-    );
+  function curPage() {
+    return state.pages[state.currentPage];
   }
-
-  function getSortedChapters() {
-    const cur = state.currentSheet;
-    const arr = state.chapters.filter(
-      (c) => !cur || c.sheet === cur
-    );
+  function curPageDef() {
+    return PAGES[state.currentPage];
+  }
+  function curItem() {
+    const p = curPage();
+    return p.items.find((it) => it.id === p.currentItemId) || null;
+  }
+  function curSheet() {
+    return curPage().currentSheet;
+  }
+  function getSortedItems() {
+    const p = curPage();
+    const def = curPageDef();
+    const sheet = p.currentSheet;
+    const arr = sheet
+      ? p.items.filter((it) => !sheet || it.sheet === sheet)
+      : p.items.slice();
     arr.sort((a, b) => {
-      const an = Number(a.no) || 0;
-      const bn = Number(b.no) || 0;
-      return state.ui.sort === "asc" ? an - bn : bn - an;
+      const ak = def.sortKey(a);
+      const bk = def.sortKey(b);
+      return state.ui.sort === "asc" ? ak - bk : bk - ak;
     });
     return arr;
   }
+  // 找章节中最大的 no
+  function nextNoInCurrentSheet() {
+    const p = curPage();
+    const def = curPageDef();
+    const sheet = p.currentSheet;
+    const list = sheet
+      ? p.items.filter((it) => it.sheet === sheet)
+      : p.items;
+    return list.reduce((m, it) => Math.max(m, def.sortKey(it) || 0), 0) + 1;
+  }
 
   /* ============================================================
-     渲染
+     Sheet 分类
      ============================================================ */
-  function renderFileSelect() {
-    const sel = $("#file-select");
-    if (state.recentFiles.length === 0) {
-      sel.innerHTML = '<option value="">— 暂无文件 —</option>';
-      sel.value = "";
-      return;
+  function classifySheet(name, header) {
+    for (const pid of PAGE_IDS) {
+      const def = PAGES[pid];
+      if (def.matchName(name)) return pid;
     }
-    sel.innerHTML = state.recentFiles
-      .map((f) => {
-        const selected = f.name === state.currentFileName ? "selected" : "";
-        const icon = f.isMigrated ? "🔒" : f.isDirectory ? "📁" : "📄";
-        return `<option value="${escapeHtml(f.name)}" ${selected}>${icon} ${escapeHtml(f.name)}</option>`;
-      })
-      .join("");
-    if (state.currentFileName) sel.value = state.currentFileName;
+    for (const pid of PAGE_IDS) {
+      const def = PAGES[pid];
+      if (def.matchHeaders(header)) return pid;
+    }
+    return null; // 未分类
   }
 
-  function renderFileMeta() {
-    const elText = $("#file-meta-text");
-    const dot = $("#file-status");
-    const removeBtn = $("#file-remove");
-    const banner = $("#fs-banner");
-
-    const cur = state.recentFiles.find(
-      (f) => f.name === state.currentFileName
-    );
-    if (!cur) {
-      elText.textContent = "请选择一个本地 xlsx 文件";
-      dot.dataset.status = "";
-      dot.title = "";
-      removeBtn.hidden = true;
-      banner.hidden = true;
-      return;
-    }
-
-    const parts = [`${state.chapters.length} 章`];
-    if (cur.mtime) {
-      parts.push(`修改于 ${new Date(cur.mtime).toLocaleString()}`);
-    }
-    if (cur.size) parts.push(formatSize(cur.size));
-    elText.textContent = parts.join(" · ");
-    elText.title = cur.name;
-
-    if (cur.isMigrated) {
-      dot.dataset.status = "migrated";
-      dot.title = "已迁移的旧数据，无文件访问权限";
-      banner.hidden = true;
-      removeBtn.hidden = true;
-    } else if (cur.handleKey) {
-      dot.dataset.status = "ok";
-      dot.title = "已授权，可随时重新读取本地文件";
-      banner.hidden = true;
-      removeBtn.hidden = false;
-    } else {
-      dot.dataset.status = "need-perm";
-      dot.title = "需要重新授权才能读取";
-      banner.hidden = false;
-      removeBtn.hidden = false;
-    }
+  function unclassifiedLabel() {
+    return "未分类";
   }
-
-  function renderSheetTabs() {
-    const wrap = $("#sheet-tabs");
-    if (!wrap) return;
-    if (!state.currentFileName || state.sheets.length === 0) {
-      wrap.hidden = true;
-      wrap.innerHTML = "";
-      return;
-    }
-    wrap.hidden = false;
-    const counts = {};
-    for (const c of state.chapters) {
-      counts[c.sheet] = (counts[c.sheet] || 0) + 1;
-    }
-    wrap.innerHTML = state.sheets
-      .map((s) => {
-        const active = s.name === state.currentSheet ? "active" : "";
-        const count = counts[s.name] || 0;
-        const badge = !s.ok
-          ? `<span class="sheet-tab-count" title="该 sheet 没有匹配的章节表头">⚠</span>`
-          : count > 0
-            ? `<span class="sheet-tab-count">${count}</span>`
-            : "";
-        return `<button class="sheet-tab ${active}" data-sheet="${escapeHtml(
-          s.name
-        )}" role="tab" aria-selected="${s.name === state.currentSheet}">${escapeHtml(
-          s.name
-        )}${badge}</button>`;
-      })
-      .join("");
-    // 绑定点击
-    $$(".sheet-tab", wrap).forEach((b) =>
-      b.addEventListener("click", () => {
-        const name = b.dataset.sheet;
-        if (!name || name === state.currentSheet) return;
-        state.currentSheet = name;
-        // 把当前章节切到当前 sheet 的第一个（如果有）
-        const firstInSheet = state.chapters
-          .filter((c) => c.sheet === name)
-          .sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0))[0];
-        state.currentChapterId = firstInSheet ? firstInSheet.id : null;
-        save();
-        renderAll();
-      })
-    );
-  }
-
-  function renderChapterList() {
-    const list = $("#chapter-list");
-    const chapters = getSortedChapters();
-    list.innerHTML = chapters
-      .map((c) => {
-        const wc = (c.content || "").length;
-        return `
-          <li class="ch-item ${
-            c.id === state.currentChapterId ? "active" : ""
-          }" data-id="${escapeHtml(c.id)}">
-            <span class="ch-no">${escapeHtml(String(c.no))}</span>
-            <span class="ch-title">${escapeHtml(c.title || "（无标题）")}</span>
-            <span class="ch-meta">${wc}字</span>
-          </li>
-        `;
-      })
-      .join("");
-    $("#chapter-count").textContent = `${chapters.length} 章`;
-    $("#sort-label").textContent = state.ui.sort === "asc" ? "正序" : "倒序";
-  }
-
-  function renderEditor() {
-    const ch = getCurrentChapter();
-    const empty = $("#editor-empty");
-    const editor = $("#editor");
-    if (!ch) {
-      empty.hidden = false;
-      editor.hidden = true;
-      return;
-    }
-    empty.hidden = true;
-    editor.hidden = false;
-    $("#ch-no").value = ch.no ?? "";
-    $("#ch-title").value = ch.title || "";
-    $("#ch-content").value = ch.content || "";
-    updateWordCount();
-  }
-
-  function updateWordCount() {
-    const ch = getCurrentChapter();
-    const content = ch ? ch.content || "" : $("#ch-content").value;
-    $("#word-count").textContent = `${content.length} 字`;
-  }
-
-  function renderTheme() {
-    document.body.dataset.bg = state.theme.bg;
-    document.body.dataset.accent = state.theme.accent;
-    document.documentElement.style.setProperty(
-      "--accent",
-      ACCENT_COLORS[state.theme.accent] || ACCENT_COLORS.indigo
-    );
-    document.documentElement.style.setProperty(
-      "--reading-font-size",
-      `${state.theme.fontSize}px`
-    );
-    document.documentElement.style.setProperty(
-      "--reading-line-height",
-      state.theme.lineHeight
-    );
-    $$(".seg-btn[data-bg]").forEach((b) =>
-      b.classList.toggle("active", b.dataset.bg === state.theme.bg)
-    );
-    $$(".seg-btn[data-accent]").forEach((b) =>
-      b.classList.toggle("active", b.dataset.accent === state.theme.accent)
-    );
-    $("#font-size").value = state.theme.fontSize;
-    $("#font-size-val").textContent = state.theme.fontSize;
-    $("#line-height").value = state.theme.lineHeight;
-    $("#line-height-val").textContent = state.theme.lineHeight.toFixed(2);
-  }
-
-  function renderAll() {
-    renderFileSelect();
-    renderFileMeta();
-    renderSheetTabs();
-    renderChapterList();
-    renderEditor();
-    renderTheme();
+  function pageBadge(pid) {
+    if (!pid) return unclassifiedLabel();
+    return PAGES[pid] ? PAGES[pid].label : unclassifiedLabel();
   }
 
   /* ============================================================
-     读文件 + 切换文件
-     ============================================================ */
-  async function openFileByName(name) {
-    const meta = state.recentFiles.find((f) => f.name === name);
-    if (!meta) {
-      toast("找不到该文件", "error");
-      return;
-    }
-    if (meta.isMigrated || !meta.handleKey) {
-      toast("该文件没有保存访问权限（来自旧版本数据），请重新选择", "error", 3000);
-      $("#fs-banner").hidden = false;
-      return;
-    }
-    const handle = await fsGet(meta.handleKey);
-    if (!handle) {
-      toast("该文件的访问权限已失效，请重新选择", "error");
-      await removeRecentFile(name);
-      renderAll();
-      return;
-    }
-    const granted = await ensureReadPermission(handle, true);
-    if (!granted) {
-      toast("未授权读取文件", "error");
-      $("#fs-banner").hidden = false;
-      return;
-    }
-    await loadChaptersFromHandle(handle, meta);
-  }
-
-  async function loadChaptersFromHandle(handle, meta) {
-    try {
-      const ab = await readFileAsArrayBuffer(handle);
-      const { sheets } = parseXlsxAllSheets(ab);
-      const allChapters = [];
-      for (const s of sheets) {
-        if (!s.ok) continue;
-        for (const ch of rowsToChapters(s.parsedRows, s.name)) {
-          allChapters.push(ch);
-        }
-      }
-      const desc = await describeFile(handle);
-      state.chapters = allChapters;
-      state.sheets = sheets.map((s) => ({
-        name: s.name,
-        columns: s.columns,
-        rowCount: s.rowCount,
-        ok: s.ok,
-      }));
-      state.sheetsRaw = sheets.map((s) => ({ name: s.name, rows2d: s.rows2d }));
-      // 选择默认 sheet：优先 ok 状态且章节最多的
-      const okSheets = state.sheets.filter((s) => s.ok);
-      const candidate = okSheets.length > 0 ? okSheets[0] : state.sheets[0];
-      const countBySheet = {};
-      for (const c of allChapters) {
-        countBySheet[c.sheet] = (countBySheet[c.sheet] || 0) + 1;
-      }
-      const best =
-        okSheets.length > 0
-          ? okSheets.sort(
-              (a, b) => (countBySheet[b.name] || 0) - (countBySheet[a.name] || 0)
-            )[0]
-          : candidate;
-      state.currentSheet = best ? best.name : null;
-      state.currentChapterId =
-        allChapters.find((c) => c.sheet === state.currentSheet)?.id || null;
-      state.currentFileName = handle.name;
-      upsertRecentFile({
-        name: handle.name,
-        mtime: desc.mtime,
-        size: desc.size,
-        handleKey: meta?.handleKey || `file:${handle.name}`,
-        isDirectory: false,
-      });
-      save();
-      renderAll();
-      const okCount = state.sheets.filter((s) => s.ok).length;
-      const total = state.sheets.length;
-      toast(
-        `已读取 ${allChapters.length} 章（${okCount}/${total} 个有效 sheet）`,
-        "info",
-        1500
-      );
-    } catch (e) {
-      console.error("读取失败", e);
-      toast("读取失败：" + (e.message || e), "error", 3500);
-    }
-  }
-
-  /* ============================================================
-     写文件 - 把当前 state.chapters 写回 xlsx
-     - 有 file handle：直接写回原文件
-     - 无 handle：作为下载文件提供
-     ============================================================ */
-  async function ensureWritePermission(handle, interactive = true) {
-    if (!handle) return false;
-    if (handle.queryPermission) {
-      try {
-        const cur = await handle.queryPermission({ mode: "readwrite" });
-        if (cur === "granted") return true;
-      } catch (_) {
-        // 某些浏览器实现不支持 readwrite，fallback
-      }
-      if (!interactive) return false;
-      if (handle.requestPermission) {
-        try {
-          const next = await handle.requestPermission({ mode: "readwrite" });
-          return next === "granted";
-        } catch (_) {
-          return false;
-        }
-      }
-    }
-    return false;
-  }
-
-  function buildSheetAoa(sheetMeta, rows2dBase) {
-    // rows2dBase = 原始 rows2d（包含 header）
-    // 返回新的 rows2d：保留 header（如果原文件有） + 最新的章节行
-    const header = rows2dBase && rows2dBase[0] ? rows2dBase[0].slice() : null;
-    if (!sheetMeta || !sheetMeta.ok) {
-      // 非章节 sheet，原样返回
-      return rows2dBase || [];
-    }
-    const cols = sheetMeta.columns || {};
-    const noIdx = cols.no;
-    const titleIdx = cols.title;
-    const contentIdx = cols.content;
-    if (noIdx < 0 || titleIdx < 0 || contentIdx < 0) {
-      return rows2dBase || [];
-    }
-    // 用原 header 的列数决定总列宽（如果原 header 缺失，用三列）
-    const totalCols = header
-      ? Math.max(header.length, noIdx, titleIdx, contentIdx) + 1
-      : 3;
-    // 取该 sheet 的章节并按 no 升序
-    const chs = state.chapters
-      .filter((c) => c.sheet === sheetMeta.name)
-      .sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0));
-    // 构造新 rows
-    const out = [];
-    if (header) {
-      const normalized = header.slice(0, totalCols);
-      while (normalized.length < totalCols) normalized.push("");
-      out.push(normalized);
-    } else {
-      out.push(["章节号", "章节名", "文章内容"]);
-    }
-    for (const c of chs) {
-      const row = new Array(totalCols).fill("");
-      row[noIdx] = c.no;
-      row[titleIdx] = c.title || "";
-      row[contentIdx] = c.content || "";
-      out.push(row);
-    }
-    return out;
-  }
-
-  function buildXlsxArrayBuffer() {
-    if (!window.XLSX) throw new Error("xlsx 解析库未加载");
-    if (!state.currentFileName) throw new Error("当前没有打开的文件");
-    if (state.sheetsRaw.length === 0)
-      throw new Error("缺少原始 sheet 缓存，无法写回");
-    const wb = XLSX.utils.book_new();
-    for (const raw of state.sheetsRaw) {
-      const meta = state.sheets.find((s) => s.name === raw.name);
-      const aoa = buildSheetAoa(meta, raw.rows2d);
-      // aoa 是二维数组，用 sheet_add_aoa 添加
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      // 用安全名（≤31 字符）
-      const safeName = raw.name.slice(0, 31);
-      XLSX.utils.book_append_sheet(wb, ws, safeName);
-    }
-    const ab = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    return ab;
-  }
-
-  async function saveToFile({ silent = false } = {}) {
-    if (!state.currentFileName) {
-      if (!silent) toast("当前没有打开的文件", "error");
-      return false;
-    }
-    if (state.sheetsRaw.length === 0) {
-      if (!silent) toast("没有可写的 sheet 缓存，请重新打开文件", "error");
-      return false;
-    }
-    let ab;
-    try {
-      ab = buildXlsxArrayBuffer();
-    } catch (e) {
-      console.error("构造 xlsx 失败", e);
-      if (!silent) toast("构造 xlsx 失败：" + (e.message || e), "error", 3000);
-      return false;
-    }
-
-    const meta = state.recentFiles.find(
-      (f) => f.name === state.currentFileName
-    );
-    if (meta && meta.handleKey && !meta.isMigrated) {
-      // 优先用持久化 handle 写回
-      try {
-        const handle = await fsGet(meta.handleKey);
-        if (!handle) {
-          // handle 失效 → 走下载
-          triggerDownload(ab, state.currentFileName);
-          if (!silent) toast("原文件访问权限已失效，已下载更新版", "info", 2500);
-          return true;
-        }
-        const granted = await ensureWritePermission(handle, true);
-        if (!granted) {
-          if (!silent) toast("未获得写入权限，已下载更新版", "info", 2500);
-          triggerDownload(ab, state.currentFileName);
-          return true;
-        }
-        const writable = await handle.createWritable();
-        await writable.write(ab);
-        await writable.close();
-        if (!silent) toast("已写入 xlsx 文件", "info", 1500);
-        return true;
-      } catch (e) {
-        if (e && e.name === "AbortError") {
-          if (!silent) toast("已取消写入", "info", 1500);
-          return false;
-        }
-        console.error("写入文件失败", e);
-        if (!silent) {
-          // 写入失败 fallback 下载
-          triggerDownload(ab, state.currentFileName);
-          toast("写入失败，已改为下载：" + (e.message || e), "error", 3500);
-        }
-        return false;
-      }
-    } else {
-      // 无 handle：当前会话拖入的文件 / 旧迁移数据
-      triggerDownload(ab, state.currentFileName);
-      if (!silent) {
-        toast(
-          meta && meta.isMigrated
-            ? "旧数据无文件权限，已下载更新版"
-            : "本次会话文件无写入权限，已下载更新版",
-          "info",
-          2500
-        );
-      }
-      return true;
-    }
-  }
-
-  function triggerDownload(ab, fileName) {
-    const blob = new Blob([ab], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    // 名字加 -updated 后缀
-    const base = fileName.replace(/\.xlsx?$/i, "");
-    a.download = `${base}-updated.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 100);
-  }
-
-  async function openDirectory(dirHandle) {
-    let files;
-    try {
-      files = await listXlsxInDir(dirHandle);
-    } catch (e) {
-      toast("读取文件夹失败：" + (e.message || e), "error");
-      return;
-    }
-    if (files.length === 0) {
-      toast("该文件夹下没有 .xlsx 文件", "error", 3000);
-      return;
-    }
-    // 持久化目录 handle（虽然目录 handle 不直接列文件，但保留以备未来）
-    try {
-      await fsPut(`dir:${dirHandle.name}`, dirHandle);
-    } catch (_) {}
-
-    for (const f of files) {
-      const fileKey = `file:${dirHandle.name}/${f.name}`;
-      try {
-        await fsPut(fileKey, f.handle);
-      } catch (e) {
-        console.warn("持久化 handle 失败", fileKey, e);
-      }
-      const desc = await describeFile(f.handle);
-      upsertRecentFile({
-        name: f.handle.name,
-        mtime: desc.mtime,
-        size: desc.size,
-        handleKey: fileKey,
-        isDirectory: false,
-      });
-    }
-    save();
-    renderAll();
-
-    // 自动打开当前选中（仍在目录中）或第一个
-    const target =
-      state.currentFileName && files.find((f) => f.name === state.currentFileName)
-        ? files.find((f) => f.name === state.currentFileName)
-        : files[0];
-    if (target) await openFileByName(target.handle.name);
-  }
-
-  /* ============================================================
-     xlsx 解析（保留）
+     xlsx 解析
      ============================================================ */
   function unpackCell(v) {
     if (v == null) return "";
@@ -919,38 +684,55 @@
     return -1;
   }
 
-  function parseXlsxRows(rows2d) {
+  // 通用行解析 - 用 pageId 的字段定义
+  function parseRowsForPage(rows2d, pageId) {
+    const def = PAGES[pageId];
+    if (!def) return { rows: [], columns: null };
     if (!rows2d || rows2d.length === 0) return { rows: [], columns: null };
     const header = rows2d[0].map((c) => unpackCell(c).trim());
     const dataRows = rows2d.slice(1);
-    const idxNo = findColumnIndex(header, FIELD_FALLBACKS.no);
-    const idxTitle = findColumnIndex(header, FIELD_FALLBACKS.title);
-    const idxContent = findColumnIndex(header, FIELD_FALLBACKS.content);
+    const fieldKeys = Object.keys(def.fields);
+    const columns = {};
+    for (const key of fieldKeys) {
+      columns[key] = findColumnIndex(header, def.fields[key]);
+    }
     const out = [];
+    const allMissing = fieldKeys.every((k) => (columns[k] | 0) < 0);
     for (let i = 0; i < dataRows.length; i++) {
       const r = dataRows[i];
       if (!r || r.every((c) => unpackCell(c).trim() === "")) continue;
       const o = { _line: i + 2, _error: null };
-      if (idxNo < 0 || idxTitle < 0 || idxContent < 0) {
-        o._error = `表头缺少关键列（需含 章节号/章节名/文章内容），当前表头：${header.join(" | ")}`;
+      if (allMissing) {
+        o._error = `表头缺少关键列（当前表头：${header.join(" | ")}）`;
         out.push(o);
         continue;
       }
-      const noRaw = unpackCell(r[idxNo]).trim();
-      const no = Number(noRaw);
-      if (!Number.isFinite(no)) {
-        o._error = `章节号不是有效数字："${noRaw}"`;
-        out.push(o);
-        continue;
+      const data = {};
+      let hasAny = false;
+      for (const key of fieldKeys) {
+        const idx = columns[key];
+        if (idx < 0) {
+          data[key] = "";
+        } else {
+          const v = unpackCell(r[idx]).trim();
+          if (v) hasAny = true;
+          data[key] = v;
+        }
       }
-      o.no = no;
-      o.title = unpackCell(r[idxTitle]).trim();
-      o.content = unpackCell(r[idxContent]);
+      if (!hasAny) continue;
+      // no 字段尝试转数字
+      if (columns.no >= 0) {
+        const n = Number(data.no);
+        data.no = Number.isFinite(n) ? n : (data.no || 0);
+      } else {
+        data.no = 0;
+      }
+      Object.assign(o, data);
       out.push(o);
     }
     return {
       rows: out,
-      columns: { no: idxNo, title: idxTitle, content: idxContent, header },
+      columns: { ...columns, header },
     };
   }
 
@@ -973,12 +755,13 @@
         defval: "",
         raw: true,
       });
-      const parsed = parseXlsxRows(rows2d);
-      const ok =
-        parsed.columns &&
-        parsed.columns.no >= 0 &&
-        parsed.columns.title >= 0 &&
-        parsed.columns.content >= 0;
+      const header = (rows2d[0] || []).map((c) => unpackCell(c).trim());
+      const page = classifySheet(name, header);
+      const parsed = page ? parseRowsForPage(rows2d, page) : { rows: [], columns: { header } };
+      // 至少有一个字段被识别出来才算"有效"
+      const ok = !!page && !!parsed.columns && Object.values(parsed.columns).some(
+        (v, i) => i < Object.keys(parsed.columns).length - 1 && v >= 0
+      );
       out.push({
         name,
         rows2d,
@@ -986,376 +769,797 @@
         rowCount: rows2d.length,
         ok,
         parsedRows: parsed.rows,
+        page,
       });
     }
     return { sheets: out };
   }
 
-  function parseXlsxFromArrayBuffer(ab) {
-    const all = parseXlsxAllSheets(ab);
-    const first = all.sheets[0];
-    if (!first) throw new Error("xlsx 内没有可用的 sheet");
-    return {
-      ...first,
-      sheetName: first.name,
-    };
-  }
-
-  function rowsToChapters(rows, sheetName) {
-    return rows
-      .filter((r) => !r._error)
-      .map((r) => ({
-        id: uid("ch"),
-        no: r.no,
-        title: r.title || "",
-        content: r.content || "",
-        sheet: sheetName,
-      }));
-  }
-
-
-  /* ============================================================
-     事件：文件路径
-     ============================================================ */
-  function bindFileEvents() {
-    $("#file-select").addEventListener("change", async (e) => {
-      const name = e.target.value;
-      if (!name) return;
-      await openFileByName(name);
-    });
-
-    $("#file-pick").addEventListener("click", () => {
-      if (!fsSupported()) {
-        toast("当前浏览器不支持 File System Access API", "error", 4000);
-        return;
-      }
-      openFileModalReset();
-      showModal("modal-open-file");
-    });
-
-    // 弹窗：打开文件 — 「用浏览器选择」按钮（拿持久 handle）
-    $("#btn-open-file-pick").addEventListener("click", async () => {
-      try {
-        const handle = await pickXlsxFile();
-        if (!handle) return;
-        const fileKey = `file:${handle.name}`;
-        await fsPut(fileKey, handle);
-        const desc = await describeFile(handle);
-        upsertRecentFile({
-          name: handle.name,
-          mtime: desc.mtime,
-          size: desc.size,
-          handleKey: fileKey,
-          isDirectory: false,
-        });
-        save();
-        renderAll();
-        hideModal("modal-open-file");
-        await loadChaptersFromHandle(handle, { handleKey: fileKey });
-      } catch (e) {
-        if (e.name === "AbortError") return;
-        console.error(e);
-        toast("选择文件失败：" + (e.message || e), "error", 3000);
-      }
-    });
-
-    $("#file-pick-dir").addEventListener("click", () => {
-      if (!fsSupported()) {
-        toast("当前浏览器不支持 File System Access API", "error", 4000);
-        return;
-      }
-      showModal("modal-open-dir");
-    });
-
-    // 弹窗：打开文件夹 — 「用浏览器选择」按钮
-    $("#btn-open-dir-pick").addEventListener("click", async () => {
-      try {
-        const dirHandle = await pickDirectory();
-        if (!dirHandle) return;
-        hideModal("modal-open-dir");
-        await openDirectory(dirHandle);
-      } catch (e) {
-        if (e.name === "AbortError") return;
-        console.error(e);
-        toast("选择文件夹失败：" + (e.message || e), "error", 3000);
-      }
-    });
-
-    // ----- 打开文件弹窗（modal-open-file） -----
-    // 弹窗状态：用户拖入或选择 xlsx 后暂存为 File 对象，本次会话可读
-    let openFilePending = null;
-
-    function openFileModalReset() {
-      openFilePending = null;
-      const info = $("#open-file-info");
-      if (info) info.hidden = true;
-      const drop = $("#open-file-drop");
-      if (drop) drop.classList.remove("is-dragover");
-      const confirm = $("#btn-open-file-confirm");
-      if (confirm) {
-        confirm.disabled = true;
-        confirm.dataset.file = "";
-      }
-      const fi = $("#file-xlsx-open");
-      if (fi) fi.value = "";
+  // 把 sheets 数组塞进 state（按 page 归类）
+  function applySheetsToState(sheets) {
+    // 清空所有 page 的 sheets
+    for (const pid of PAGE_IDS) {
+      state.pages[pid].sheets = [];
+      state.pages[pid].items = [];
+      state.pages[pid].currentSheet = null;
     }
-
-    // 弹窗里拖入或选择的 xlsx：暂存为 File 对象，等用户点"确认打开"再加载
-    function setOpenFilePending(file) {
-      openFilePending = file;
-      const info = $("#open-file-info");
-      if (info) {
-        info.hidden = false;
-        info.querySelector(".import-file-name").textContent =
-          `${file.name}（${formatSize(file.size)}）`;
-      }
-      const confirm = $("#btn-open-file-confirm");
-      if (confirm) {
-        confirm.disabled = false;
-        confirm.dataset.file = "1";
-      }
-    }
-
-    // 从 File 对象加载章节（不持久化 handle，仅本次会话有效）
-    async function loadChaptersFromFile(file) {
-      try {
-        const ab = await file.arrayBuffer();
-        const { sheets } = parseXlsxAllSheets(ab);
-        const allChapters = [];
-        for (const s of sheets) {
-          if (!s.ok) continue;
-          for (const ch of rowsToChapters(s.parsedRows, s.name)) {
-            allChapters.push(ch);
-          }
-        }
-        if (allChapters.length === 0) {
-          toast("未能解析出任何章节，请检查表头是否包含「章节号 / 章节名 / 文章内容」", "error", 4000);
-          return;
-        }
-        state.chapters = allChapters;
-        state.sheets = sheets.map((s) => ({
+    state.sheetsRaw = [];
+    for (const s of sheets) {
+      const entry = {
+        name: s.name,
+        rows2d: s.rows2d,
+        columns: s.columns,
+        rowCount: s.rowCount,
+        ok: s.ok,
+        page: s.page, // null 表示未分类
+      };
+      state.sheetsRaw.push(entry);
+      if (s.page && PAGES[s.page]) {
+        state.pages[s.page].sheets.push({
           name: s.name,
           columns: s.columns,
           rowCount: s.rowCount,
           ok: s.ok,
-        }));
-        state.sheetsRaw = sheets.map((s) => ({ name: s.name, rows2d: s.rows2d }));
-        const countBySheet = {};
-        for (const c of allChapters) {
-          countBySheet[c.sheet] = (countBySheet[c.sheet] || 0) + 1;
+        });
+        if (s.ok) {
+          for (const r of s.parsedRows) {
+            if (r._error) continue;
+            const item = PAGES[s.page].makeItem(r, s.name);
+            state.pages[s.page].items.push(item);
+          }
         }
-        const okSheets = state.sheets.filter((s) => s.ok);
-        const best =
-          okSheets.length > 0
-            ? okSheets.sort(
-                (a, b) =>
-                  (countBySheet[b.name] || 0) - (countBySheet[a.name] || 0)
-              )[0]
-            : state.sheets[0];
-        state.currentSheet = best ? best.name : null;
-        state.currentChapterId =
-          allChapters.find((c) => c.sheet === state.currentSheet)?.id || null;
-        state.currentFileName = file.name;
+      }
+    }
+    // 为每个有 sheet 的 page 选默认 sheet
+    for (const pid of PAGE_IDS) {
+      const p = state.pages[pid];
+      if (p.sheets.length === 0) continue;
+      const okSheets = p.sheets.filter((x) => x.ok);
+      const sorted = okSheets.length
+        ? okSheets.sort((a, b) => {
+            const ca = p.items.filter((it) => it.sheet === a.name).length;
+            const cb = p.items.filter((it) => it.sheet === b.name).length;
+            return cb - ca;
+          })
+        : p.sheets;
+      p.currentSheet = sorted[0]?.name || null;
+      // 选中第一个 item
+      const first = getSortedItemsForPage(pid)[0];
+      p.currentItemId = first ? first.id : null;
+    }
+    // 如果 currentPage 上没东西，切到第一个有数据的 page
+    if (!curPage().sheets.length) {
+      for (const pid of PAGE_IDS) {
+        if (state.pages[pid].sheets.length > 0) {
+          state.currentPage = pid;
+          break;
+        }
+      }
+    }
+  }
+
+  function getSortedItemsForPage(pid) {
+    const p = state.pages[pid];
+    const def = PAGES[pid];
+    if (!p || !def) return [];
+    const sheet = p.currentSheet;
+    const arr = sheet
+      ? p.items.filter((it) => it.sheet === sheet)
+      : p.items.slice();
+    arr.sort((a, b) => {
+      const ak = def.sortKey(a);
+      const bk = def.sortKey(b);
+      return state.ui.sort === "asc" ? ak - bk : bk - ak;
+    });
+    return arr;
+  }
+
+
+  /* ============================================================
+     渲染
+     ============================================================ */
+  function renderFileSelect() {
+    const sel = $("#file-select");
+    if (state.recentFiles.length === 0) {
+      sel.innerHTML = '<option value="">— 暂无文件 —</option>';
+      sel.value = "";
+      return;
+    }
+    sel.innerHTML = state.recentFiles
+      .map((f) => {
+        const selected = f.name === state.currentFileName ? "selected" : "";
+        const icon = f.isMigrated ? "🔒" : f.isDirectory ? "📁" : "📄";
+        return `<option value="${escapeHtml(f.name)}" ${selected}>${icon} ${escapeHtml(f.name)}</option>`;
+      })
+      .join("");
+    if (state.currentFileName) sel.value = state.currentFileName;
+  }
+
+  function renderFileMeta() {
+    const elText = $("#file-meta-text");
+    const dot = $("#file-status");
+    const removeBtn = $("#file-remove");
+    const banner = $("#fs-banner");
+
+    const cur = state.recentFiles.find(
+      (f) => f.name === state.currentFileName
+    );
+    if (!cur) {
+      elText.textContent = "请选择一个本地 xlsx 文件";
+      dot.dataset.status = "";
+      dot.title = "";
+      removeBtn.hidden = true;
+      banner.hidden = true;
+      return;
+    }
+
+    // 统计所有页面的总条目数
+    let total = 0;
+    for (const pid of PAGE_IDS) {
+      total += state.pages[pid].items.length;
+    }
+    const parts = [`${total} 条`];
+    if (cur.mtime) {
+      parts.push(`修改于 ${new Date(cur.mtime).toLocaleString()}`);
+    }
+    if (cur.size) parts.push(formatSize(cur.size));
+    elText.textContent = parts.join(" · ");
+    elText.title = cur.name;
+
+    if (cur.isMigrated) {
+      dot.dataset.status = "migrated";
+      dot.title = "已迁移的旧数据，无文件访问权限";
+      banner.hidden = true;
+      removeBtn.hidden = true;
+    } else if (cur.handleKey) {
+      dot.dataset.status = "ok";
+      dot.title = "已授权，可随时重新读取本地文件";
+      banner.hidden = true;
+      removeBtn.hidden = false;
+    } else {
+      dot.dataset.status = "need-perm";
+      dot.title = "需要重新授权才能读取";
+      banner.hidden = false;
+      removeBtn.hidden = false;
+    }
+  }
+
+  function renderPageTabs() {
+    const wrap = $("#page-tabs");
+    if (!wrap) return;
+    if (PAGE_IDS.length === 0) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    wrap.innerHTML = PAGE_IDS.map((pid) => {
+      const def = PAGES[pid];
+      const p = state.pages[pid];
+      const count = p.items.length;
+      const active = pid === state.currentPage ? "active" : "";
+      return `<button class="page-tab ${active}" data-page="${pid}" role="tab" aria-selected="${pid === state.currentPage}">${def.icon} ${escapeHtml(def.label)}<span class="page-tab-count">${count}</span></button>`;
+    }).join("");
+    $$(".page-tab", wrap).forEach((b) =>
+      b.addEventListener("click", () => {
+        const pid = b.dataset.page;
+        if (!pid || pid === state.currentPage) return;
+        state.currentPage = pid;
         save();
         renderAll();
-        hideModal("modal-open-file");
-        const okCount = state.sheets.filter((s) => s.ok).length;
-        const total = state.sheets.length;
-        toast(
-          `已读取 ${allChapters.length} 章（${okCount}/${total} 个有效 sheet，本次会话有效）`,
-          "info",
-          1500
-        );
-      } catch (e) {
-        console.error("读取失败", e);
-        toast("读取失败：" + (e.message || e), "error", 3500);
-      }
-    }
+      })
+    );
+  }
 
-    // 拖拽 / 点击 / 键盘 触发 file input
-    const openDrop = $("#open-file-drop");
-    const openInput = $("#file-xlsx-open");
-    if (openDrop && openInput) {
-      openDrop.addEventListener("click", () => openInput.click());
-      openDrop.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          openInput.click();
+  function renderSheetTabs() {
+    const wrap = $("#sheet-tabs");
+    if (!wrap) return;
+    const p = curPage();
+    if (!state.currentFileName || !p || p.sheets.length === 0) {
+      wrap.hidden = true;
+      wrap.innerHTML = "";
+      return;
+    }
+    wrap.hidden = false;
+    const counts = {};
+    for (const it of p.items) {
+      counts[it.sheet] = (counts[it.sheet] || 0) + 1;
+    }
+    wrap.innerHTML = p.sheets
+      .map((s) => {
+        const active = s.name === p.currentSheet ? "active" : "";
+        const count = counts[s.name] || 0;
+        const badge = !s.ok
+          ? `<span class="sheet-tab-count" title="该 sheet 没有匹配本章面的表头">⚠</span>`
+          : count > 0
+            ? `<span class="sheet-tab-count">${count}</span>`
+            : "";
+        return `<button class="sheet-tab ${active}" data-sheet="${escapeHtml(s.name)}" role="tab" aria-selected="${s.name === p.currentSheet}">${escapeHtml(s.name)}${badge}</button>`;
+      })
+      .join("");
+    $$(".sheet-tab", wrap).forEach((b) =>
+      b.addEventListener("click", () => {
+        const name = b.dataset.sheet;
+        if (!name || name === curPage().currentSheet) return;
+        curPage().currentSheet = name;
+        // 切到当前 sheet 的第一个 item
+        const first = getSortedItems()[0];
+        curPage().currentItemId = first ? first.id : null;
+        save();
+        renderAll();
+      })
+    );
+  }
+
+  // 列表 + 编辑器的渲染统一走"页面"
+  function renderItemList() {
+    const list = $("#chapter-list");
+    const items = getSortedItems();
+    const pid = state.currentPage;
+    const p = curPage();
+    if (pid === "chapter") {
+      list.className = "chapter-list";
+      list.innerHTML = items
+        .map((it) => {
+          const wc = (it.content || "").length;
+          return `
+            <li class="ch-item ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
+              <span class="ch-no">${escapeHtml(String(it.no))}</span>
+              <span class="ch-title">${escapeHtml(it.title || "（无标题）")}</span>
+              <span class="ch-meta">${wc}字</span>
+            </li>`;
+        })
+        .join("");
+    } else if (pid === "foreshadowing") {
+      list.className = "fs-list";
+      list.innerHTML = items
+        .map((it) => {
+          const status = it.status || "活跃";
+          const cls =
+            status === "已回收"
+              ? "fs-status-resolved"
+              : status === "已废弃"
+                ? "fs-status-abandoned"
+                : "fs-status-active";
+          return `
+            <li class="fs-item ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
+              <span class="fs-no">${escapeHtml(String(it.no))}</span>
+              <span class="fs-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
+              <span class="fs-status ${cls}">${escapeHtml(status)}</span>
+            </li>`;
+        })
+        .join("");
+    }
+    // 底部 footer
+    const def = curPageDef();
+    $("#chapter-count").textContent = `${items.length} ${def.label.replace(/管理$|页$/, "")}`;
+    $("#sort-label").textContent = state.ui.sort === "asc" ? "正序" : "倒序";
+  }
+
+  function renderEditor() {
+    const it = curItem();
+    const empty = $("#editor-empty");
+    const editor = $("#editor");
+    if (!it) {
+      empty.hidden = false;
+      editor.hidden = true;
+      empty.innerHTML = curPageDef().emptyStateHtml();
+      return;
+    }
+    empty.hidden = true;
+    editor.hidden = false;
+    if (state.currentPage === "chapter") {
+      editor.innerHTML = `
+        <div class="editor-meta">
+          <div class="meta-field">
+            <label>章节号</label>
+            <input id="ch-no" type="number" min="0" step="1" value="${escapeHtml(String(it.no))}" />
+          </div>
+          <div class="meta-field meta-title">
+            <label>章节名称</label>
+            <input id="ch-title" type="text" value="${escapeHtml(it.title || "")}" placeholder="给本章起个名字" />
+          </div>
+          <div class="meta-actions">
+            <button id="btn-save" class="primary-btn">保存</button>
+            <button id="btn-delete" class="danger-btn">删除</button>
+          </div>
+        </div>
+        <div class="editor-body">
+          <label class="body-label">文章内容</label>
+          <textarea id="ch-content" placeholder="正文…">${escapeHtml(it.content || "")}</textarea>
+          <div class="body-stats">
+            <span id="word-count" class="muted">0 字</span>
+            <span id="save-status" class="muted"></span>
+          </div>
+        </div>`;
+    } else if (state.currentPage === "foreshadowing") {
+      const opts = FS_STATUS_OPTIONS.map(
+        (s) =>
+          `<option value="${escapeHtml(s)}" ${it.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`
+      ).join("");
+      editor.innerHTML = `
+        <div class="editor-meta editor-meta-fs">
+          <div class="meta-field meta-num">
+            <label>序号</label>
+            <input id="fs-no" type="number" min="0" step="1" value="${escapeHtml(String(it.no))}" />
+          </div>
+          <div class="meta-field meta-title">
+            <label>伏笔名称</label>
+            <input id="fs-name" type="text" value="${escapeHtml(it.name || "")}" placeholder="给伏笔起个名字" />
+          </div>
+          <div class="meta-field">
+            <label>状态</label>
+            <select id="fs-status">${opts}</select>
+          </div>
+          <div class="meta-actions">
+            <button id="btn-save" class="primary-btn">保存</button>
+            <button id="btn-delete" class="danger-btn">删除</button>
+          </div>
+        </div>
+        <div class="editor-body">
+          <div class="fs-form-row">
+            <div class="meta-field">
+              <label>铺设章节</label>
+              <input id="fs-setup" type="text" value="${escapeHtml(it.setup || "")}" placeholder="如：第三章、第12章" />
+            </div>
+            <div class="meta-field">
+              <label>回收章节</label>
+              <input id="fs-payoff" type="text" value="${escapeHtml(it.payoff || "")}" placeholder="如：第二十章、第45章" />
+            </div>
+          </div>
+          <label class="body-label">备注 / 详情</label>
+          <textarea id="fs-notes" placeholder="伏笔的具体内容、提示、相关情节等…">${escapeHtml(it.notes || "")}</textarea>
+          <div class="body-stats">
+            <span id="word-count" class="muted">${(it.notes || "").length} 字</span>
+            <span id="save-status" class="muted"></span>
+          </div>
+        </div>`;
+    }
+    bindEditorEvents();
+  }
+
+  function bindEditorEvents() {
+    const it = curItem();
+    if (!it) return;
+    if (state.currentPage === "chapter") {
+      $("#ch-content")?.addEventListener("input", () => {
+        const len = $("#ch-content").value.length;
+        $("#word-count").textContent = `${len} 字`;
+      });
+    } else if (state.currentPage === "foreshadowing") {
+      $("#fs-notes")?.addEventListener("input", () => {
+        const len = $("#fs-notes").value.length;
+        $("#word-count").textContent = `${len} 字`;
+      });
+    }
+  }
+
+  function renderTheme() {
+    document.body.dataset.bg = state.theme.bg;
+    document.body.dataset.accent = state.theme.accent;
+    document.documentElement.style.setProperty(
+      "--accent",
+      ACCENT_COLORS[state.theme.accent] || ACCENT_COLORS.indigo
+    );
+    document.documentElement.style.setProperty(
+      "--reading-font-size",
+      `${state.theme.fontSize}px`
+    );
+    document.documentElement.style.setProperty(
+      "--reading-line-height",
+      state.theme.lineHeight
+    );
+    $$(".seg-btn[data-bg]").forEach((b) =>
+      b.classList.toggle("active", b.dataset.bg === state.theme.bg)
+    );
+    $$(".seg-btn[data-accent]").forEach((b) =>
+      b.classList.toggle("active", b.dataset.accent === state.theme.accent)
+    );
+    $("#font-size").value = state.theme.fontSize;
+    $("#font-size-val").textContent = state.theme.fontSize;
+    $("#line-height").value = state.theme.lineHeight;
+    $("#line-height-val").textContent = state.theme.lineHeight.toFixed(2);
+  }
+
+  function renderNewItemButton() {
+    const btn = $("#btn-new");
+    if (!btn) return;
+    const def = curPageDef();
+    btn.querySelector("span").textContent = def.newItemLabel;
+    btn.title = def.newItemLabel;
+  }
+
+  function renderAll() {
+    renderFileSelect();
+    renderFileMeta();
+    renderPageTabs();
+    renderSheetTabs();
+    renderItemList();
+    renderEditor();
+    renderNewItemButton();
+    renderTheme();
+  }
+
+
+  /* ============================================================
+     读文件 / 写文件
+     ============================================================ */
+  async function openFileByName(name) {
+    const meta = state.recentFiles.find((f) => f.name === name);
+    if (!meta) {
+      toast("找不到该文件", "error");
+      return;
+    }
+    if (meta.isMigrated || !meta.handleKey) {
+      toast("该文件没有保存访问权限（来自旧版本数据），请重新选择", "error", 3000);
+      $("#fs-banner").hidden = false;
+      return;
+    }
+    const handle = await fsGet(meta.handleKey);
+    if (!handle) {
+      toast("该文件的访问权限已失效，请重新选择", "error");
+      await removeRecentFile(name);
+      renderAll();
+      return;
+    }
+    const granted = await ensureReadPermission(handle, true);
+    if (!granted) {
+      toast("未授权读取文件", "error");
+      $("#fs-banner").hidden = false;
+      return;
+    }
+    await loadFromHandle(handle, meta);
+  }
+
+  async function loadFromHandle(handle, meta) {
+    try {
+      const ab = await readFileAsArrayBuffer(handle);
+      const { sheets } = parseXlsxAllSheets(ab);
+      applySheetsToState(sheets);
+      const desc = await describeFile(handle);
+      state.currentFileName = handle.name;
+      upsertRecentFile({
+        name: handle.name,
+        mtime: desc.mtime,
+        size: desc.size,
+        handleKey: meta?.handleKey || `file:${handle.name}`,
+        isDirectory: false,
+      });
+      save();
+      renderAll();
+      // 统计哪些页有数据
+      const summary = PAGE_IDS.map((pid) => {
+        const n = state.pages[pid].items.length;
+        return n > 0 ? `${PAGES[pid].label} ${n}` : null;
+      }).filter(Boolean).join(" · ");
+      toast(`已读取：${summary || "无有效条目"}`, "info", 1800);
+    } catch (e) {
+      console.error("读取失败", e);
+      toast("读取失败：" + (e.message || e), "error", 3500);
+    }
+  }
+
+  async function loadFromFile(file) {
+    try {
+      const ab = await file.arrayBuffer();
+      const { sheets } = parseXlsxAllSheets(ab);
+      applySheetsToState(sheets);
+      // 检查是否有任何有效条目
+      let total = 0;
+      for (const pid of PAGE_IDS) total += state.pages[pid].items.length;
+      if (total === 0) {
+        toast("未能解析出任何条目，请检查表头是否匹配已注册的页面字段", "error", 4000);
+        return;
+      }
+      state.currentFileName = file.name;
+      save();
+      renderAll();
+      hideModal("modal-open-file");
+      const summary = PAGE_IDS.map((pid) => {
+        const n = state.pages[pid].items.length;
+        return n > 0 ? `${PAGES[pid].label} ${n}` : null;
+      }).filter(Boolean).join(" · ");
+      toast(`已读取（本次会话）：${summary}`, "info", 1800);
+    } catch (e) {
+      console.error("读取失败", e);
+      toast("读取失败：" + (e.message || e), "error", 3500);
+    }
+  }
+
+  /* ============================================================
+     写文件 - 把 state 写回 xlsx
+     ============================================================ */
+  async function ensureWritePermission(handle, interactive = true) {
+    if (!handle) return false;
+    if (handle.queryPermission) {
+      try {
+        const cur = await handle.queryPermission({ mode: "readwrite" });
+        if (cur === "granted") return true;
+      } catch (_) {}
+      if (!interactive) return false;
+      if (handle.requestPermission) {
+        try {
+          const next = await handle.requestPermission({ mode: "readwrite" });
+          return next === "granted";
+        } catch (_) {
+          return false;
         }
-      });
-      openInput.addEventListener("change", (e) => {
-        const f = e.target.files?.[0];
-        if (f) setOpenFilePending(f);
-        e.target.value = "";
-      });
-      ["dragenter", "dragover"].forEach((evt) =>
-        openDrop.addEventListener(evt, (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openDrop.classList.add("is-dragover");
-        })
-      );
-      ["dragleave", "drop"].forEach((evt) =>
-        openDrop.addEventListener(evt, (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openDrop.classList.remove("is-dragover");
-        })
-      );
-      openDrop.addEventListener("drop", (e) => {
-        const f = e.dataTransfer?.files?.[0];
-        if (f) setOpenFilePending(f);
-      });
+      }
+    }
+    return false;
+  }
+
+  // 构造某 sheet 写回时的二维数组
+  function buildSheetAoa(sheetEntry) {
+    const rows2dBase = sheetEntry.rows2d || [];
+    const header = rows2dBase[0] ? rows2dBase[0].slice() : null;
+    const page = sheetEntry.page;
+    if (!page || !PAGES[page]) {
+      // 未分类的 sheet：原样返回
+      return rows2dBase;
+    }
+    const def = PAGES[page];
+    const cols = sheetEntry.columns || {};
+    const fieldKeys = Object.keys(def.fields);
+    // 该 sheet 在本页面的 items
+    const items = state.pages[page].items
+      .filter((it) => it.sheet === sheetEntry.name)
+      .sort((a, b) => def.sortKey(a) - def.sortKey(b));
+    // 决定总列宽
+    const validIdx = fieldKeys
+      .map((k) => cols[k])
+      .filter((v) => typeof v === "number" && v >= 0);
+    const totalCols = header
+      ? Math.max(header.length, ...validIdx, fieldKeys.length - 1) + 1
+      : fieldKeys.length;
+    const out = [];
+    if (header) {
+      const normalized = header.slice(0, totalCols);
+      while (normalized.length < totalCols) normalized.push("");
+      out.push(normalized);
+    } else {
+      const empty = new Array(totalCols).fill("");
+      out.push(empty);
+    }
+    for (const it of items) {
+      const row = new Array(totalCols).fill("");
+      for (const key of fieldKeys) {
+        const idx = cols[key];
+        if (typeof idx === "number" && idx >= 0) {
+          row[idx] = it[key] ?? "";
+        }
+      }
+      out.push(row);
+    }
+    return out;
+  }
+
+  function buildXlsxArrayBuffer() {
+    if (!window.XLSX) throw new Error("xlsx 解析库未加载");
+    if (!state.currentFileName) throw new Error("当前没有打开的文件");
+    if (state.sheetsRaw.length === 0)
+      throw new Error("缺少原始 sheet 缓存，无法写回");
+    const wb = XLSX.utils.book_new();
+    for (const raw of state.sheetsRaw) {
+      const aoa = buildSheetAoa(raw);
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const safeName = raw.name.slice(0, 31);
+      XLSX.utils.book_append_sheet(wb, ws, safeName);
+    }
+    const ab = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    return ab;
+  }
+
+  async function saveToFile({ silent = false } = {}) {
+    if (!state.currentFileName) {
+      if (!silent) toast("当前没有打开的文件", "error");
+      return false;
+    }
+    if (state.sheetsRaw.length === 0) {
+      if (!silent) toast("没有可写的 sheet 缓存，请重新打开文件", "error");
+      return false;
+    }
+    let ab;
+    try {
+      ab = buildXlsxArrayBuffer();
+    } catch (e) {
+      console.error("构造 xlsx 失败", e);
+      if (!silent) toast("构造 xlsx 失败：" + (e.message || e), "error", 3000);
+      return false;
     }
 
-    $("#btn-open-file-clear")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openFileModalReset();
-    });
+    const meta = state.recentFiles.find(
+      (f) => f.name === state.currentFileName
+    );
+    if (meta && meta.handleKey && !meta.isMigrated) {
+      try {
+        const handle = await fsGet(meta.handleKey);
+        if (!handle) {
+          triggerDownload(ab, state.currentFileName);
+          if (!silent) toast("原文件访问权限已失效，已下载更新版", "info", 2500);
+          return true;
+        }
+        const granted = await ensureWritePermission(handle, true);
+        if (!granted) {
+          if (!silent) toast("未获得写入权限，已下载更新版", "info", 2500);
+          triggerDownload(ab, state.currentFileName);
+          return true;
+        }
+        const writable = await handle.createWritable();
+        await writable.write(ab);
+        await writable.close();
+        if (!silent) toast("已写入 xlsx 文件", "info", 1500);
+        return true;
+      } catch (e) {
+        if (e && e.name === "AbortError") {
+          if (!silent) toast("已取消写入", "info", 1500);
+          return false;
+        }
+        console.error("写入文件失败", e);
+        if (!silent) {
+          triggerDownload(ab, state.currentFileName);
+          toast("写入失败，已改为下载：" + (e.message || e), "error", 3500);
+        }
+        return false;
+      }
+    } else {
+      triggerDownload(ab, state.currentFileName);
+      if (!silent) {
+        toast(
+          meta && meta.isMigrated
+            ? "旧数据无文件权限，已下载更新版"
+            : "本次会话文件无写入权限，已下载更新版",
+          "info",
+          2500
+        );
+      }
+      return true;
+    }
+  }
 
-    $("#btn-open-file-confirm")?.addEventListener("click", async () => {
-      if (!openFilePending) return;
-      const f = openFilePending;
-      openFileModalReset();
-      await loadChaptersFromFile(f);
+  function triggerDownload(ab, fileName) {
+    const blob = new Blob([ab], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const base = fileName.replace(/\.xlsx?$/i, "");
+    a.download = `${base}-updated.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  }
 
-    $("#file-remove").addEventListener("click", async () => {
-      if (!state.currentFileName) return;
-      if (
-        !confirm(
-          `从列表中移除「${state.currentFileName}」？\n（不会删除磁盘文件）`
-        )
-      )
-        return;
-      await removeRecentFile(state.currentFileName);
-      renderAll();
-    });
+  async function openDirectory(dirHandle) {
+    let files;
+    try {
+      files = await listXlsxInDir(dirHandle);
+    } catch (e) {
+      toast("读取文件夹失败：" + (e.message || e), "error");
+      return;
+    }
+    if (files.length === 0) {
+      toast("该文件夹下没有 .xlsx 文件", "error", 3000);
+      return;
+    }
+    try {
+      await fsPut(`dir:${dirHandle.name}`, dirHandle);
+    } catch (_) {}
 
-    $("#fs-grant").addEventListener("click", async () => {
-      const meta = state.recentFiles.find(
-        (f) => f.name === state.currentFileName
-      );
-      if (!meta) {
-        toast("请重新选择文件", "error");
-        return;
+    for (const f of files) {
+      const fileKey = `file:${dirHandle.name}/${f.name}`;
+      try {
+        await fsPut(fileKey, f.handle);
+      } catch (e) {
+        console.warn("持久化 handle 失败", fileKey, e);
       }
-      if (!meta.handleKey) {
-        toast("该文件没有保存访问权限，请重新选择文件", "error");
-        return;
+      const desc = await describeFile(f.handle);
+      upsertRecentFile({
+        name: f.handle.name,
+        mtime: desc.mtime,
+        size: desc.size,
+        handleKey: fileKey,
+        isDirectory: false,
+      });
+    }
+    save();
+    renderAll();
+    const target =
+      state.currentFileName && files.find((f) => f.name === state.currentFileName)
+        ? files.find((f) => f.name === state.currentFileName)
+        : files[0];
+    if (target) await openFileByName(target.handle.name);
+  }
+
+
+  /* ============================================================
+     保存 / 删除 - 当前 item
+     ============================================================ */
+  function saveCurrentItem() {
+    const p = curPage();
+    const it = curItem();
+    if (!it) return false;
+    if (state.currentPage === "chapter") {
+      it.no = Number($("#ch-no").value) || 0;
+      it.title = $("#ch-title").value.trim();
+      it.content = $("#ch-content").value;
+    } else if (state.currentPage === "foreshadowing") {
+      it.no = Number($("#fs-no").value) || 0;
+      it.name = $("#fs-name").value.trim();
+      it.status = $("#fs-status").value || "活跃";
+      it.setup = $("#fs-setup").value.trim();
+      it.payoff = $("#fs-payoff").value.trim();
+      it.notes = $("#fs-notes").value;
+    }
+    save();
+    renderItemList();
+    flashSaveStatus("✓ 已保存到本地");
+    return true;
+  }
+
+  function flashSaveStatus(text, ms = 1500) {
+    const s = $("#save-status");
+    if (!s) return;
+    s.textContent = text;
+    s.classList.add("saved");
+    clearTimeout(s._t);
+    s._t = setTimeout(() => {
+      s.textContent = "";
+      s.classList.remove("saved");
+    }, ms);
+  }
+
+  function deleteCurrentItem() {
+    const p = curPage();
+    const it = curItem();
+    if (!it) return;
+    const def = curPageDef();
+    const label = it.title || it.name || it.no;
+    if (!confirm(`确定删除${def.label}「${label}」？`)) return;
+    p.items = p.items.filter((x) => x.id !== it.id);
+    p.currentItemId = null;
+    save();
+    renderAll();
+    toast("已删除");
+  }
+
+  function addNewItem() {
+    const p = curPage();
+    const def = curPageDef();
+    const targetSheet =
+      p.currentSheet || (p.sheets[0] && p.sheets[0].name) || null;
+    const nextNo = nextNoInCurrentSheet();
+    const data = def.defaults();
+    data.no = nextNo;
+    const it = def.makeItem(data, targetSheet);
+    p.items.push(it);
+    p.currentItemId = it.id;
+    save();
+    renderAll();
+    setTimeout(() => {
+      // focus 第一个可输入字段
+      const focusSel =
+        state.currentPage === "chapter"
+          ? "#ch-title"
+          : state.currentPage === "foreshadowing"
+            ? "#fs-name"
+            : null;
+      if (focusSel) {
+        const el = $(focusSel);
+        if (el) el.focus();
       }
-      const handle = await fsGet(meta.handleKey);
-      if (!handle) {
-        toast("访问权限已失效，请重新选择文件", "error");
-        return;
-      }
-      const granted = await ensureReadPermission(handle, true);
-      if (granted) {
-        $("#fs-banner").hidden = true;
-        toast("授权成功", "info", 1500);
-        await loadChaptersFromHandle(handle, meta);
-      } else {
-        toast("未授权", "error");
-      }
-    });
+    }, 50);
+    toast(def.newItemToast(targetSheet, nextNo));
   }
 
   /* ============================================================
-     事件：章节
+     导入（xlsx + 文本） - 路由到正确的页面
      ============================================================ */
-  function bindChapterEvents() {
-    $("#chapter-list").addEventListener("click", (e) => {
-      const item = e.target.closest(".ch-item");
-      if (!item) return;
-      state.currentChapterId = item.dataset.id;
-      save();
-      renderChapterList();
-      renderEditor();
-    });
-
-    $("#btn-new").addEventListener("click", () => {
-      const targetSheet = state.currentSheet || (state.sheets[0] && state.sheets[0].name) || null;
-      const sameSheetChapters = state.chapters.filter(
-        (c) => c.sheet === targetSheet
-      );
-      const nextNo = sameSheetChapters.reduce(
-        (m, c) => Math.max(m, Number(c.no) || 0),
-        0
-      ) + 1;
-      const ch = {
-        id: uid("ch"),
-        no: nextNo,
-        title: "",
-        content: "",
-        sheet: targetSheet,
-      };
-      state.chapters.push(ch);
-      state.currentChapterId = ch.id;
-      save();
-      renderAll();
-      setTimeout(() => $("#ch-title").focus(), 50);
-      toast(
-        targetSheet
-          ? `已新增第 ${nextNo} 章 [${targetSheet}]`
-          : `已新增第 ${nextNo} 章`
-      );
-    });
-
-    $("#btn-save").addEventListener("click", async () => {
-      const ch = getCurrentChapter();
-      if (!ch) return;
-      ch.no = Number($("#ch-no").value) || 0;
-      ch.title = $("#ch-title").value.trim();
-      ch.content = $("#ch-content").value;
-      save();
-      renderChapterList();
-      const s = $("#save-status");
-      s.textContent = "✓ 已保存到本地";
-      s.classList.add("saved");
-      clearTimeout(s._t);
-      s._t = setTimeout(() => {
-        s.textContent = "";
-        s.classList.remove("saved");
-      }, 1500);
-      // 写回 xlsx 文件
-      const ok = await saveToFile();
-      if (ok) {
-        s.textContent = "✓ 已保存并写入文件";
-        s.classList.add("saved");
-        clearTimeout(s._t);
-        s._t = setTimeout(() => {
-          s.textContent = "";
-          s.classList.remove("saved");
-        }, 1800);
-      }
-    });
-
-    $("#btn-delete").addEventListener("click", () => {
-      const ch = getCurrentChapter();
-      if (!ch) return;
-      if (!confirm(`确定删除章节「${ch.title || ch.no}」？`)) return;
-      state.chapters = state.chapters.filter((c) => c.id !== ch.id);
-      state.currentChapterId = null;
-      save();
-      renderAll();
-      toast("已删除");
-    });
-
-    $("#ch-content").addEventListener("input", () => {
-      updateWordCount();
-    });
-
-    $("#btn-sort").addEventListener("click", () => {
-      state.ui.sort = state.ui.sort === "asc" ? "desc" : "asc";
-      save();
-      renderChapterList();
-    });
-  }
-
-  /* ============================================================
-     事件：导入（xlsx 拖拽 + 文本粘贴，导入到当前文件）
-     ============================================================ */
-  let importXlsxAllSheets = null; // xlsx 路径下解析的所有 sheet
+  let importAllSheets = null; // xlsx 解析出的所有 sheet（含 page 分类）
+  let importTargetPage = null; // 当前选中的 sheet 属于哪个 page
   let importCurrentSheet = null; // 当前选中的 sheet 名
 
   function bindImportEvents() {
@@ -1366,13 +1570,17 @@
       $("#btn-import-confirm").disabled = true;
       $("#btn-import-confirm").dataset.parsed = "";
       $("#btn-import-confirm").dataset.sheet = "";
-      importXlsxAllSheets = null;
+      $("#btn-import-confirm").dataset.page = "";
+      importAllSheets = null;
       importCurrentSheet = null;
+      importTargetPage = null;
       $("#import-file-info").hidden = true;
       $("#import-drop").classList.remove("is-dragover");
       const wrap = $("#import-sheet-wrap");
       if (wrap) wrap.hidden = true;
       setImportStats(null);
+      // 默认把目标 page 设到当前页
+      $("#import-target-wrap")?.setAttribute("hidden", "");
       showModal("modal-import");
     });
 
@@ -1411,78 +1619,119 @@
 
     $("#btn-import-clear").addEventListener("click", (e) => {
       e.stopPropagation();
-      importXlsxAllSheets = null;
+      importAllSheets = null;
       importCurrentSheet = null;
+      importTargetPage = null;
       $("#import-file-info").hidden = true;
       $("#import-preview").innerHTML = "";
       $("#btn-import-confirm").disabled = true;
       $("#btn-import-confirm").dataset.parsed = "";
       $("#btn-import-confirm").dataset.sheet = "";
+      $("#btn-import-confirm").dataset.page = "";
       const wrap = $("#import-sheet-wrap");
       if (wrap) wrap.hidden = true;
+      const tw = $("#import-target-wrap");
+      if (tw) tw.hidden = true;
       setImportStats(null);
     });
 
     $("#import-text").addEventListener("input", () => {
-      if (importXlsxAllSheets && $("#import-text").value.trim()) {
-        importXlsxAllSheets = null;
+      if (importAllSheets && $("#import-text").value.trim()) {
+        importAllSheets = null;
         importCurrentSheet = null;
+        importTargetPage = null;
         $("#import-file-info").hidden = true;
         const wrap = $("#import-sheet-wrap");
         if (wrap) wrap.hidden = true;
+        const tw = $("#import-target-wrap");
+        if (tw) tw.hidden = true;
       }
-      const rows = parseImportText($("#import-text").value);
-      renderImportPreview(rows);
-      $("#btn-import-confirm").disabled =
-        rows.filter((r) => !r._error).length === 0;
-      $("#btn-import-confirm").dataset.parsed = JSON.stringify(rows);
-      $("#btn-import-confirm").dataset.sheet = "";
-      setImportStats(rows);
+      refreshImportPreview();
     });
 
     $("#import-skip-header").addEventListener("change", refreshImportPreview);
-
-    // sheet 选择下拉变化时刷新 preview
-    $("#import-sheet-select")?.addEventListener("change", () => {
+    $("#import-sheet-select")?.addEventListener("change", refreshImportPreview);
+    $("#import-target-select")?.addEventListener("change", () => {
+      importTargetPage = $("#import-target-select").value;
       refreshImportPreview();
     });
 
     $("#btn-import-confirm").addEventListener("click", () => {
       const raw = $("#btn-import-confirm").dataset.parsed;
       const sheetName = $("#btn-import-confirm").dataset.sheet || "";
+      const targetPid = $("#btn-import-confirm").dataset.page || "";
       if (!raw) return;
       const rows = JSON.parse(raw).filter((r) => !r._error);
       if (rows.length === 0) {
         toast("没有可导入的内容", "error");
         return;
       }
+      if (!targetPid || !PAGES[targetPid]) {
+        toast("未指定目标页面", "error");
+        return;
+      }
+      const def = PAGES[targetPid];
+      const p = state.pages[targetPid];
       let added = 0,
         replaced = 0;
       rows.forEach((r) => {
-        const existingIdx = state.chapters.findIndex(
-          (c) => Number(c.no) === r.no && c.sheet === sheetName
+        // 用 sheet + no 作为去重 key（仅 chapter / foreshadowing 都有 no）
+        const existingIdx = p.items.findIndex(
+          (x) => Number(x.no) === Number(r.no) && x.sheet === sheetName
         );
-        const ch = {
-          id: existingIdx >= 0 ? state.chapters[existingIdx].id : uid("ch"),
-          no: r.no,
-          title: r.title,
-          content: r.content,
-          sheet: sheetName,
-        };
+        const data = def.defaults();
+        // 把所有 row 字段覆盖到 defaults
+        for (const k of Object.keys(def.fields)) {
+          if (k in r) data[k] = r[k];
+        }
         if (existingIdx >= 0) {
-          state.chapters[existingIdx] = ch;
+          // 保留 id
+          p.items[existingIdx] = { ...p.items[existingIdx], ...data, sheet: sheetName };
           replaced++;
         } else {
-          state.chapters.push(ch);
+          const it = def.makeItem(data, sheetName);
+          p.items.push(it);
           added++;
         }
       });
-      state.chapters.sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0));
+      p.items.sort((a, b) => def.sortKey(a) - def.sortKey(b));
+      // 把这个 sheet 注册到 state.sheetsRaw（如不存在）+ 该页面的 sheets
+      if (sheetName && !state.sheetsRaw.find((s) => s.name === sheetName)) {
+        // 没有 raw 缓存时（罕见：用户先 import 后才 open file），构造一个空 raw
+        const header = rows[0] ? Object.keys(def.fields) : [];
+        const aoa = [header];
+        state.sheetsRaw.push({
+          name: sheetName,
+          rows2d: aoa,
+          columns: Object.fromEntries(
+            Object.keys(def.fields).map((k, i) => [k, i])
+          ),
+          rowCount: aoa.length,
+          ok: true,
+          page: targetPid,
+        });
+        if (!p.sheets.find((s) => s.name === sheetName)) {
+          p.sheets.push({
+            name: sheetName,
+            columns: Object.fromEntries(
+              Object.keys(def.fields).map((k, i) => [k, i])
+            ),
+            rowCount: 1,
+            ok: true,
+          });
+        }
+      }
       save();
       hideModal("modal-import");
+      // 切到目标页面 + 该 sheet
+      state.currentPage = targetPid;
+      const tp = state.pages[targetPid];
+      tp.currentSheet = sheetName;
+      const first = getSortedItems()[0];
+      tp.currentItemId = first ? first.id : null;
       renderAll();
       toast(
-        `导入完成：${sheetName ? `[${sheetName}] ` : ""}新增 ${added} 章，覆盖 ${replaced} 章`
+        `导入完成：[${def.label}·${sheetName}] 新增 ${added} 条，覆盖 ${replaced} 条`
       );
     });
   }
@@ -1501,59 +1750,86 @@
     reader.onload = () => {
       try {
         const data = new Uint8Array(reader.result);
-        const wb = XLSX.read(data, { type: "array", cellDates: true, cellNF: true });
+        const wb = XLSX.read(data, {
+          type: "array",
+          cellDates: true,
+          cellNF: true,
+        });
         if (!wb.SheetNames || wb.SheetNames.length === 0) {
           toast("xlsx 内没有可用的 sheet", "error");
           return;
         }
-        // 解析所有 sheet 暂存
-        importXlsxAllSheets = wb.SheetNames.map((name) => {
+        // 解析所有 sheet + 分类
+        importAllSheets = wb.SheetNames.map((name) => {
           const sheet = wb.Sheets[name];
           const rows2d = XLSX.utils.sheet_to_json(sheet, {
             header: 1,
             defval: "",
             raw: true,
           });
-          const result = parseXlsxRows(rows2d);
-          const ok =
-            result.columns &&
-            result.columns.no >= 0 &&
-            result.columns.title >= 0 &&
-            result.columns.content >= 0;
-          return { name, rows2d, parsed: result, ok };
+          const header = (rows2d[0] || []).map((c) => unpackCell(c).trim());
+          const page = classifySheet(name, header);
+          const parsed = page ? parseRowsForPage(rows2d, page) : { rows: [], columns: { header } };
+          const ok = !!page && parsed.columns && Object.keys(parsed.columns).some(
+            (k) => k !== "header" && parsed.columns[k] >= 0
+          );
+          return { name, rows2d, parsed, ok, page };
         });
-        // 多 sheet 时加 sheet 选择下拉
+        // sheet 下拉
         const sel = $("#import-sheet-select");
         const wrap = $("#import-sheet-wrap");
         if (sel) {
-          sel.innerHTML = importXlsxAllSheets
+          sel.innerHTML = importAllSheets
             .map(
               (s) =>
-                `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}${s.ok ? "" : "（非章节表）"}</option>`
+                `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} [${escapeHtml(pageBadge(s.page))}]${s.ok ? "" : "（未匹配字段）"}</option>`
             )
             .join("");
         }
-        if (wrap) {
-          wrap.hidden = importXlsxAllSheets.length <= 1;
-        }
+        if (wrap) wrap.hidden = importAllSheets.length <= 1;
         // 默认选第一个 ok 的 sheet
-        const firstOk = importXlsxAllSheets.find((s) => s.ok);
+        const firstOk = importAllSheets.find((s) => s.ok);
         if (sel && firstOk) sel.value = firstOk.name;
-        else if (sel) sel.value = importXlsxAllSheets[0].name;
+        else if (sel) sel.value = importAllSheets[0].name;
 
         const info = $("#import-file-info");
         info.hidden = false;
-        const okCount = importXlsxAllSheets.filter((s) => s.ok).length;
+        const okCount = importAllSheets.filter((s) => s.ok).length;
         info.querySelector(".import-file-name").textContent =
-          `${file.name} · ${importXlsxAllSheets.length} 个 sheet（${okCount} 个有效）`;
+          `${file.name} · ${importAllSheets.length} 个 sheet（${okCount} 个有匹配字段）`;
+
+        // 显示目标页面下拉
+        const targetWrap = $("#import-target-wrap");
+        const targetSel = $("#import-target-select");
+        if (targetSel) {
+          // 收集本次出现的 page
+          const present = new Set(
+            importAllSheets.map((s) => s.page).filter(Boolean)
+          );
+          // + 当前 currentPage（兜底）
+          present.add(state.currentPage);
+          const options = Array.from(present).map(
+            (pid) =>
+              `<option value="${pid}">${PAGES[pid] ? PAGES[pid].icon + " " + PAGES[pid].label : pid}</option>`
+          );
+          // 加一个"未分类"选项（如果选了未分类的 sheet）
+          options.push(`<option value="">— 未分类（不导入）—</option>`);
+          targetSel.innerHTML = options.join("");
+          // 默认选第一个 ok sheet 的 page
+          const def0 = firstOk ? firstOk.page : state.currentPage;
+          targetSel.value = def0 || state.currentPage;
+          importTargetPage = targetSel.value;
+        }
+        if (targetWrap) targetWrap.hidden = false;
+
         $("#import-text").value = "";
         refreshImportPreview();
         if (okCount === 0) {
-          toast("没有任何 sheet 含有效章节表头", "warn", 3000);
-        } else if (okCount < importXlsxAllSheets.length) {
-          toast(`解析完成：${okCount}/${importXlsxAllSheets.length} 个 sheet 有效`, "info", 1800);
+          toast("没有任何 sheet 匹配已注册的页面字段", "warn", 3000);
+        } else if (okCount < importAllSheets.length) {
+          toast(`解析完成：${okCount}/${importAllSheets.length} 个 sheet 有匹配字段`, "info", 1800);
         } else {
-          toast(`解析完成：${okCount} 个 sheet 均有效`, "info", 1800);
+          toast(`解析完成：${okCount} 个 sheet 均有匹配字段`, "info", 1800);
         }
       } catch (err) {
         console.error(err);
@@ -1603,41 +1879,47 @@
   }
 
   function refreshImportPreview() {
-    if (importXlsxAllSheets) {
+    if (importAllSheets) {
       const sel = $("#import-sheet-select");
-      const sheetName = sel ? sel.value : (importCurrentSheet || (importXlsxAllSheets[0] && importXlsxAllSheets[0].name));
-      const target = importXlsxAllSheets.find((s) => s.name === sheetName);
+      const sheetName = sel
+        ? sel.value
+        : importCurrentSheet ||
+          (importAllSheets[0] && importAllSheets[0].name);
+      const target = importAllSheets.find((s) => s.name === sheetName);
       if (!target) {
         renderImportPreview([]);
         $("#btn-import-confirm").disabled = true;
         $("#btn-import-confirm").dataset.parsed = "";
         $("#btn-import-confirm").dataset.sheet = "";
+        $("#btn-import-confirm").dataset.page = "";
         setImportStats(null);
         return;
       }
       const rows = target.parsed.rows;
-      renderImportPreview(rows);
+      renderImportPreview(rows, target.page);
       const okCount = rows.filter((r) => !r._error).length;
-      $("#btn-import-confirm").disabled = !target.ok || okCount === 0;
+      const targetPid = $("#import-target-select")?.value || importTargetPage || target.page || "";
+      $("#btn-import-confirm").disabled = !targetPid || okCount === 0;
       $("#btn-import-confirm").dataset.parsed = JSON.stringify(rows);
       $("#btn-import-confirm").dataset.sheet = target.name;
+      $("#btn-import-confirm").dataset.page = targetPid;
       importCurrentSheet = target.name;
-      setImportStats(rows);
-      if (!target.ok) {
-        setImportStats(rows);
-      }
+      importTargetPage = targetPid;
+      setImportStats(rows, target.page);
     } else {
+      // 文本导入：固定走 chapter
       const rows = parseImportText($("#import-text").value);
-      renderImportPreview(rows);
+      renderImportPreview(rows, "chapter");
       $("#btn-import-confirm").disabled =
         rows.filter((r) => !r._error).length === 0;
       $("#btn-import-confirm").dataset.parsed = JSON.stringify(rows);
       $("#btn-import-confirm").dataset.sheet = "";
-      setImportStats(rows);
+      $("#btn-import-confirm").dataset.page = "chapter";
+      setImportStats(rows, "chapter");
     }
   }
 
-  function setImportStats(rows) {
+  function setImportStats(rows, pid) {
     const el = $("#import-stats");
     if (!el) return;
     if (!rows || rows.length === 0) {
@@ -1648,16 +1930,17 @@
     const ok = rows.filter((r) => !r._error).length;
     const err = rows.length - ok;
     el.classList.remove("has-error", "has-success");
+    const label = pid && PAGES[pid] ? `→ ${PAGES[pid].label}` : "";
     if (err === 0) {
       el.classList.add("has-success");
-      el.textContent = `✓ ${ok} 行可导入`;
+      el.textContent = `✓ ${ok} 行可导入 ${label}`;
     } else {
       el.classList.add("has-error");
-      el.textContent = `✓ ${ok} 行 / ✗ ${err} 行解析失败`;
+      el.textContent = `✓ ${ok} 行 / ✗ ${err} 行解析失败 ${label}`;
     }
   }
 
-  function renderImportPreview(rows) {
+  function renderImportPreview(rows, pid) {
     const wrap = $("#import-preview");
     if (!rows || rows.length === 0) {
       wrap.innerHTML = "";
@@ -1667,26 +1950,243 @@
       .map((r) => {
         if (r._error) {
           return `
-        <div class="preview-row preview-error" title="${escapeHtml(r._error)}">
-          <span class="preview-no">#${r._line || "-"}</span>
-          <span class="preview-title">⚠ ${escapeHtml(r._error)}</span>
-          <span class="preview-len">失败</span>
-        </div>`;
+            <div class="preview-row preview-error" title="${escapeHtml(r._error)}">
+              <span class="preview-no">#${r._line || "-"}</span>
+              <span class="preview-title">⚠ ${escapeHtml(r._error)}</span>
+              <span class="preview-len">失败</span>
+            </div>`;
         }
+        // 显示：序号 + 主标题
+        const main =
+          pid === "foreshadowing"
+            ? r.name || "（无名）"
+            : r.title || "（无标题）";
         return `
-        <div class="preview-row">
-          <span class="preview-no">${escapeHtml(String(r.no))}</span>
-          <span class="preview-title" title="${escapeHtml(r.title)}">${escapeHtml(r.title || "（无标题）")}</span>
-          <span class="preview-len">${r.content.length}字</span>
-        </div>`;
+          <div class="preview-row">
+            <span class="preview-no">${escapeHtml(String(r.no))}</span>
+            <span class="preview-title" title="${escapeHtml(main)}">${escapeHtml(main)}</span>
+            <span class="preview-len">${(r.content || r.notes || "").length}字</span>
+          </div>`;
       })
       .join("");
   }
 
 
   /* ============================================================
-     事件：右栏 Tab
+     事件：文件 / 列表点击 / 编辑器按钮
      ============================================================ */
+  function bindFileEvents() {
+    $("#file-select").addEventListener("change", async (e) => {
+      const name = e.target.value;
+      if (!name) return;
+      await openFileByName(name);
+    });
+
+    $("#file-pick").addEventListener("click", () => {
+      if (!fsSupported()) {
+        toast("当前浏览器不支持 File System Access API", "error", 4000);
+        return;
+      }
+      openFileModalReset();
+      showModal("modal-open-file");
+    });
+
+    $("#btn-open-file-pick").addEventListener("click", async () => {
+      try {
+        const handle = await pickXlsxFile();
+        if (!handle) return;
+        const fileKey = `file:${handle.name}`;
+        await fsPut(fileKey, handle);
+        const desc = await describeFile(handle);
+        upsertRecentFile({
+          name: handle.name,
+          mtime: desc.mtime,
+          size: desc.size,
+          handleKey: fileKey,
+          isDirectory: false,
+        });
+        save();
+        renderAll();
+        hideModal("modal-open-file");
+        await loadFromHandle(handle, { handleKey: fileKey });
+      } catch (e) {
+        if (e.name === "AbortError") return;
+        console.error(e);
+        toast("选择文件失败：" + (e.message || e), "error", 3000);
+      }
+    });
+
+    $("#file-pick-dir").addEventListener("click", () => {
+      if (!fsSupported()) {
+        toast("当前浏览器不支持 File System Access API", "error", 4000);
+        return;
+      }
+      showModal("modal-open-dir");
+    });
+
+    $("#btn-open-dir-pick").addEventListener("click", async () => {
+      try {
+        const dirHandle = await pickDirectory();
+        if (!dirHandle) return;
+        hideModal("modal-open-dir");
+        await openDirectory(dirHandle);
+      } catch (e) {
+        if (e.name === "AbortError") return;
+        console.error(e);
+        toast("选择文件夹失败：" + (e.message || e), "error", 3000);
+      }
+    });
+
+    // ----- 打开文件弹窗 -----
+    let openFilePending = null;
+    function openFileModalReset() {
+      openFilePending = null;
+      const info = $("#open-file-info");
+      if (info) info.hidden = true;
+      const drop = $("#open-file-drop");
+      if (drop) drop.classList.remove("is-dragover");
+      const confirm = $("#btn-open-file-confirm");
+      if (confirm) {
+        confirm.disabled = true;
+        confirm.dataset.file = "";
+      }
+      const fi = $("#file-xlsx-open");
+      if (fi) fi.value = "";
+    }
+    function setOpenFilePending(file) {
+      openFilePending = file;
+      const info = $("#open-file-info");
+      if (info) {
+        info.hidden = false;
+        info.querySelector(".import-file-name").textContent =
+          `${file.name}（${formatSize(file.size)}）`;
+      }
+      const confirm = $("#btn-open-file-confirm");
+      if (confirm) {
+        confirm.disabled = false;
+        confirm.dataset.file = "1";
+      }
+    }
+    const openDrop = $("#open-file-drop");
+    const openInput = $("#file-xlsx-open");
+    if (openDrop && openInput) {
+      openDrop.addEventListener("click", () => openInput.click());
+      openDrop.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openInput.click();
+        }
+      });
+      openInput.addEventListener("change", (e) => {
+        const f = e.target.files?.[0];
+        if (f) setOpenFilePending(f);
+        e.target.value = "";
+      });
+      ["dragenter", "dragover"].forEach((evt) =>
+        openDrop.addEventListener(evt, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openDrop.classList.add("is-dragover");
+        })
+      );
+      ["dragleave", "drop"].forEach((evt) =>
+        openDrop.addEventListener(evt, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openDrop.classList.remove("is-dragover");
+        })
+      );
+      openDrop.addEventListener("drop", (e) => {
+        const f = e.dataTransfer?.files?.[0];
+        if (f) setOpenFilePending(f);
+      });
+    }
+    $("#btn-open-file-clear")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openFileModalReset();
+    });
+    $("#btn-open-file-confirm")?.addEventListener("click", async () => {
+      if (!openFilePending) return;
+      const f = openFilePending;
+      openFileModalReset();
+      await loadFromFile(f);
+    });
+
+    $("#file-remove").addEventListener("click", async () => {
+      if (!state.currentFileName) return;
+      if (
+        !confirm(
+          `从列表中移除「${state.currentFileName}」？\n（不会删除磁盘文件）`
+        )
+      )
+        return;
+      await removeRecentFile(state.currentFileName);
+      renderAll();
+    });
+
+    $("#fs-grant").addEventListener("click", async () => {
+      const meta = state.recentFiles.find(
+        (f) => f.name === state.currentFileName
+      );
+      if (!meta) {
+        toast("请重新选择文件", "error");
+        return;
+      }
+      if (!meta.handleKey) {
+        toast("该文件没有保存访问权限，请重新选择文件", "error");
+        return;
+      }
+      const handle = await fsGet(meta.handleKey);
+      if (!handle) {
+        toast("访问权限已失效，请重新选择文件", "error");
+        return;
+      }
+      const granted = await ensureReadPermission(handle, true);
+      if (granted) {
+        $("#fs-banner").hidden = true;
+        toast("授权成功", "info", 1500);
+        await loadFromHandle(handle, meta);
+      } else {
+        toast("未授权", "error");
+      }
+    });
+  }
+
+  function bindListEvents() {
+    // 事件委托 - 同时支持 ch-item 和 fs-item
+    const list = $("#chapter-list");
+    list.addEventListener("click", (e) => {
+      const item = e.target.closest(".ch-item, .fs-item");
+      if (!item) return;
+      curPage().currentItemId = item.dataset.id;
+      save();
+      renderItemList();
+      renderEditor();
+    });
+  }
+
+  function bindEditorButtons() {
+    $("#btn-new").addEventListener("click", addNewItem);
+    // 编辑器按钮是动态生成的，用事件委托
+    document.addEventListener("click", (e) => {
+      const t = e.target;
+      if (t && t.id === "btn-save" && curItem()) {
+        const ok = saveCurrentItem();
+        if (ok) saveToFile().then((written) => {
+          if (written) flashSaveStatus("✓ 已保存并写入文件", 1800);
+        });
+      } else if (t && t.id === "btn-delete" && curItem()) {
+        deleteCurrentItem();
+      }
+    });
+    // 排序
+    $("#btn-sort").addEventListener("click", () => {
+      state.ui.sort = state.ui.sort === "asc" ? "desc" : "asc";
+      save();
+      renderItemList();
+    });
+  }
+
   function bindTabs() {
     $$(".tab").forEach((tab) => {
       tab.addEventListener("click", () => {
@@ -1698,9 +2198,6 @@
     });
   }
 
-  /* ============================================================
-     事件：主题 + JSON 导入导出
-     ============================================================ */
   function bindThemeEvents() {
     $$(".seg-btn[data-bg]").forEach((b) =>
       b.addEventListener("click", () => {
@@ -1729,7 +2226,7 @@
       renderTheme();
     });
 
-    // JSON 导出（不含 IndexedDB 中的 file handles，只导出章节+主题+UI）
+    // JSON 导出
     $("#btn-export").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(state, null, 2)], {
         type: "application/json",
@@ -1747,7 +2244,7 @@
       toast("已导出 JSON");
     });
 
-    // JSON 导入（兼容 v3 新格式和 v1/v2 dataSources 旧格式）
+    // JSON 导入（v5 + 旧 dataSources 兼容）
     $("#file-import").addEventListener("change", (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -1755,25 +2252,34 @@
       reader.onload = () => {
         try {
           const data = JSON.parse(reader.result);
-          if (Array.isArray(data.chapters)) {
-            if (!confirm("导入将覆盖当前所有章节，确定？")) return;
-            state.chapters = data.chapters;
-            state.currentChapterId =
-              data.currentChapterId || data.chapters[0]?.id || null;
-            if (data.theme) state.theme = { ...DEFAULT_THEME, ...data.theme };
-            if (data.ui) state.ui = { sort: "asc", ...data.ui };
+          if (data.pages || data.chapters) {
+            if (!confirm("导入将覆盖当前所有数据，确定？")) return;
+            // 整体替换 state（保留 theme 不变以免难看）
+            const newTheme = state.theme;
+            const newUi = state.ui;
+            if (data.pages) {
+              for (const pid of PAGE_IDS) {
+                state.pages[pid] = data.pages[pid] || makePageState();
+              }
+              state.currentPage = data.currentPage || DEFAULT_PAGE;
+            }
+            if (Array.isArray(data.chapters) && !data.pages) {
+              state.pages.chapter.items = data.chapters;
+            }
+            if (Array.isArray(data.sheetsRaw)) state.sheetsRaw = data.sheetsRaw;
+            state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
+            state.ui = { sort: "asc", ...(data.ui || {}) };
             save();
             renderAll();
             toast("已导入");
           } else if (Array.isArray(data.dataSources)) {
-            // 兼容老格式
-            if (!confirm("检测到老版本数据格式，导入将覆盖当前所有章节，确定？")) return;
+            if (!confirm("检测到老版本数据格式，导入将覆盖当前所有数据，确定？")) return;
             const target =
               data.dataSources.find((d) => d.id === data.currentDataSourceId) ||
               data.dataSources[0];
             if (target) {
-              state.chapters = target.chapters || [];
-              state.currentChapterId = null;
+              state.pages.chapter.items = target.chapters || [];
+              state.currentFileName = null;
               save();
               renderAll();
               toast("已导入（旧格式）");
@@ -1798,13 +2304,13 @@
     load();
     renderAll();
 
-    // 浏览器能力检查
     if (!fsSupported()) {
       $("#fs-unsupported").hidden = false;
     }
 
     bindFileEvents();
-    bindChapterEvents();
+    bindListEvents();
+    bindEditorButtons();
     bindImportEvents();
     bindTabs();
     bindThemeEvents();
@@ -1824,8 +2330,7 @@
       }
     });
 
-    // data-close 委托：点击带 [data-close] 的元素关闭最近的 .modal
-    // 覆盖弹窗背景遮罩、关闭按钮、取消按钮（HTML 里都标了 data-close）
+    // data-close 委托
     document.addEventListener("click", (e) => {
       const t = e.target.closest("[data-close]");
       if (!t) return;
@@ -1833,7 +2338,6 @@
       if (modal) modal.hidden = true;
     });
 
-    // 启动时自动恢复最后打开的文件
     tryAutoRestore();
   }
 
@@ -1847,12 +2351,10 @@
     try {
       const handle = await fsGet(meta.handleKey);
       if (!handle) {
-        // handle 已失效（清浏览器数据 / 句柄过期），从列表移除
         await removeRecentFile(meta.name);
         renderAll();
         return;
       }
-      // 不弹 prompt，只查询当前权限
       let granted = false;
       try {
         const cur = await handle.queryPermission({ mode: "read" });
@@ -1861,12 +2363,11 @@
         granted = false;
       }
       if (!granted) {
-        // 显示 banner 让用户点"重新授权"
         $("#fs-banner").hidden = false;
         renderFileMeta();
         return;
       }
-      await loadChaptersFromHandle(handle, meta);
+      await loadFromHandle(handle, meta);
     } catch (e) {
       console.error("自动恢复失败", e);
     }
