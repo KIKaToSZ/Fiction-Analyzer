@@ -16,3 +16,6 @@ Thumbs.db
 
 # Vercel
 .vercel/
+
+# 本地推送凭据（不进 git）
+LOCAL_PUSH_NOTES.txt
