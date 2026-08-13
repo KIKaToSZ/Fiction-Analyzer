@@ -1,25 +1,25 @@
 # 小说文章分析
 
-纯前端的小说章节编辑/阅读工具，左中右三栏布局，支持多数据源切换、本地持久化。
+纯前端的小说章节编辑/阅读工具，左中右三栏布局，**用 File System Access API 直接读取你电脑上的 xlsx**，无任何后端、无需配置服务器。
 
 ## 功能
 
-- **左栏**：数据源切换、章节列表（按章节号正/倒序）、新增/导入/管理数据源/清空
+- **左栏**：文件路径下拉（所有曾打开的本地 xlsx）+ 选择文件 / 选择文件夹 / 当前文件元信息
 - **中栏**：章节号 / 章节名 / 正文 编辑、保存、删除
 - **右栏**：本章相关内容（人物 / 分析 / 大纲 三个 Tab，目前为占位，等你定义内容后填充）
-- **多数据源**：可管理多个飞书多维表格链接，切换数据源查看不同作品的章节
-- **导入表格数据**：复制飞书多维表格的 3 列（章节号 / 章节名 / 文章内容）粘贴进来即可批量导入
-- **主题设置**：背景材质（宣纸/亮色/暗色）、强调色、字号、行高、飞书代理地址
+- **本地 xlsx 路径持久化**：打开过的文件路径会记住，下次打开页面自动读最后一次的文件；其他文件在下拉菜单里，点击即可读
+- **导入表格数据**：拖拽 / 选择 xlsx，或粘贴文本（Tab / 逗号 / 多空格分隔）
+- **主题设置**：背景材质（宣纸/亮色/暗色）、强调色、字号、行高
 - **本地持久化**：所有数据存 localStorage，刷新不丢
 - **导入/导出 JSON**：可在不同设备间迁移数据
-- **飞书自动同步**（可选）：在【编辑数据源 → 飞书同步配置】里填 App ID / App Secret，自动从多维表格拉章节
 
 ## 技术栈
 
 - 纯 HTML + CSS + JavaScript（无任何构建工具、无依赖）
 - 单页应用（SPA），刷新不丢状态
 - 适配 Vercel / IGA Pages 静态托管
-- 可选：Node.js 18+（仅"飞书自动同步"需要跑本地代理）
+- File System Access API（Chrome / Edge / Arc 等 Chromium 内核浏览器；Firefox / Safari 不支持）
+- SheetJS（CDN 引入）解析 xlsx
 
 ## 本地运行
 
@@ -39,82 +39,68 @@ npx serve .
 python3 -m http.server 8080
 ```
 
-## 飞书自动同步（可选）
+**注意**：必须用 `http://localhost:8080` 或 `http://127.0.0.1:8080` 打开，**不能直接 `file://` 双击** —— File System Access API 在 `file://` 协议下不可用。
 
-> **重要**：浏览器从第三方页面直连 `https://open.feishu.cn/open-apis` 会被 CORS 拦截，错误信息是 `Failed to fetch`，**无法用代码绕过**（浏览器安全机制）。
-> 本工具默认走本机代理转发，Secret 始终留在浏览器，代理只做透传，不记录任何内容。
+## File System Access API 用法
 
-需要 Node.js 18+。在项目根目录开两个 terminal：
+1. **打开页面后**，点击左栏的文件按钮 📄 或文件夹按钮 📁
+2. 浏览器会弹出系统级文件选择器，选一个 `.xlsx` 文件（或一个含 xlsx 的文件夹）
+3. 文件路径会出现在左栏下拉菜单中，并自动读取解析
+4. **下次打开页面**，应用会自动读取你最后一次打开的文件 —— 无需手动操作
+5. 想切换文件？点下拉菜单选其它项即可，每个文件都被记住了
+6. 想从列表里移除？点当前文件右侧的 ✕ 按钮（不会删磁盘文件）
 
-**Terminal 1 - 静态服务（页面本身）**
+**首次恢复访问权限**：浏览器跨会话访问文件句柄需要用户重新确认。如果你的文件 handle 还在但权限过期（罕见），左栏会出现黄色横幅「需要重新授权才能读取本地文件」，点「重新授权」即可。如果文件本身被移动 / 删除 / 清浏览器数据，handle 会失效，需重新选择文件。
 
-```bash
-npm install
-npm run dev            # 默认 http://localhost:8080
-```
+**xlsx 格式要求**：表头需包含「章节号」「章节名」「文章内容」三列（顺序任意，按表头名自动识别）。支持 `.xlsx` / `.xlsm`。
 
-**Terminal 2 - 飞书代理（绕开 CORS）**
+## 浏览器兼容性
 
-```bash
-npm run proxy          # 默认监听 127.0.0.1:8787
-# 自定义端口：npm run proxy:9000
-# 或：        node proxy/feishu-proxy.js --port 9000
-```
+| 浏览器 | 支持情况 |
+| --- | --- |
+| Chrome 86+ | ✅ |
+| Edge 86+ | ✅ |
+| Arc / Brave / Vivaldi 等 Chromium 内核 | ✅ |
+| Opera | ✅ |
+| Firefox | ❌ 需先开启 `dom.fs.enabled` 实验性 flag，且不稳定 |
+| Safari | ❌ 暂不支持 |
 
-代理启动后控制台会打印：
+打开页面后如果浏览器不支持，左栏会显示红色横幅「当前浏览器不支持 File System Access API」。
 
-```
-  飞书 OpenAPI 本地代理已启动
-  监听地址: http://127.0.0.1:8787
-  转发规则: /api/feishu/*  ->  https://open.feishu.cn/open-apis/*
-```
+## 部署到 Vercel / IGA Pages
 
-**配应用凭证（仅一次）**
-
-1. 打开 [飞书开放平台](https://open.feishu.cn/app) → 创建"企业自建应用"
-2. 在应用【权限管理】里开通 `bitable:app:readonly`（多维表格只读权限）
-3. 打开目标多维表格，右上角 ··· → 【添加文档应用】→ 选刚建的应用
-4. 回本工具：【管理数据源】→ 编辑 / 新增 → 展开【飞书同步配置】→ 填 App ID / App Secret → 保存
-5. 点工具栏的【同步】按钮拉取章节
-
-**自定义代理地址**
-
-如果改了端口或代理跑在另一台机器，在【左栏底部 → 主题设置 → 飞书代理地址】改即可，留空 = 用默认 `http://localhost:8787/api/feishu`。
-
-## 部署到 Vercel
-
-### 方式 A：网页直接导入（最简单）
-
-1. 把整个 `novel-app-static/` 目录上传到 GitHub 新仓库 `KIKaToSZ/novel-app`
-2. 登录 https://vercel.com → "Add New Project" → 选 GitHub 里的 `novel-app` 仓库
-3. 框架选 "Other"（纯静态），其他默认即可
-4. 点 "Deploy"，1-2 分钟后拿到 `https://novel-app-xxx.vercel.app` 永久 URL
-
-### 方式 B：Vercel CLI
+本项目是纯静态站点，直接把 `index.html` / `app.js` / `styles.css` 三个文件部署即可：
 
 ```bash
-npm i -g vercel
-cd novel-app-static
-vercel
+# 1) 推 GitHub
+git push origin main
+
+# 2) IGA Pages 监听 main 分支，1-2 分钟内自动重新部署
+#    URL 不变，刷新即可看到新版本
 ```
 
-按提示选择账号和项目，CLI 会自动识别为静态站点并部署。
+无任何后端、无需 Node.js、无需环境变量。
 
 ## 文件结构
 
 ```
-novel-app-static/
+fiction-analyzer/
 ├── index.html        # 入口
 ├── styles.css        # 样式
-├── app.js            # 全部应用逻辑
-├── package.json      # npm 脚本（dev / proxy）
-├── proxy/
-│   └── feishu-proxy.js   # 本地代理（飞书 OpenAPI 转发）
+├── app.js            # 全部应用逻辑（含 File System Access + IndexedDB 持久化）
+├── package.json      # npm 脚本（仅 dev / start）
 └── README.md
 ```
 
 ## 数据存储位置
 
-所有数据存在浏览器 `localStorage` 的 `novel-app-data` key 里。
+| 数据 | 位置 |
+| --- | --- |
+| 章节内容、主题、UI 设置 | 浏览器 `localStorage` 的 `novel-app-data` key |
+| 文件元信息（路径、最后打开时间） | `localStorage` 内嵌 |
+| 文件访问 handle（FileSystemFileHandle） | 浏览器 `IndexedDB` 的 `novel-app-fs` 数据库 |
+| 主题 | `localStorage` |
 
-如需在设备间迁移：左栏底部"导出" → 在新设备打开应用 → "导入" JSON。
+清理浏览器数据时三者都会一起清掉。
+
+如需在设备间迁移章节：用「主题设置 → 数据 → 导出」生成 JSON，新设备「导入」即可。文件访问 handle 不会跨设备迁移，需要在新设备重新选择文件。

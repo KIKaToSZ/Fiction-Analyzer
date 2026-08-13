@@ -1,71 +1,25 @@
 /* ============================================================
    小说文章分析 - 应用主逻辑
-   纯前端 SPA，无外部依赖
+   纯前端 SPA，无外部依赖（除 SheetJS CDN）
    ============================================================ */
 
 (function () {
   "use strict";
 
   /* ============================================================
-     常量与默认数据
+     常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 2;
-  // 默认飞书 OpenAPI 地址 = 本地代理（绕开浏览器 CORS 拦截）。
-  // 改回直连：把下方改为 "https://open.feishu.cn/open-apis"，
-  // 或在「主题设置 → 飞书代理地址」里改成自定义值。
-  const FEISHU_PROXY_DEFAULT = "http://localhost:8787/api/feishu";
-  const SYNC_DEBOUNCE_MS = 600; // 同步按钮节流
+  const SCHEMA_VERSION = 3;
+  const FS_DB_NAME = "novel-app-fs";
+  const FS_STORE = "handles";
 
-  // 字段名兜底表：默认字段名找不到时，尝试这些同义词
+  // 字段名兜底表：xlsx 表头识别用
   const FIELD_FALLBACKS = {
     no: ["章节号", "章号", "序章", "序号", "number", "no", "chapter_no"],
     title: ["章节名", "章节名称", "标题", "title", "name", "chapter_name"],
     content: ["文章内容", "内容", "正文", "content", "text", "body"],
   };
-
-  const DEFAULT_DATA_SOURCES = [
-    {
-      id: "ds_builtin",
-      name: "示例小说 · 墨笺",
-      url: "",
-      note: "内置示例，可删除",
-      builtIn: true,
-      // 飞书同步配置（内置数据源不启用）
-      appId: "",
-      appSecret: "",
-      tableName: "章节正文",
-      fieldNo: "章节号",
-      fieldTitle: "章节名",
-      fieldContent: "文章内容",
-      lastSyncAt: null,
-      syncStatus: "idle", // idle | syncing | success | error | no-config
-      syncError: "",
-      chapters: [
-        {
-          id: "ch_b1",
-          no: 1,
-          title: "寒江初雪",
-          content:
-            "江面如镜，第一片雪落下来的时候，渡口的青石板已经积了薄薄一层白。\n\n苏子期站在船头，把斗笠压低了些，雾里传来一声唤——是他等了三年的人。\n\n「你来迟了。」\n「雪也迟。」\n\n两人相视，都没笑。",
-        },
-        {
-          id: "ch_b2",
-          no: 2,
-          title: "旧馆逢君",
-          content:
-            "重游旧馆，梁上燕子已不识主人。\n\n她坐在当年他常坐的位置，要了一壶他爱喝的茶，自己却没喝。\n\n「先生，你又迟了三年。」\n\n窗外风起，吹得桌上那张写了一半的信簌簌作响。她伸手按住，停了停，没读，又松开。",
-        },
-        {
-          id: "ch_b3",
-          no: 3,
-          title: "夜宴暗流",
-          content:
-            "夜宴设在城东的临波楼，灯火通明，丝竹不断。\n\n席间觥筹，觥筹之间，藏着几把不见血的刀。\n\n她笑得很轻，抬眼时眼底却冷得如同窗外的江。\n\n——这一局，从她坐下的那一刻起，便已经开始了。",
-        },
-      ],
-    },
-  ];
 
   const DEFAULT_THEME = {
     bg: "paper",
@@ -83,41 +37,15 @@
   };
 
   /* ============================================================
-     状态
-     ============================================================ */
-  const state = {
-    schema: SCHEMA_VERSION,
-    dataSources: [],
-    currentDataSourceId: null,
-    currentChapterId: null,
-    theme: { ...DEFAULT_THEME },
-    ui: { sort: "asc" },
-    settings: { feishuProxy: "" },
-  };
-
-  /* ============================================================
      工具函数
      ============================================================ */
   const $ = (sel, root = document) => root.querySelector(sel);
-  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-
+  const $$ = (sel, root = document) =>
+    Array.from(root.querySelectorAll(sel));
   const uid = (prefix = "id") =>
-    `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-
-  const debounce = (fn, ms = 300) => {
-    let t;
-    return (...args) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn(...args), ms);
-    };
-  };
-
-  // 飞书 OpenAPI 基地址：用户在「主题设置」里配则用配置值，否则用默认（本地代理）
-  function getFeishuApiBase() {
-    const v = state && state.settings && state.settings.feishuProxy;
-    return (v && String(v).trim()) || FEISHU_PROXY_DEFAULT;
-  }
-
+    `${prefix}_${Date.now().toString(36)}${Math.random()
+      .toString(36)
+      .slice(2, 6)}`;
   const escapeHtml = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({
       "&": "&amp;",
@@ -126,7 +54,6 @@
       '"': "&quot;",
       "'": "&#39;",
     }[c]));
-
   const toast = (msg, type = "info", duration = 2000) => {
     const el = $("#toast");
     el.textContent = msg;
@@ -135,7 +62,6 @@
     clearTimeout(toast._t);
     toast._t = setTimeout(() => (el.hidden = true), duration);
   };
-
   const showModal = (id) => {
     const m = $(`#${id}`);
     if (m) m.hidden = false;
@@ -144,19 +70,45 @@
     const m = $(`#${id}`);
     if (m) m.hidden = true;
   };
+  const formatSize = (n) => {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  };
 
   /* ============================================================
-     持久化
+     状态（schema v3 - 单文件，无数据源概念）
+     ============================================================ */
+  const state = {
+    schema: SCHEMA_VERSION,
+    chapters: [],
+    currentChapterId: null,
+    recentFiles: [], // [{name, lastOpened, mtime, size, handleKey, isMigrated, isDirectory}]
+    currentFileName: null,
+    theme: { ...DEFAULT_THEME },
+    ui: { sort: "asc" },
+  };
+
+  /* ============================================================
+     持久化 - localStorage（不含 file handles）
      ============================================================ */
   function save() {
     const data = {
       schema: SCHEMA_VERSION,
-      dataSources: state.dataSources,
-      currentDataSourceId: state.currentDataSourceId,
+      chapters: state.chapters,
       currentChapterId: state.currentChapterId,
+      recentFiles: state.recentFiles.map((f) => ({
+        name: f.name,
+        lastOpened: f.lastOpened,
+        mtime: f.mtime,
+        size: f.size,
+        handleKey: f.handleKey,
+        isDirectory: !!f.isDirectory,
+        isMigrated: !!f.isMigrated,
+      })),
+      currentFileName: state.currentFileName,
       theme: state.theme,
       ui: state.ui,
-      settings: state.settings,
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -169,390 +121,299 @@
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        initDefault();
-        return;
-      }
+      if (!raw) return;
       const data = JSON.parse(raw);
 
-      // 旧数据迁移
-      if (!data.schema || data.schema < SCHEMA_VERSION) {
-        // 兼容老结构（如果以后有需要）
+      // 旧数据迁移（schema v1/v2 - dataSources 数组 → v3 单文件）
+      if (Array.isArray(data.dataSources)) {
+        const target =
+          data.dataSources.find((d) => d.id === data.currentDataSourceId) ||
+          data.dataSources.find((d) => (d.chapters || []).length > 0) ||
+          data.dataSources[0];
+        if (target) {
+          state.chapters = target.chapters || [];
+          state.currentChapterId =
+            data.currentChapterId &&
+            state.chapters.find((c) => c.id === data.currentChapterId)
+              ? data.currentChapterId
+              : null;
+          // 旧数据没有 handleKey，作为"已迁移"标记，不能 remove
+          state.recentFiles = [
+            {
+              name: target.name || "已迁移的旧数据源",
+              lastOpened: target.lastSyncAt || new Date().toISOString(),
+              mtime: 0,
+              size: 0,
+              handleKey: null,
+              isMigrated: true,
+            },
+          ];
+        }
+        state.schema = SCHEMA_VERSION;
+        save();
+        return;
       }
 
-      state.dataSources = Array.isArray(data.dataSources) ? data.dataSources : [];
-      state.currentDataSourceId = data.currentDataSourceId;
+      // v3 直接读
+      state.chapters = Array.isArray(data.chapters) ? data.chapters : [];
       state.currentChapterId = data.currentChapterId || null;
+      state.recentFiles = Array.isArray(data.recentFiles)
+        ? data.recentFiles
+        : [];
+      state.currentFileName = data.currentFileName || null;
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
       state.ui = { sort: "asc", ...(data.ui || {}) };
-      state.settings = { feishuProxy: "", ...(data.settings || {}) };
-
-      // 给老数据源补齐 schema v2 新增字段
-      state.dataSources = state.dataSources.map((d) => ({
-        appId: "",
-        appSecret: "",
-        tableName: "章节正文",
-        fieldNo: "章节号",
-        fieldTitle: "章节名",
-        fieldContent: "文章内容",
-        lastSyncAt: null,
-        syncStatus: "idle",
-        syncError: "",
-        ...d,
-      }));
-
-      // 保底：若没有数据源，加默认
-      if (state.dataSources.length === 0) {
-        state.dataSources = cloneDefault();
-        state.currentDataSourceId = state.dataSources[0].id;
-      }
-
-      // 校正 currentDataSourceId
-      if (
-        !state.dataSources.find((d) => d.id === state.currentDataSourceId)
-      ) {
-        state.currentDataSourceId = state.dataSources[0].id;
-      }
     } catch (e) {
-      console.error("读取失败，使用默认数据", e);
-      initDefault();
+      console.error("读取失败，使用默认状态", e);
     }
   }
 
-  function initDefault() {
-    state.dataSources = cloneDefault();
-    state.currentDataSourceId = state.dataSources[0].id;
-    state.currentChapterId = null;
-    state.theme = { ...DEFAULT_THEME };
-    state.ui = { sort: "asc" };
-    state.settings = { feishuProxy: "" };
-    save();
+  /* ============================================================
+     IndexedDB - File System handles 持久化
+     FileSystemFileHandle 支持 structured clone，
+     可直接 put 到 IndexedDB 跨会话恢复。
+     ============================================================ */
+  let _dbPromise = null;
+  function openFsDb() {
+    if (_dbPromise) return _dbPromise;
+    _dbPromise = new Promise((resolve, reject) => {
+      if (!window.indexedDB) return reject(new Error("IndexedDB 不可用"));
+      const req = indexedDB.open(FS_DB_NAME, 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(FS_STORE)) {
+          db.createObjectStore(FS_STORE, { keyPath: "key" });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return _dbPromise;
   }
-
-  function cloneDefault() {
-    return JSON.parse(JSON.stringify(DEFAULT_DATA_SOURCES));
+  async function fsPut(key, value) {
+    const db = await openFsDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(FS_STORE, "readwrite");
+      tx.objectStore(FS_STORE).put({ key, value, ts: Date.now() });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  async function fsGet(key) {
+    const db = await openFsDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(FS_STORE, "readonly");
+      const req = tx.objectStore(FS_STORE).get(key);
+      req.onsuccess = () => resolve(req.result ? req.result.value : null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function fsDel(key) {
+    const db = await openFsDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(FS_STORE, "readwrite");
+      tx.objectStore(FS_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
   }
 
   /* ============================================================
-     数据访问辅助
+     File System Access API
      ============================================================ */
-  function getCurrentDataSource() {
-    return state.dataSources.find((d) => d.id === state.currentDataSourceId) || null;
+  const fsSupported = () =>
+    typeof window.showOpenFilePicker === "function" &&
+    typeof window.showDirectoryPicker === "function";
+
+  async function readFileAsArrayBuffer(handle) {
+    const file = await handle.getFile();
+    return await file.arrayBuffer();
   }
 
+  // 恢复 handle 时，浏览器需要用户重新确认读权限
+  async function ensureReadPermission(handle, interactive = true) {
+    if (!handle) return false;
+    if (handle.queryPermission) {
+      const cur = await handle.queryPermission({ mode: "read" });
+      if (cur === "granted") return true;
+      if (!interactive) return false;
+      if (handle.requestPermission) {
+        const next = await handle.requestPermission({ mode: "read" });
+        return next === "granted";
+      }
+    }
+    return false;
+  }
+
+  async function pickXlsxFile() {
+    if (!fsSupported()) throw new Error("当前浏览器不支持 File System Access API");
+    const handles = await window.showOpenFilePicker({
+      types: [
+        {
+          description: "Excel 文件",
+          accept: {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+              ".xlsx",
+              ".xlsm",
+            ],
+          },
+        },
+      ],
+      multiple: false,
+    });
+    return handles[0];
+  }
+
+  async function pickDirectory() {
+    if (!fsSupported()) throw new Error("当前浏览器不支持 File System Access API");
+    return await window.showDirectoryPicker({ mode: "read" });
+  }
+
+  async function listXlsxInDir(dirHandle) {
+    const out = [];
+    for await (const [name, handle] of dirHandle.entries()) {
+      if (
+        handle.kind === "file" &&
+        /\.(xlsx|xlsm)$/i.test(name)
+      ) {
+        out.push({ name, handle });
+      }
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN"));
+    return out;
+  }
+
+  async function describeFile(handle) {
+    try {
+      const file = await handle.getFile();
+      return { name: file.name, size: file.size, mtime: file.lastModified };
+    } catch (_) {
+      return { name: handle.name, size: 0, mtime: 0 };
+    }
+  }
+
+  /* ============================================================
+     状态写入辅助
+     ============================================================ */
+  function upsertRecentFile(meta) {
+    const idx = state.recentFiles.findIndex((f) => f.name === meta.name);
+    if (idx >= 0) state.recentFiles.splice(idx, 1);
+    state.recentFiles.unshift({
+      name: meta.name,
+      lastOpened: meta.lastOpened || new Date().toISOString(),
+      mtime: meta.mtime || 0,
+      size: meta.size || 0,
+      handleKey: meta.handleKey || null,
+      isDirectory: !!meta.isDirectory,
+      isMigrated: !!meta.isMigrated,
+    });
+    state.recentFiles = state.recentFiles.slice(0, 20);
+  }
+
+  async function removeRecentFile(name) {
+    const f = state.recentFiles.find((x) => x.name === name);
+    if (f && f.handleKey) {
+      try {
+        await fsDel(f.handleKey);
+      } catch (e) {
+        console.warn("删除 handle 失败", e);
+      }
+    }
+    state.recentFiles = state.recentFiles.filter((f) => f.name !== name);
+    if (state.currentFileName === name) {
+      state.currentFileName = null;
+      state.chapters = [];
+      state.currentChapterId = null;
+    }
+    save();
+  }
+
+  /* ============================================================
+     章节访问
+     ============================================================ */
   function getCurrentChapter() {
-    const ds = getCurrentDataSource();
-    if (!ds) return null;
-    return (ds.chapters || []).find((c) => c.id === state.currentChapterId) || null;
+    return (
+      state.chapters.find((c) => c.id === state.currentChapterId) || null
+    );
   }
 
-  function getSortedChapters(ds) {
-    const chapters = [...(ds.chapters || [])];
-    chapters.sort((a, b) => {
+  function getSortedChapters() {
+    const arr = [...state.chapters];
+    arr.sort((a, b) => {
       const an = Number(a.no) || 0;
       const bn = Number(b.no) || 0;
       return state.ui.sort === "asc" ? an - bn : bn - an;
     });
-    return chapters;
-  }
-
-  /* ============================================================
-     飞书多维表格同步
-     ============================================================ */
-
-  // 从飞书表格链接解析 app_token
-  // 例：https://xxx.feishu.cn/base/{app_token}?table=...
-  function parseAppTokenFromUrl(url) {
-    if (!url) return null;
-    try {
-      const u = new URL(url);
-      const m = u.pathname.match(/\/base\/([A-Za-z0-9]+)/);
-      return m ? m[1] : null;
-    } catch {
-      // 兼容非标准 URL
-      const m = String(url).match(/\/base\/([A-Za-z0-9]+)/);
-      return m ? m[1] : null;
-    }
-  }
-
-  // 1. 获取 tenant_access_token
-  async function getTenantAccessToken(appId, appSecret) {
-    let res;
-    try {
-      res = await fetch(`${getFeishuApiBase()}/auth/v3/tenant_access_token/internal`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
-      });
-    } catch (e) {
-      // "Failed to fetch" 在浏览器里最常见的原因：跨域（CORS）被拦截。
-      // 本应用默认走本地代理（npm run proxy，端口 8787），所以这里更常见的
-      // 实际原因是：代理没启动 / 端口被改 / 防火墙拦截。
-      // 浏览器不允许 JS 读取具体原因，所以只能给通用解释。
-      throw new Error(
-        `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：本地代理没启动（项目目录跑 npm run proxy，端口 8787）；或代理地址被改（看「主题设置 → 飞书代理地址」）。`
-      );
-    }
-    const data = await res.json().catch(() => ({}));
-    if (data.code !== 0) {
-      throw new Error(`获取 token 失败：${data.msg || "code=" + data.code}`);
-    }
-    return data.tenant_access_token;
-  }
-
-  // 2. 列出多维表格的所有数据表
-  async function listTables(token, appToken) {
-    let res;
-    try {
-      res = await fetch(
-        `${getFeishuApiBase()}/bitable/v1/apps/${appToken}/tables?page_size=100`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-    } catch (e) {
-      throw new Error(
-        `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：本地代理没启动（项目目录跑 npm run proxy，端口 8787）。`
-      );
-    }
-    const data = await res.json().catch(() => ({}));
-    if (data.code !== 0) {
-      throw new Error(`列子表失败：${data.msg || "code=" + data.code}`);
-    }
-    return data.data?.items || [];
-  }
-
-  // 3. 列出数据表的所有记录（自动分页）
-  async function listRecords(token, appToken, tableId) {
-    const all = [];
-    let pageToken = null;
-    do {
-      const url = new URL(
-        `${getFeishuApiBase()}/bitable/v1/apps/${appToken}/tables/${tableId}/records`
-      );
-      url.searchParams.set("page_size", "500");
-      url.searchParams.set("automatic_fields", "false");
-      if (pageToken) url.searchParams.set("page_token", pageToken);
-      let res;
-      try {
-        res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } catch (e) {
-        throw new Error(
-          `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：本地代理没启动（项目目录跑 npm run proxy，端口 8787）。`
-        );
-      }
-      const data = await res.json().catch(() => ({}));
-      if (data.code !== 0) {
-        throw new Error(`拉记录失败：${data.msg || "code=" + data.code}`);
-      }
-      all.push(...(data.data?.items || []));
-      pageToken = data.data?.has_more ? data.data.page_token : null;
-    } while (pageToken);
-    return all;
-  }
-
-  // 字段名匹配：先按用户配置的字段名，再回退到 FIELD_FALLBACKS 中的同义词
-  function pickFieldValue(fields, preferred, fallbacks) {
-    if (!fields) return null;
-    if (preferred && fields[preferred] !== undefined) return fields[preferred];
-    for (const name of fallbacks) {
-      if (fields[name] !== undefined) return fields[name];
-    }
-    return null;
-  }
-
-  // 把飞书记录转成章节对象
-  function recordToChapter(record, ds) {
-    const fields = record.fields || {};
-    const noRaw = pickFieldValue(fields, ds.fieldNo, FIELD_FALLBACKS.no);
-    const titleRaw = pickFieldValue(fields, ds.fieldTitle, FIELD_FALLBACKS.title);
-    const contentRaw = pickFieldValue(
-      fields,
-      ds.fieldContent,
-      FIELD_FALLBACKS.content
-    );
-    // 飞书文本字段可能是 {text, type} 嵌套对象；也可能是数组（多行文本/选项）
-    const unpack = (v) => {
-      if (v == null) return "";
-      if (Array.isArray(v)) return v.map(unpack).join("");
-      if (typeof v === "object") {
-        if (typeof v.text === "string") return v.text;
-        // 多选 / 关联 退化为转字符串
-        return JSON.stringify(v);
-      }
-      return String(v);
-    };
-    return {
-      id: uid("ch"),
-      no: Number(unpack(noRaw).trim()) || 0,
-      title: unpack(titleRaw).trim(),
-      content: unpack(contentRaw),
-    };
-  }
-
-  // 同步主流程（async）：拉取飞书多维表格 → 替换当前数据源的 chapters
-  async function syncDataSource(ds, opts = {}) {
-    const { silent = false } = opts;
-    if (!ds) return;
-    // 互斥锁：避免同一数据源并发
-    if (ds._syncing) {
-      if (!silent) toast("正在同步中…");
-      return;
-    }
-    ds._syncing = true;
-    ds.syncStatus = "syncing";
-    ds.syncError = "";
-    renderSyncStatus(ds);
-    try {
-      const appToken = parseAppTokenFromUrl(ds.url);
-      if (!appToken) {
-        throw new Error("URL 里解析不到 app_token（请用 https://xxx.feishu.cn/base/... 这种完整链接）");
-      }
-      if (!ds.appId || !ds.appSecret) {
-        ds.syncStatus = "no-config";
-        throw new Error("未配置 App ID / App Secret，请打开数据源编辑填写");
-      }
-      const token = await getTenantAccessToken(ds.appId, ds.appSecret);
-      const tables = await listTables(token, appToken);
-      const targetName = ds.tableName || "章节正文";
-      const target = tables.find((t) => t.name === targetName);
-      if (!target) {
-        const names = tables.map((t) => t.name).join("、") || "（无）";
-        throw new Error(`找不到子表「${targetName}」，多维表格中现有子表：${names}`);
-      }
-      const records = await listRecords(token, appToken, target.table_id);
-      if (records.length === 0) {
-        throw new Error(`子表「${targetName}」是空的，没有任何记录`);
-      }
-      const chapters = records
-        .map((r) => recordToChapter(r, ds))
-        .filter((c) => c.no > 0 || c.title || c.content) // 过滤空记录
-        .sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0));
-      if (chapters.length === 0) {
-        throw new Error("所有记录都缺少有效字段（章节号/章节名/内容）");
-      }
-      // 替换并保留当前选中章节（如果新数据里还有）
-      const prevId = state.currentChapterId;
-      ds.chapters = chapters;
-      if (prevId && !chapters.find((c) => c.id === prevId)) {
-        state.currentChapterId = chapters[0]?.id || null;
-      }
-      ds.lastSyncAt = new Date().toISOString();
-      ds.syncStatus = "success";
-      ds.syncError = "";
-      save();
-      renderAll();
-      if (!silent) toast(`同步成功：${chapters.length} 章`);
-    } catch (e) {
-      console.error("同步失败", e);
-      ds.syncStatus = ds.syncStatus === "syncing" ? "error" : ds.syncStatus;
-      ds.syncError = e.message || String(e);
-      renderSyncStatus(ds);
-      renderDataSourceMeta();
-      if (!silent) toast("同步失败：" + (e.message || "未知错误"), "error", 3500);
-    } finally {
-      ds._syncing = false;
-    }
-  }
-
-  // 渲染同步状态点（ds-meta 左侧的小圆点）
-  function renderSyncStatus(ds) {
-    const dot = $("#ds-status");
-    const label = $("#sync-label");
-    if (!dot) return;
-    dot.className = "ds-status"; // reset
-    if (!ds) {
-      dot.dataset.status = "";
-      dot.title = "";
-      if (label) label.textContent = "同步";
-      return;
-    }
-    const status = ds.syncStatus || "idle";
-    dot.dataset.status = status;
-    let title = "";
-    switch (status) {
-      case "syncing":
-        title = "同步中…";
-        if (label) label.textContent = "同步中";
-        break;
-      case "success":
-        title = ds.lastSyncAt
-          ? `已同步于 ${new Date(ds.lastSyncAt).toLocaleString()}`
-          : "已同步";
-        if (label) label.textContent = "已同步";
-        break;
-      case "error":
-        title = "同步失败：" + (ds.syncError || "未知错误");
-        if (label) label.textContent = "重试";
-        break;
-      case "no-config":
-        title = "未配置飞书同步凭证，点击「同步」打开数据源编辑";
-        if (label) label.textContent = "去配置";
-        break;
-      default:
-        title = "未同步";
-        if (label) label.textContent = "同步";
-    }
-    dot.title = title;
+    return arr;
   }
 
   /* ============================================================
      渲染
      ============================================================ */
-  function renderDataSourceSelect() {
-    const sel = $("#ds-select");
-    sel.innerHTML = state.dataSources
-      .map(
-        (d) =>
-          `<option value="${escapeHtml(d.id)}" ${
-            d.id === state.currentDataSourceId ? "selected" : ""
-          }>${escapeHtml(d.name)}</option>`
-      )
-      .join("");
-  }
-
-  function renderDataSourceMeta() {
-    const ds = getCurrentDataSource();
-    const el = $("#ds-meta-text");
-    const link = $("#ds-bind-link");
-    if (!ds) {
-      el.textContent = "—";
-      link.hidden = true;
-      renderSyncStatus(null);
+  function renderFileSelect() {
+    const sel = $("#file-select");
+    if (state.recentFiles.length === 0) {
+      sel.innerHTML = '<option value="">— 暂无文件 —</option>';
+      sel.value = "";
       return;
     }
-    const parts = [];
-    if (ds.chapters && ds.chapters.length) {
-      parts.push(`${ds.chapters.length} 章`);
+    sel.innerHTML = state.recentFiles
+      .map((f) => {
+        const selected = f.name === state.currentFileName ? "selected" : "";
+        const icon = f.isMigrated ? "🔒" : f.isDirectory ? "📁" : "📄";
+        return `<option value="${escapeHtml(f.name)}" ${selected}>${icon} ${escapeHtml(f.name)}</option>`;
+      })
+      .join("");
+    if (state.currentFileName) sel.value = state.currentFileName;
+  }
+
+  function renderFileMeta() {
+    const elText = $("#file-meta-text");
+    const dot = $("#file-status");
+    const removeBtn = $("#file-remove");
+    const banner = $("#fs-banner");
+
+    const cur = state.recentFiles.find(
+      (f) => f.name === state.currentFileName
+    );
+    if (!cur) {
+      elText.textContent = "请选择一个本地 xlsx 文件";
+      dot.dataset.status = "";
+      dot.title = "";
+      removeBtn.hidden = true;
+      banner.hidden = true;
+      return;
     }
-    if (ds.url) {
-      parts.push(ds.appId && ds.appSecret ? "已配置同步" : "已绑定表格");
+
+    const parts = [`${state.chapters.length} 章`];
+    if (cur.mtime) {
+      parts.push(`修改于 ${new Date(cur.mtime).toLocaleString()}`);
+    }
+    if (cur.size) parts.push(formatSize(cur.size));
+    elText.textContent = parts.join(" · ");
+    elText.title = cur.name;
+
+    if (cur.isMigrated) {
+      dot.dataset.status = "migrated";
+      dot.title = "已迁移的旧数据，无文件访问权限";
+      banner.hidden = true;
+      removeBtn.hidden = true;
+    } else if (cur.handleKey) {
+      dot.dataset.status = "ok";
+      dot.title = "已授权，可随时重新读取本地文件";
+      banner.hidden = true;
+      removeBtn.hidden = false;
     } else {
-      parts.push("未绑定表格");
+      dot.dataset.status = "need-perm";
+      dot.title = "需要重新授权才能读取";
+      banner.hidden = false;
+      removeBtn.hidden = false;
     }
-    if (ds.note) {
-      parts.push(ds.note);
-    }
-    el.textContent = parts.join(" · ");
-    el.title = ds.note || "";
-    if (!ds.url) {
-      link.hidden = false;
-      link.dataset.dsId = ds.id;
-    } else {
-      link.hidden = true;
-      link.dataset.dsId = "";
-    }
-    renderSyncStatus(ds);
   }
 
   function renderChapterList() {
-    const ds = getCurrentDataSource();
     const list = $("#chapter-list");
-    if (!ds) {
-      list.innerHTML = "";
-      return;
-    }
-    const chapters = getSortedChapters(ds);
+    const chapters = getSortedChapters();
     list.innerHTML = chapters
       .map((c) => {
         const wc = (c.content || "").length;
@@ -591,8 +452,7 @@
   function updateWordCount() {
     const ch = getCurrentChapter();
     const content = ch ? ch.content || "" : $("#ch-content").value;
-    const n = content.length;
-    $("#word-count").textContent = `${n} 字`;
+    $("#word-count").textContent = `${content.length} 字`;
   }
 
   function renderTheme() {
@@ -610,8 +470,6 @@
       "--reading-line-height",
       state.theme.lineHeight
     );
-
-    // 控件状态
     $$(".seg-btn[data-bg]").forEach((b) =>
       b.classList.toggle("active", b.dataset.bg === state.theme.bg)
     );
@@ -622,232 +480,322 @@
     $("#font-size-val").textContent = state.theme.fontSize;
     $("#line-height").value = state.theme.lineHeight;
     $("#line-height-val").textContent = state.theme.lineHeight.toFixed(2);
-    const proxyInput = $("#feishu-proxy");
-    if (proxyInput) {
-      proxyInput.value = state.settings.feishuProxy || "";
-      proxyInput.placeholder = FEISHU_PROXY_DEFAULT;
-    }
   }
 
   function renderAll() {
-    renderDataSourceSelect();
-    renderDataSourceMeta();
+    renderFileSelect();
+    renderFileMeta();
     renderChapterList();
     renderEditor();
     renderTheme();
   }
 
   /* ============================================================
-     事件：数据源
+     读文件 + 切换文件
      ============================================================ */
-  function bindDataSourceEvents() {
-    $("#ds-select").addEventListener("change", (e) => {
-      state.currentDataSourceId = e.target.value;
-      state.currentChapterId = null;
+  async function openFileByName(name) {
+    const meta = state.recentFiles.find((f) => f.name === name);
+    if (!meta) {
+      toast("找不到该文件", "error");
+      return;
+    }
+    if (meta.isMigrated || !meta.handleKey) {
+      toast("该文件没有保存访问权限（来自旧版本数据），请重新选择", "error", 3000);
+      $("#fs-banner").hidden = false;
+      return;
+    }
+    const handle = await fsGet(meta.handleKey);
+    if (!handle) {
+      toast("该文件的访问权限已失效，请重新选择", "error");
+      await removeRecentFile(name);
+      renderAll();
+      return;
+    }
+    const granted = await ensureReadPermission(handle, true);
+    if (!granted) {
+      toast("未授权读取文件", "error");
+      $("#fs-banner").hidden = false;
+      return;
+    }
+    await loadChaptersFromHandle(handle, meta);
+  }
+
+  async function loadChaptersFromHandle(handle, meta) {
+    try {
+      const ab = await readFileAsArrayBuffer(handle);
+      const result = parseXlsxFromArrayBuffer(ab);
+      const chapters = rowsToChapters(result.rows);
+      const desc = await describeFile(handle);
+      state.chapters = chapters;
+      state.currentChapterId = chapters[0]?.id || null;
+      state.currentFileName = handle.name;
+      upsertRecentFile({
+        name: handle.name,
+        mtime: desc.mtime,
+        size: desc.size,
+        handleKey: meta?.handleKey || `file:${handle.name}`,
+        isDirectory: false,
+      });
       save();
       renderAll();
-    });
+      toast(`已读取 ${chapters.length} 章`, "info", 1500);
+    } catch (e) {
+      console.error("读取失败", e);
+      toast("读取失败：" + (e.message || e), "error", 3500);
+    }
+  }
 
-    $("#ds-open").addEventListener("click", () => {
-      const ds = getCurrentDataSource();
-      if (!ds) return;
-      if (ds.url) {
-        window.open(ds.url, "_blank", "noopener");
-      } else {
-        toast("当前数据源未绑定飞书表格链接");
+  async function openDirectory(dirHandle) {
+    let files;
+    try {
+      files = await listXlsxInDir(dirHandle);
+    } catch (e) {
+      toast("读取文件夹失败：" + (e.message || e), "error");
+      return;
+    }
+    if (files.length === 0) {
+      toast("该文件夹下没有 .xlsx 文件", "error", 3000);
+      return;
+    }
+    // 持久化目录 handle（虽然目录 handle 不直接列文件，但保留以备未来）
+    try {
+      await fsPut(`dir:${dirHandle.name}`, dirHandle);
+    } catch (_) {}
+
+    for (const f of files) {
+      const fileKey = `file:${dirHandle.name}/${f.name}`;
+      try {
+        await fsPut(fileKey, f.handle);
+      } catch (e) {
+        console.warn("持久化 handle 失败", fileKey, e);
       }
-    });
-
-    // 顶部「+」按钮：直接打开"新增数据源"弹窗
-    $("#ds-new").addEventListener("click", () => {
-      openDataSourceEdit(null);
-    });
-
-    // 顶部「⚙」按钮：打开管理数据源弹窗
-    $("#ds-manage").addEventListener("click", () => {
-      renderDataSourceList();
-      showModal("modal-manage");
-    });
-
-    // 「点此绑定飞书表格」快捷链接
-    $("#ds-bind-link").addEventListener("click", (e) => {
-      e.preventDefault();
-      const ds = getCurrentDataSource();
-      if (ds) openDataSourceEdit(ds);
-    });
-
-    // 兼容：工具栏中已不再有"管理"按钮（已移至顶部），如仍存在则保留绑定
-    const legacyManage = $("#btn-manage");
-    if (legacyManage) {
-      legacyManage.addEventListener("click", () => {
-        renderDataSourceList();
-        showModal("modal-manage");
+      const desc = await describeFile(f.handle);
+      upsertRecentFile({
+        name: f.handle.name,
+        mtime: desc.mtime,
+        size: desc.size,
+        handleKey: fileKey,
+        isDirectory: false,
       });
     }
+    save();
+    renderAll();
 
-    $("#btn-ds-add").addEventListener("click", () => {
-      openDataSourceEdit(null);
-    });
-
-    // 弹窗关闭
-    $$('[data-close]').forEach((el) =>
-      el.addEventListener("click", (e) => {
-        const modal = e.target.closest(".modal");
-        if (modal) modal.hidden = true;
-      })
-    );
-
-    // 数据源编辑保存
-    $("#btn-ds-save").addEventListener("click", () => {
-      const editingId = $("#btn-ds-save").dataset.editingId || null;
-      const name = $("#ds-name").value.trim();
-      const url = $("#ds-url").value.trim();
-      const note = $("#ds-note").value.trim();
-      const appId = $("#ds-app-id").value.trim();
-      const appSecret = $("#ds-app-secret").value;
-      const tableName = $("#ds-table-name").value.trim() || "章节正文";
-      const fieldNo = $("#ds-field-no").value.trim() || "章节号";
-      const fieldTitle = $("#ds-field-title").value.trim() || "章节名";
-      const fieldContent = $("#ds-field-content").value.trim() || "文章内容";
-      if (!name) {
-        toast("名称不能为空", "error");
-        return;
-      }
-      const fields = {
-        name, url, note,
-        appId, appSecret, tableName,
-        fieldNo, fieldTitle, fieldContent,
-      };
-      if (editingId) {
-        const ds = state.dataSources.find((d) => d.id === editingId);
-        if (ds) Object.assign(ds, fields);
-      } else {
-        state.dataSources.push({
-          id: uid("ds"),
-          ...fields,
-          builtIn: false,
-          chapters: [],
-          lastSyncAt: null,
-          syncStatus: "idle",
-          syncError: "",
-        });
-      }
-      save();
-      hideModal("modal-ds-edit");
-      renderAll();
-      if ($("#modal-manage").hidden === false) renderDataSourceList();
-      toast(editingId ? "已更新" : "已新增");
-    });
-
-    // 工具栏「同步」按钮
-    let syncDebounceTimer = null;
-    $("#btn-sync").addEventListener("click", () => {
-      const ds = getCurrentDataSource();
-      if (!ds) {
-        toast("请先选择数据源", "error");
-        return;
-      }
-      if (!ds.url) {
-        toast("当前数据源未绑定飞书表格链接，请先在编辑中配置");
-        return;
-      }
-      // 错误状态或未配置：点同步 → 打开编辑弹窗让用户配置
-      if (ds.syncStatus === "no-config" || (!ds.appId || !ds.appSecret)) {
-        openDataSourceEdit(ds);
-        toast("请先在「飞书同步配置」中填写 App ID / App Secret", "info", 3000);
-        return;
-      }
-      // 简单节流
-      clearTimeout(syncDebounceTimer);
-      syncDebounceTimer = setTimeout(() => syncDataSource(ds), SYNC_DEBOUNCE_MS);
-    });
+    // 自动打开当前选中（仍在目录中）或第一个
+    const target =
+      state.currentFileName && files.find((f) => f.name === state.currentFileName)
+        ? files.find((f) => f.name === state.currentFileName)
+        : files[0];
+    if (target) await openFileByName(target.handle.name);
   }
 
-  function renderDataSourceList() {
-    const ul = $("#ds-list");
-    ul.innerHTML = state.dataSources
-      .map((d) => {
-        const ch = (d.chapters || []).length;
-        const urlHtml = d.url
-          ? `<a href="${escapeHtml(d.url)}" target="_blank" rel="noopener">打开表格</a>`
-          : `<span class="muted">无链接</span>`;
-        return `
-          <li class="ds-item ${d.id === state.currentDataSourceId ? "active" : ""}" data-id="${escapeHtml(d.id)}">
-            <div class="ds-item-info">
-              <div class="ds-item-name">${escapeHtml(d.name)}${d.builtIn ? ' <span class="muted">·内置</span>' : ""}</div>
-              <div class="ds-item-meta">${ch} 章 · ${urlHtml}${d.note ? " · " + escapeHtml(d.note) : ""}</div>
-            </div>
-            <div class="ds-item-actions">
-              <button class="icon-btn" data-act="switch" title="切换为当前">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-              </button>
-              <button class="icon-btn" data-act="edit" title="编辑">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              </button>
-              <button class="icon-btn" data-act="delete" title="删除" ${d.builtIn ? "disabled" : ""}>
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-              </button>
-            </div>
-          </li>
-        `;
-      })
-      .join("");
+  /* ============================================================
+     xlsx 解析（保留）
+     ============================================================ */
+  function unpackCell(v) {
+    if (v == null) return "";
+    if (Array.isArray(v)) return v.map(unpackCell).join("");
+    if (typeof v === "object") {
+      if (typeof v.text === "string") return v.text;
+      if (v.richText) return v.richText.map((r) => r.text || "").join("");
+      if (v instanceof Date) {
+        try {
+          return v.toISOString().slice(0, 10);
+        } catch (_) {
+          return String(v);
+        }
+      }
+      try {
+        return JSON.stringify(v);
+      } catch (_) {
+        return String(v);
+      }
+    }
+    return String(v);
+  }
 
-    // 绑定列表操作
-    $$("#ds-list .ds-item").forEach((el) => {
-      const id = el.dataset.id;
-      el.querySelector('[data-act="switch"]').addEventListener("click", () => {
-        state.currentDataSourceId = id;
-        state.currentChapterId = null;
+  function findColumnIndex(header, candidates) {
+    const norm = (s) => String(s || "").replace(/\s+/g, "").toLowerCase();
+    const nHeader = header.map(norm);
+    const nCands = candidates.map(norm);
+    for (let i = 0; i < nHeader.length; i++) {
+      if (nCands.includes(nHeader[i])) return i;
+    }
+    const hits = [];
+    for (let i = 0; i < nHeader.length; i++) {
+      const h = nHeader[i];
+      if (!h) continue;
+      for (const c of nCands) {
+        if (h.includes(c) || c.includes(h)) {
+          hits.push(i);
+          break;
+        }
+      }
+    }
+    if (hits.length === 1) return hits[0];
+    return -1;
+  }
+
+  function parseXlsxRows(rows2d) {
+    if (!rows2d || rows2d.length === 0) return { rows: [], columns: null };
+    const header = rows2d[0].map((c) => unpackCell(c).trim());
+    const dataRows = rows2d.slice(1);
+    const idxNo = findColumnIndex(header, FIELD_FALLBACKS.no);
+    const idxTitle = findColumnIndex(header, FIELD_FALLBACKS.title);
+    const idxContent = findColumnIndex(header, FIELD_FALLBACKS.content);
+    const out = [];
+    for (let i = 0; i < dataRows.length; i++) {
+      const r = dataRows[i];
+      if (!r || r.every((c) => unpackCell(c).trim() === "")) continue;
+      const o = { _line: i + 2, _error: null };
+      if (idxNo < 0 || idxTitle < 0 || idxContent < 0) {
+        o._error = `表头缺少关键列（需含 章节号/章节名/文章内容），当前表头：${header.join(" | ")}`;
+        out.push(o);
+        continue;
+      }
+      const noRaw = unpackCell(r[idxNo]).trim();
+      const no = Number(noRaw);
+      if (!Number.isFinite(no)) {
+        o._error = `章节号不是有效数字："${noRaw}"`;
+        out.push(o);
+        continue;
+      }
+      o.no = no;
+      o.title = unpackCell(r[idxTitle]).trim();
+      o.content = unpackCell(r[idxContent]);
+      out.push(o);
+    }
+    return {
+      rows: out,
+      columns: { no: idxNo, title: idxTitle, content: idxContent, header },
+    };
+  }
+
+  function parseXlsxFromArrayBuffer(ab) {
+    if (!window.XLSX) throw new Error("xlsx 解析库未加载");
+    const wb = XLSX.read(new Uint8Array(ab), { type: "array", cellDates: true });
+    const sheetName = wb.SheetNames[0];
+    if (!sheetName) throw new Error("xlsx 内没有可用的 sheet");
+    const sheet = wb.Sheets[sheetName];
+    const rows2d = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: "",
+      raw: true,
+    });
+    const result = parseXlsxRows(rows2d);
+    return { ...result, sheetName, rowCount: rows2d.length };
+  }
+
+  function rowsToChapters(rows) {
+    return rows
+      .filter((r) => !r._error)
+      .map((r) => ({
+        id: uid("ch"),
+        no: r.no,
+        title: r.title || "",
+        content: r.content || "",
+      }));
+  }
+
+
+  /* ============================================================
+     事件：文件路径
+     ============================================================ */
+  function bindFileEvents() {
+    $("#file-select").addEventListener("change", async (e) => {
+      const name = e.target.value;
+      if (!name) return;
+      await openFileByName(name);
+    });
+
+    $("#file-pick").addEventListener("click", async () => {
+      if (!fsSupported()) {
+        toast("当前浏览器不支持 File System Access API", "error", 4000);
+        return;
+      }
+      try {
+        const handle = await pickXlsxFile();
+        if (!handle) return;
+        const fileKey = `file:${handle.name}`;
+        await fsPut(fileKey, handle);
+        const desc = await describeFile(handle);
+        upsertRecentFile({
+          name: handle.name,
+          mtime: desc.mtime,
+          size: desc.size,
+          handleKey: fileKey,
+          isDirectory: false,
+        });
         save();
         renderAll();
-        renderDataSourceList();
-        toast("已切换");
-      });
-      el.querySelector('[data-act="edit"]').addEventListener("click", () => {
-        const ds = state.dataSources.find((d) => d.id === id);
-        if (ds) openDataSourceEdit(ds);
-      });
-      const delBtn = el.querySelector('[data-act="delete"]');
-      if (delBtn && !delBtn.disabled) {
-        delBtn.addEventListener("click", () => {
-          if (!confirm(`确定删除数据源「${state.dataSources.find((d) => d.id === id)?.name}」？其下所有章节也会一并删除。`))
-            return;
-          state.dataSources = state.dataSources.filter((d) => d.id !== id);
-          if (state.currentDataSourceId === id) {
-            state.currentDataSourceId = state.dataSources[0]?.id || null;
-            state.currentChapterId = null;
-          }
-          save();
-          renderAll();
-          renderDataSourceList();
-          toast("已删除");
-        });
+        await loadChaptersFromHandle(handle, { handleKey: fileKey });
+      } catch (e) {
+        if (e.name === "AbortError") return;
+        console.error(e);
+        toast("选择文件失败：" + (e.message || e), "error", 3000);
       }
     });
-  }
 
-  function openDataSourceEdit(ds) {
-    $("#ds-edit-title").textContent = ds ? "编辑数据源" : "新增数据源";
-    $("#ds-name").value = ds ? ds.name : "";
-    $("#ds-url").value = ds ? ds.url || "" : "";
-    $("#ds-note").value = ds ? ds.note || "" : "";
-    $("#ds-app-id").value = ds ? ds.appId || "" : "";
-    $("#ds-app-secret").value = ds ? ds.appSecret || "" : "";
-    $("#ds-table-name").value = ds ? ds.tableName || "章节正文" : "章节正文";
-    $("#ds-field-no").value = ds ? ds.fieldNo || "章节号" : "章节号";
-    $("#ds-field-title").value = ds ? ds.fieldTitle || "章节名" : "章节名";
-    $("#ds-field-content").value = ds ? ds.fieldContent || "文章内容" : "文章内容";
-    $("#btn-ds-save").dataset.editingId = ds ? ds.id : "";
-    showModal("modal-ds-edit");
-    setTimeout(() => $("#ds-name").focus(), 50);
+    $("#file-pick-dir").addEventListener("click", async () => {
+      if (!fsSupported()) {
+        toast("当前浏览器不支持 File System Access API", "error", 4000);
+        return;
+      }
+      try {
+        const dirHandle = await pickDirectory();
+        if (!dirHandle) return;
+        await openDirectory(dirHandle);
+      } catch (e) {
+        if (e.name === "AbortError") return;
+        console.error(e);
+        toast("选择文件夹失败：" + (e.message || e), "error", 3000);
+      }
+    });
+
+    $("#file-remove").addEventListener("click", async () => {
+      if (!state.currentFileName) return;
+      if (
+        !confirm(
+          `从列表中移除「${state.currentFileName}」？\n（不会删除磁盘文件）`
+        )
+      )
+        return;
+      await removeRecentFile(state.currentFileName);
+      renderAll();
+    });
+
+    $("#fs-grant").addEventListener("click", async () => {
+      const meta = state.recentFiles.find(
+        (f) => f.name === state.currentFileName
+      );
+      if (!meta) {
+        toast("请重新选择文件", "error");
+        return;
+      }
+      if (!meta.handleKey) {
+        toast("该文件没有保存访问权限，请重新选择文件", "error");
+        return;
+      }
+      const handle = await fsGet(meta.handleKey);
+      if (!handle) {
+        toast("访问权限已失效，请重新选择文件", "error");
+        return;
+      }
+      const granted = await ensureReadPermission(handle, true);
+      if (granted) {
+        $("#fs-banner").hidden = true;
+        toast("授权成功", "info", 1500);
+        await loadChaptersFromHandle(handle, meta);
+      } else {
+        toast("未授权", "error");
+      }
+    });
   }
 
   /* ============================================================
      事件：章节
      ============================================================ */
   function bindChapterEvents() {
-    // 点击章节
     $("#chapter-list").addEventListener("click", (e) => {
       const item = e.target.closest(".ch-item");
       if (!item) return;
@@ -857,25 +805,13 @@
       renderEditor();
     });
 
-    // 新增
     $("#btn-new").addEventListener("click", () => {
-      const ds = getCurrentDataSource();
-      if (!ds) {
-        toast("请先选择或新增数据源", "error");
-        return;
-      }
-      const nextNo = (ds.chapters || []).reduce(
+      const nextNo = state.chapters.reduce(
         (m, c) => Math.max(m, Number(c.no) || 0),
         0
       ) + 1;
-      const ch = {
-        id: uid("ch"),
-        no: nextNo,
-        title: "",
-        content: "",
-      };
-      ds.chapters = ds.chapters || [];
-      ds.chapters.push(ch);
+      const ch = { id: uid("ch"), no: nextNo, title: "", content: "" };
+      state.chapters.push(ch);
       state.currentChapterId = ch.id;
       save();
       renderAll();
@@ -883,7 +819,6 @@
       toast(`已新增第 ${nextNo} 章`);
     });
 
-    // 保存
     $("#btn-save").addEventListener("click", () => {
       const ch = getCurrentChapter();
       if (!ch) return;
@@ -902,42 +837,39 @@
       }, 1500);
     });
 
-    // 删除
     $("#btn-delete").addEventListener("click", () => {
-      const ds = getCurrentDataSource();
       const ch = getCurrentChapter();
-      if (!ds || !ch) return;
+      if (!ch) return;
       if (!confirm(`确定删除章节「${ch.title || ch.no}」？`)) return;
-      ds.chapters = ds.chapters.filter((c) => c.id !== ch.id);
+      state.chapters = state.chapters.filter((c) => c.id !== ch.id);
       state.currentChapterId = null;
       save();
       renderAll();
       toast("已删除");
     });
 
-    // 内容编辑时实时更新字数（不保存）
     $("#ch-content").addEventListener("input", () => {
       updateWordCount();
     });
 
-    // 清空当前数据源章节
     $("#btn-clear").addEventListener("click", () => {
-      const ds = getCurrentDataSource();
-      if (!ds) return;
-      if (!ds.chapters || ds.chapters.length === 0) {
-        toast("当前数据源已经是空的");
+      if (state.chapters.length === 0) {
+        toast("当前已经是空的");
         return;
       }
-      if (!confirm(`确定清空「${ds.name}」下的所有 ${ds.chapters.length} 章？此操作不可恢复。`))
+      if (
+        !confirm(
+          `确定清空所有 ${state.chapters.length} 章？此操作不可恢复。`
+        )
+      )
         return;
-      ds.chapters = [];
+      state.chapters = [];
       state.currentChapterId = null;
       save();
       renderAll();
       toast("已清空");
     });
 
-    // 排序
     $("#btn-sort").addEventListener("click", () => {
       state.ui.sort = state.ui.sort === "asc" ? "desc" : "asc";
       save();
@@ -946,27 +878,24 @@
   }
 
   /* ============================================================
-     事件：导入
+     事件：导入（xlsx 拖拽 + 文本粘贴，导入到当前文件）
      ============================================================ */
-  // 当前选中的 xlsx 文件（用于解析 + 切 sheet）
-  let importXlsxState = null; // { fileName, workbook, sheetName, rows2d }
+  let importXlsxRows2d = null; // xlsx 路径下保留 rows2d 用于 refreshImportPreview
 
   function bindImportEvents() {
     $("#btn-import").addEventListener("click", () => {
-      // 重置弹窗状态
       $("#import-text").value = "";
       $("#import-skip-header").checked = true;
       $("#import-preview").innerHTML = "";
       $("#btn-import-confirm").disabled = true;
       $("#btn-import-confirm").dataset.parsed = "";
-      importXlsxState = null;
+      importXlsxRows2d = null;
       $("#import-file-info").hidden = true;
       $("#import-drop").classList.remove("is-dragover");
       setImportStats(null);
       showModal("modal-import");
     });
 
-    // === xlsx 主区：点击 / 拖拽 / 键盘 ===
     const drop = $("#import-drop");
     const fileInput = $("#file-xlsx");
     drop.addEventListener("click", () => fileInput.click());
@@ -979,7 +908,7 @@
     fileInput.addEventListener("change", (e) => {
       const f = e.target.files?.[0];
       if (f) handleXlsxFile(f);
-      e.target.value = ""; // 允许同名重选
+      e.target.value = "";
     });
     ["dragenter", "dragover"].forEach((evt) =>
       drop.addEventListener(evt, (e) => {
@@ -1000,10 +929,9 @@
       if (f) handleXlsxFile(f);
     });
 
-    // 清除已选文件
     $("#btn-import-clear").addEventListener("click", (e) => {
       e.stopPropagation();
-      importXlsxState = null;
+      importXlsxRows2d = null;
       $("#import-file-info").hidden = true;
       $("#import-preview").innerHTML = "";
       $("#btn-import-confirm").disabled = true;
@@ -1011,30 +939,22 @@
       setImportStats(null);
     });
 
-    // 文本粘贴路径
     $("#import-text").addEventListener("input", () => {
-      // 文本输入会清掉 xlsx 选中状态
-      if (importXlsxState && $("#import-text").value.trim()) {
-        importXlsxState = null;
+      if (importXlsxRows2d && $("#import-text").value.trim()) {
+        importXlsxRows2d = null;
         $("#import-file-info").hidden = true;
       }
       const rows = parseImportText($("#import-text").value);
       renderImportPreview(rows);
-      $("#btn-import-confirm").disabled = rows.filter((r) => !r._error).length === 0;
+      $("#btn-import-confirm").disabled =
+        rows.filter((r) => !r._error).length === 0;
       $("#btn-import-confirm").dataset.parsed = JSON.stringify(rows);
       setImportStats(rows);
     });
 
-    // 切表头跳过
     $("#import-skip-header").addEventListener("change", refreshImportPreview);
 
-    // 确认导入
     $("#btn-import-confirm").addEventListener("click", () => {
-      const ds = getCurrentDataSource();
-      if (!ds) {
-        toast("当前数据源无效", "error");
-        return;
-      }
       const raw = $("#btn-import-confirm").dataset.parsed;
       if (!raw) return;
       const rows = JSON.parse(raw).filter((r) => !r._error);
@@ -1042,119 +962,30 @@
         toast("没有可导入的内容", "error");
         return;
       }
-      ds.chapters = ds.chapters || [];
       let added = 0,
         replaced = 0;
       rows.forEach((r) => {
-        const existingIdx = ds.chapters.findIndex((c) => Number(c.no) === r.no);
-        const ch = { id: existingIdx >= 0 ? ds.chapters[existingIdx].id : uid("ch"), ...r };
+        const existingIdx = state.chapters.findIndex(
+          (c) => Number(c.no) === r.no
+        );
+        const ch = {
+          id: existingIdx >= 0 ? state.chapters[existingIdx].id : uid("ch"),
+          ...r,
+        };
         if (existingIdx >= 0) {
-          ds.chapters[existingIdx] = ch;
+          state.chapters[existingIdx] = ch;
           replaced++;
         } else {
-          ds.chapters.push(ch);
+          state.chapters.push(ch);
           added++;
         }
       });
-      ds.chapters.sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0));
+      state.chapters.sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0));
       save();
       hideModal("modal-import");
       renderAll();
       toast(`导入完成：新增 ${added} 章，覆盖 ${replaced} 章`);
     });
-  }
-
-  // 把 Excel 单元格值解包成纯字符串
-  function unpackCell(v) {
-    if (v == null) return "";
-    if (Array.isArray(v)) return v.map(unpackCell).join("");
-    if (typeof v === "object") {
-      if (typeof v.text === "string") return v.text;
-      if (v.richText) return v.richText.map((r) => r.text || "").join("");
-      if (v instanceof Date) {
-        // 日期格式化为 ISO 日期
-        try {
-          return v.toISOString().slice(0, 10);
-        } catch (_) {
-          return String(v);
-        }
-      }
-      try {
-        return JSON.stringify(v);
-      } catch (_) {
-        return String(v);
-      }
-    }
-    return String(v);
-  }
-
-  // xlsx 解析：按表头识别 no/title/content
-  function parseXlsxRows(rows2d) {
-    if (!rows2d || rows2d.length === 0) return { rows: [], columns: null };
-    // 找最长的有效行作为表头（防止第一行大部分为空）
-    const headerIdx = findHeaderRowIndex(rows2d);
-    const header = rows2d[headerIdx].map((c) => unpackCell(c).trim());
-    const dataRows = rows2d.slice(headerIdx + 1);
-    // 列识别
-    const idxNo = findColumnIndex(header, FIELD_FALLBACKS.no);
-    const idxTitle = findColumnIndex(header, FIELD_FALLBACKS.title);
-    const idxContent = findColumnIndex(header, FIELD_FALLBACKS.content);
-    const out = [];
-    for (let i = 0; i < dataRows.length; i++) {
-      const r = dataRows[i];
-      if (!r || r.every((c) => unpackCell(c).trim() === "")) continue; // 跳过空行
-      const out2 = { _line: i + 1 + headerIdx + 1, _error: null };
-      if (idxNo < 0 || idxTitle < 0 || idxContent < 0) {
-        out2._error = `表头缺少关键列（需含 章节号/章节名/文章内容），当前表头：${header.join(" | ")}`;
-        out.push(out2);
-        continue;
-      }
-      const noRaw = unpackCell(r[idxNo]).trim();
-      const no = Number(noRaw);
-      if (!Number.isFinite(no)) {
-        out2._error = `章节号不是有效数字："${noRaw}"`;
-        out.push(out2);
-        continue;
-      }
-      out2.no = no;
-      out2.title = unpackCell(r[idxTitle]).trim();
-      out2.content = unpackCell(r[idxContent]);
-      out.push(out2);
-    }
-    return {
-      rows: out,
-      columns: { no: idxNo, title: idxTitle, content: idxContent, header },
-    };
-  }
-
-  function findHeaderRowIndex(rows2d) {
-    // 默认第一行就是表头
-    return 0;
-  }
-
-  function findColumnIndex(header, candidates) {
-    // 归一化：去空白 + 小写，兼容 "章节号 " / " 章节号" / 飞书字段名带空格
-    const norm = (s) => String(s || "").replace(/\s+/g, "").toLowerCase();
-    const nHeader = header.map(norm);
-    const nCands = candidates.map(norm);
-    // 完全匹配优先
-    for (let i = 0; i < nHeader.length; i++) {
-      if (nCands.includes(nHeader[i])) return i;
-    }
-    // 模糊匹配（包含关系），命中唯一时返回
-    const hits = [];
-    for (let i = 0; i < nHeader.length; i++) {
-      const h = nHeader[i];
-      if (!h) continue;
-      for (const c of nCands) {
-        if (h.includes(c) || c.includes(h)) {
-          hits.push(i);
-          break;
-        }
-      }
-    }
-    if (hits.length === 1) return hits[0];
-    return -1;
   }
 
   function handleXlsxFile(file) {
@@ -1178,22 +1009,29 @@
           return;
         }
         const sheet = wb.Sheets[sheetName];
-        const rows2d = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
-        importXlsxState = { fileName: file.name, workbook: wb, sheetName, rows2d };
-        // UI
+        const rows2d = XLSX.utils.sheet_to_json(sheet, {
+          header: 1,
+          defval: "",
+          raw: true,
+        });
+        importXlsxRows2d = rows2d;
         const info = $("#import-file-info");
         info.hidden = false;
-        info.querySelector(".import-file-name").textContent = `${file.name} · sheet: ${sheetName} · ${rows2d.length} 行`;
-        // 文本清空（互斥）
+        info.querySelector(".import-file-name").textContent =
+          `${file.name} · sheet: ${sheetName} · ${rows2d.length} 行`;
         $("#import-text").value = "";
-        // 走「按表头识别」逻辑，忽略「跳过首行表头」复选框
         const result = parseXlsxRows(rows2d);
         renderImportPreview(result.rows);
         const okCount = result.rows.filter((r) => !r._error).length;
         $("#btn-import-confirm").disabled = okCount === 0;
         $("#btn-import-confirm").dataset.parsed = JSON.stringify(result.rows);
         setImportStats(result.rows);
-        if (result.columns && (result.columns.no < 0 || result.columns.title < 0 || result.columns.content < 0)) {
+        if (
+          result.columns &&
+          (result.columns.no < 0 ||
+            result.columns.title < 0 ||
+            result.columns.content < 0)
+        ) {
           toast("表头未识别到所有关键列，已在预览中标记", "warn", 3000);
         } else {
           toast(`已解析 ${result.rows.length} 行（成功 ${okCount}）`, "info", 1800);
@@ -1207,7 +1045,6 @@
     reader.readAsArrayBuffer(file);
   }
 
-  // 文本解析（向后兼容：固定列顺序 no/title/content）
   function parseImportText(text) {
     if (!text || !text.trim()) return [];
     const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
@@ -1246,10 +1083,9 @@
     return out;
   }
 
-  // 重新解析（切换「跳过表头」时）
   function refreshImportPreview() {
-    if (importXlsxState) {
-      const result = parseXlsxRows(importXlsxState.rows2d);
+    if (importXlsxRows2d) {
+      const result = parseXlsxRows(importXlsxRows2d);
       renderImportPreview(result.rows);
       const okCount = result.rows.filter((r) => !r._error).length;
       $("#btn-import-confirm").disabled = okCount === 0;
@@ -1258,7 +1094,8 @@
     } else {
       const rows = parseImportText($("#import-text").value);
       renderImportPreview(rows);
-      $("#btn-import-confirm").disabled = rows.filter((r) => !r._error).length === 0;
+      $("#btn-import-confirm").disabled =
+        rows.filter((r) => !r._error).length === 0;
       $("#btn-import-confirm").dataset.parsed = JSON.stringify(rows);
       setImportStats(rows);
     }
@@ -1310,6 +1147,7 @@
       .join("");
   }
 
+
   /* ============================================================
      事件：右栏 Tab
      ============================================================ */
@@ -1325,7 +1163,7 @@
   }
 
   /* ============================================================
-     事件：主题 / 导入导出
+     事件：主题 + JSON 导入导出
      ============================================================ */
   function bindThemeEvents() {
     $$(".seg-btn[data-bg]").forEach((b) =>
@@ -1355,17 +1193,7 @@
       renderTheme();
     });
 
-    // 飞书代理地址：留空用默认
-    const proxyInput = $("#feishu-proxy");
-    if (proxyInput) {
-      proxyInput.addEventListener("change", (e) => {
-        state.settings.feishuProxy = String(e.target.value || "").trim();
-        save();
-        toast(state.settings.feishuProxy ? "已保存代理地址" : "已恢复默认代理", "info", 1500);
-      });
-    }
-
-    // 导出
+    // JSON 导出（不含 IndexedDB 中的 file handles，只导出章节+主题+UI）
     $("#btn-export").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(state, null, 2)], {
         type: "application/json",
@@ -1383,7 +1211,7 @@
       toast("已导出 JSON");
     });
 
-    // 导入
+    // JSON 导入（兼容 v3 新格式和 v1/v2 dataSources 旧格式）
     $("#file-import").addEventListener("change", (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -1391,19 +1219,32 @@
       reader.onload = () => {
         try {
           const data = JSON.parse(reader.result);
-          if (!data.dataSources) {
+          if (Array.isArray(data.chapters)) {
+            if (!confirm("导入将覆盖当前所有章节，确定？")) return;
+            state.chapters = data.chapters;
+            state.currentChapterId =
+              data.currentChapterId || data.chapters[0]?.id || null;
+            if (data.theme) state.theme = { ...DEFAULT_THEME, ...data.theme };
+            if (data.ui) state.ui = { sort: "asc", ...data.ui };
+            save();
+            renderAll();
+            toast("已导入");
+          } else if (Array.isArray(data.dataSources)) {
+            // 兼容老格式
+            if (!confirm("检测到老版本数据格式，导入将覆盖当前所有章节，确定？")) return;
+            const target =
+              data.dataSources.find((d) => d.id === data.currentDataSourceId) ||
+              data.dataSources[0];
+            if (target) {
+              state.chapters = target.chapters || [];
+              state.currentChapterId = null;
+              save();
+              renderAll();
+              toast("已导入（旧格式）");
+            }
+          } else {
             toast("文件格式不对", "error");
-            return;
           }
-          if (!confirm("导入将覆盖当前所有数据，确定？")) return;
-          state.dataSources = data.dataSources;
-          state.currentDataSourceId = data.currentDataSourceId || data.dataSources[0]?.id;
-          state.currentChapterId = null;
-          if (data.theme) state.theme = { ...DEFAULT_THEME, ...data.theme };
-          if (data.ui) state.ui = { sort: "asc", ...data.ui };
-          save();
-          renderAll();
-          toast("已导入");
         } catch (err) {
           console.error(err);
           toast("解析失败：文件不是有效 JSON", "error");
@@ -1417,10 +1258,16 @@
   /* ============================================================
      初始化
      ============================================================ */
-  function init() {
+  async function init() {
     load();
     renderAll();
-    bindDataSourceEvents();
+
+    // 浏览器能力检查
+    if (!fsSupported()) {
+      $("#fs-unsupported").hidden = false;
+    }
+
+    bindFileEvents();
     bindChapterEvents();
     bindImportEvents();
     bindTabs();
@@ -1441,18 +1288,43 @@
       }
     });
 
-    // 打开页面时自动同步：当前数据源有 URL + 凭证时，异步拉取最新章节
-    // 失败/未配置 → 用本地缓存（已经在 renderAll 里渲染过了）
-    setTimeout(() => {
-      const ds = getCurrentDataSource();
-      if (ds && ds.url && ds.appId && ds.appSecret) {
-        syncDataSource(ds, { silent: true });
-      } else if (ds && ds.url) {
-        // 有 URL 但无凭证：标记为 no-config 让用户知道该去配置
-        ds.syncStatus = "no-config";
-        renderSyncStatus(ds);
+    // 启动时自动恢复最后打开的文件
+    tryAutoRestore();
+  }
+
+  async function tryAutoRestore() {
+    if (!fsSupported()) return;
+    if (!state.currentFileName) return;
+    const meta = state.recentFiles.find(
+      (f) => f.name === state.currentFileName
+    );
+    if (!meta || !meta.handleKey) return;
+    try {
+      const handle = await fsGet(meta.handleKey);
+      if (!handle) {
+        // handle 已失效（清浏览器数据 / 句柄过期），从列表移除
+        await removeRecentFile(meta.name);
+        renderAll();
+        return;
       }
-    }, 800);
+      // 不弹 prompt，只查询当前权限
+      let granted = false;
+      try {
+        const cur = await handle.queryPermission({ mode: "read" });
+        granted = cur === "granted";
+      } catch (_) {
+        granted = false;
+      }
+      if (!granted) {
+        // 显示 banner 让用户点"重新授权"
+        $("#fs-banner").hidden = false;
+        renderFileMeta();
+        return;
+      }
+      await loadChaptersFromHandle(handle, meta);
+    } catch (e) {
+      console.error("自动恢复失败", e);
+    }
   }
 
   if (document.readyState === "loading") {

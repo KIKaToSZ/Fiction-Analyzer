@@ -12,33 +12,46 @@
       <!-- ===================== 左栏 ===================== -->
       <aside class="pane pane-left">
         <header class="pane-header">
-          <div class="ds-row">
-            <select id="ds-select" class="ds-select" title="切换数据源"></select>
-            <button id="ds-new" class="icon-btn" title="新建数据源（绑定飞书表格）">
+          <!-- 文件路径下拉（替代数据源选择） -->
+          <div class="file-row">
+            <select id="file-select" class="file-select" title="切换文件" aria-label="切换文件">
+              <option value="">— 暂无文件 —</option>
+            </select>
+            <button id="file-pick" class="icon-btn" title="从本地选择一个 .xlsx 文件">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="12" y1="18" x2="12" y2="12" />
+                <line x1="9" y1="15" x2="15" y2="15" />
               </svg>
             </button>
-            <button id="ds-open" class="icon-btn" title="打开当前数据源对应的飞书表格">
+            <button id="file-pick-dir" class="icon-btn" title="从本地选择一个文件夹（列出所有 .xlsx）">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
             </button>
-            <button id="ds-manage" class="icon-btn" title="管理数据源">
+            <button id="file-remove" class="icon-btn" title="从列表中移除当前文件（不删除磁盘文件）" hidden>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
           </div>
 
-          <div class="ds-meta">
-            <span class="ds-status" id="ds-status" title="同步状态"></span>
-            <span id="ds-meta-text" class="ds-meta-text">--</span>
-            <a id="ds-bind-link" class="ds-bind-link" hidden>点此绑定飞书表格</a>
+          <!-- 权限恢复横幅（handle 存在但权限过期时显示） -->
+          <div id="fs-banner" class="fs-banner" hidden>
+            <span class="fs-banner-text">需要重新授权才能读取本地文件</span>
+            <button id="fs-grant" class="primary-btn primary-btn-sm">重新授权</button>
+          </div>
+
+          <!-- 浏览器不支持 File System Access API 时的提示 -->
+          <div id="fs-unsupported" class="fs-banner fs-banner-warn" hidden>
+            <span class="fs-banner-text">当前浏览器不支持 File System Access API，请用 Chrome / Edge / Arc 等 Chromium 内核浏览器打开本页。</span>
+          </div>
+
+          <div class="file-meta">
+            <span class="file-status" id="file-status" title="访问权限状态"></span>
+            <span id="file-meta-text" class="file-meta-text">请选择一个本地 xlsx 文件</span>
           </div>
 
           <div class="toolbar">
@@ -49,21 +62,13 @@
               </svg>
               <span>新增</span>
             </button>
-            <button id="btn-import" class="tool-btn" title="从飞书表格复制后粘贴导入">
+            <button id="btn-import" class="tool-btn" title="从 xlsx 文件导入章节">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
               <span>导入</span>
-            </button>
-            <button id="btn-sync" class="tool-btn" title="从飞书多维表格同步最新数据">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" class="sync-icon">
-                <polyline points="23 4 23 10 17 10" />
-                <polyline points="1 20 1 14 7 14" />
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-              </svg>
-              <span id="sync-label">同步</span>
             </button>
             <button id="btn-sort" class="tool-btn" title="切换正/倒序">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
@@ -78,7 +83,7 @@
 
         <footer class="pane-footer">
           <span id="chapter-count" class="muted">0 章</span>
-          <button id="btn-clear" class="link-btn" title="清空当前数据源的所有章节">清空</button>
+          <button id="btn-clear" class="link-btn" title="清空当前文件下的所有章节">清空</button>
         </footer>
       </aside>
 
@@ -189,135 +194,18 @@
                   <input id="file-import" type="file" accept="application/json" hidden />
                 </div>
               </div>
-              <div class="setting-row setting-row-stack">
-                <label>飞书代理地址 <span class="muted hint">（高级，留空用默认本地代理）</span></label>
-                <input
-                  id="feishu-proxy"
-                  type="text"
-                  spellcheck="false"
-                  autocomplete="off"
-                  placeholder="http://localhost:8787/api/feishu"
-                />
-                <p class="muted hint">
-                  飞书 OpenAPI 不允许浏览器跨域直调，<strong>必须经本机代理</strong>。
-                  默认端口 8787：在项目目录跑 <code>npm run proxy</code> 启动。
-                  留空 = 用默认 <code>http://localhost:8787/api/feishu</code>。
-                </p>
-              </div>
             </div>
           </details>
         </footer>
       </aside>
     </div>
 
-    <!-- ===================== 弹窗：管理数据源 ===================== -->
-    <div id="modal-manage" class="modal" hidden>
-      <div class="modal-backdrop" data-close></div>
-      <div class="modal-card">
-        <header class="modal-header">
-          <h3>管理数据源</h3>
-          <button class="icon-btn" data-close>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </header>
-        <div class="modal-body">
-          <ul id="ds-list" class="ds-list"></ul>
-          <button id="btn-ds-add" class="secondary-btn">+ 新增数据源</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===================== 弹窗：编辑数据源 ===================== -->
-    <div id="modal-ds-edit" class="modal" hidden>
-      <div class="modal-backdrop" data-close></div>
-      <div class="modal-card modal-card-narrow">
-        <header class="modal-header">
-          <h3 id="ds-edit-title">新增数据源</h3>
-          <button class="icon-btn" data-close>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </header>
-        <div class="modal-body">
-          <div class="form-field">
-            <label>名称</label>
-            <input id="ds-name" type="text" placeholder="例如：示例小说 · 墨笺" />
-          </div>
-          <div class="form-field">
-            <label>飞书表格链接</label>
-            <input id="ds-url" type="url" placeholder="https://xxx.feishu.cn/base/..." />
-          </div>
-          <div class="form-field">
-            <label>备注</label>
-            <input id="ds-note" type="text" placeholder="可选：来源 / 用途" />
-          </div>
-          <details class="form-collapsible" id="ds-feishu-config">
-            <summary>飞书同步配置（自动从多维表格拉取章节用）</summary>
-
-            <div class="sync-guide">
-              <p class="sync-guide-title">这俩凭证是干什么的？</p>
-              <p>填写后，本工具会用 <strong>App ID + App Secret</strong> 经本机代理调飞书 OpenAPI，把你指定的飞书多维表格里的「章节正文」子表自动拉进页面。打开页面就能看到最新内容，不用每次手动导入。</p>
-              <p class="sync-guide-steps">
-                <strong>首次配置共 4 步：</strong>
-                <span>① 在项目目录跑 <code>npm run proxy</code> 启动本地代理（默认 <code>http://localhost:8787</code>）——浏览器无法直连飞书 OpenAPI（CORS 拦截），必须经代理中转</span>
-                <span>② 去 <a href="https://open.feishu.cn/app" target="_blank" rel="noopener">飞书开放平台</a> 创建「企业自建应用」，复制 App ID 和 App Secret 填到下面</span>
-                <span>③ 在应用的「权限管理」里开通 <code>bitable:app:readonly</code>（多维表格只读权限）</span>
-                <span>④ 把多维表格「分享给该应用」（表格右上角 ··· → 添加文档应用）</span>
-              </p>
-              <p class="sync-guide-tips">
-                <span class="sync-guide-dot sync-guide-dot-warn">安全</span>
-                凭证只存在你当前浏览器的 localStorage，不会上传任何服务器；不要把页面分享给同事用同一份凭证。
-                代理只做透明转发，不记录任何 Authorization / 请求体；Secret 始终留在浏览器。
-                <a href="https://open.feishu.cn/document/server-docs/docs/bitable-v1/notification" target="_blank" rel="noopener">查看飞书多维表格 API 文档</a>
-              </p>
-            </div>
-
-            <div class="form-field">
-              <label>App ID <span class="muted">（应用的唯一标识）</span></label>
-              <input id="ds-app-id" type="text" placeholder="cli_xxxxxxxxxxxxxxxx" autocomplete="off" />
-            </div>
-            <div class="form-field">
-              <label>App Secret <span class="muted">（应用的密钥，调 API 用）</span></label>
-              <input id="ds-app-secret" type="password" placeholder="应用密钥" autocomplete="off" />
-              <p class="muted hint">仅保存在本地浏览器；用于获取 tenant_access_token 调飞书 OpenAPI。</p>
-            </div>
-            <div class="form-field">
-              <label>章节正文子表名</label>
-              <input id="ds-table-name" type="text" placeholder="章节正文" />
-              <p class="muted hint">多维表格中作为「章节正文」的子表名（精确匹配）。</p>
-            </div>
-            <div class="form-field">
-              <label>章节号字段名</label>
-              <input id="ds-field-no" type="text" placeholder="章节号" />
-            </div>
-            <div class="form-field">
-              <label>章节名字段名</label>
-              <input id="ds-field-title" type="text" placeholder="章节名" />
-            </div>
-            <div class="form-field">
-              <label>文章内容字段名</label>
-              <input id="ds-field-content" type="text" placeholder="文章内容" />
-            </div>
-          </details>
-          <div class="form-actions">
-            <button class="secondary-btn" data-close>取消</button>
-            <button id="btn-ds-save" class="primary-btn">保存</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===================== 弹窗：导入表格数据 ===================== -->
+    <!-- ===================== 弹窗：导入 ===================== -->
     <div id="modal-import" class="modal" hidden>
       <div class="modal-backdrop" data-close></div>
       <div class="modal-card modal-card-wide">
         <header class="modal-header">
-          <h3>导入表格数据</h3>
+          <h3>导入 xlsx 章节</h3>
           <button class="icon-btn" data-close>
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -327,7 +215,7 @@
         </header>
         <div class="modal-body">
           <p class="muted hint">
-            从飞书多维表格 / Excel 导出为 <code>.xlsx</code> 后上传。表头需包含：<strong>章节号</strong> / <strong>章节名</strong> / <strong>文章内容</strong> 三列，列顺序可任意，解析器按表头名自动识别。
+            选择一个本地 <code>.xlsx</code> 文件。表头需包含：<strong>章节号</strong> / <strong>章节名</strong> / <strong>文章内容</strong> 三列，列顺序可任意，解析器按表头名自动识别。
           </p>
 
           <!-- 主区：xlsx 上传 + 拖拽 -->
@@ -349,7 +237,7 @@
 
           <details class="import-advanced">
             <summary>或粘贴文本（Tab / 逗号 / 多空格分隔）</summary>
-            <textarea id="import-text" rows="6" placeholder="章节号\t章节名\t文章内容&#10;1\t寒江初雪\t……"></textarea>
+            <textarea id="import-text" rows="6" placeholder="章节号	章节名	文章内容&#10;1	寒江初雪	……"></textarea>
           </details>
 
           <div class="form-row">
@@ -364,7 +252,7 @@
             <button class="secondary-btn" data-close>取消</button>
             <button id="btn-import-confirm" class="primary-btn" disabled>确认导入</button>
           </div>
-        </div></div>
+        </div>
       </div>
     </div>
 
