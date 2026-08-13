@@ -264,12 +264,22 @@
 
   // 1. 获取 tenant_access_token
   async function getTenantAccessToken(appId, appSecret) {
-    const res = await fetch(`${FEISHU_API_BASE}/auth/v3/tenant_access_token/internal`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
-    });
-    const data = await res.json();
+    let res;
+    try {
+      res = await fetch(`${FEISHU_API_BASE}/auth/v3/tenant_access_token/internal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+      });
+    } catch (e) {
+      // "Failed to fetch" 在浏览器里最常见的原因：跨域（CORS）被拦截；
+      // 也有可能是网络断开 / DNS 失败 / HTTPS 证书问题 / 浏览器扩展拦截。
+      // 浏览器不允许 JS 读取具体原因，所以这里只能给通用解释。
+      throw new Error(
+        `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：飞书 OpenAPI 不支持浏览器直接调用（CORS 跨域拦截），请用 CORS 代理或改走「导入」功能。`
+      );
+    }
+    const data = await res.json().catch(() => ({}));
     if (data.code !== 0) {
       throw new Error(`获取 token 失败：${data.msg || "code=" + data.code}`);
     }
@@ -278,11 +288,18 @@
 
   // 2. 列出多维表格的所有数据表
   async function listTables(token, appToken) {
-    const res = await fetch(
-      `${FEISHU_API_BASE}/bitable/v1/apps/${appToken}/tables?page_size=100`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    const data = await res.json();
+    let res;
+    try {
+      res = await fetch(
+        `${FEISHU_API_BASE}/bitable/v1/apps/${appToken}/tables?page_size=100`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch (e) {
+      throw new Error(
+        `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：飞书 OpenAPI 跨域拦截。`
+      );
+    }
+    const data = await res.json().catch(() => ({}));
     if (data.code !== 0) {
       throw new Error(`列子表失败：${data.msg || "code=" + data.code}`);
     }
@@ -300,10 +317,17 @@
       url.searchParams.set("page_size", "500");
       url.searchParams.set("automatic_fields", "false");
       if (pageToken) url.searchParams.set("page_token", pageToken);
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      let res;
+      try {
+        res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch (e) {
+        throw new Error(
+          `网络请求失败（${e.message || "Failed to fetch"}）。最常见原因：飞书 OpenAPI 跨域拦截。`
+        );
+      }
+      const data = await res.json().catch(() => ({}));
       if (data.code !== 0) {
         throw new Error(`拉记录失败：${data.msg || "code=" + data.code}`);
       }
