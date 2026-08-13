@@ -790,6 +790,19 @@ input[type="range"]::-moz-range-thumb {
 
 
 
+.modal {
+  /* 关键：必须 fixed 铺满视口 + flex 居中，
+     否则 .modal-backdrop 的 position:absolute 会向上找定位祖先，
+     导致弹窗被限制在某个父元素（左栏、工具栏）范围内、显示在左下角 */
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
 .modal-backdrop {
   position: absolute;
   inset: 0;
@@ -920,6 +933,97 @@ input[type="range"]::-moz-range-thumb {
   font-size: 12px;
   color: var(--text-soft);
   font-weight: 500;
+}
+
+/* ---- 飞书同步配置新手引导块 ---- */
+.sync-guide {
+  margin: 10px 0 14px;
+  padding: 12px 14px;
+  background: var(--bg-soft, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--accent, #4a90e2);
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.sync-guide p {
+  margin: 0 0 6px;
+}
+
+.sync-guide p:last-child {
+  margin-bottom: 0;
+}
+
+.sync-guide-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px !important;
+}
+
+.sync-guide strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.sync-guide code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  background: var(--bg-elev);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  border: 1px solid var(--border-soft);
+}
+
+.sync-guide a {
+  color: var(--accent, #4a90e2);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.sync-guide a:hover {
+  border-bottom-color: var(--accent, #4a90e2);
+}
+
+.sync-guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 6px 0 !important;
+}
+
+.sync-guide-steps span {
+  display: block;
+  padding-left: 4px;
+}
+
+.sync-guide-tips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-soft);
+  margin-top: 8px !important;
+  font-size: 11.5px;
+  color: var(--text-soft);
+}
+
+.sync-guide-dot {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sync-guide-dot-warn {
+  background: #fff4e5;
+  color: #d97706;
+  border: 1px solid #fde0a8;
 }
 
 .form-field input {
@@ -1078,7 +1182,7 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 999px;
   font-size: 13px;
   box-shadow: var(--shadow-md);
-  z-index: 200;
+  z-index: 300; /* 高于弹窗（100），确保报错提示能压在弹窗之上 */
   animation: toast-in 200ms ease;
 }
 
