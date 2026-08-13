@@ -490,6 +490,31 @@ textarea {
   transition: opacity var(--transition), transform var(--transition);
 }
 
+.primary-btn-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: white;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity var(--transition), transform var(--transition);
+}
+
+.primary-btn-block:hover {
+  opacity: 0.9;
+}
+
+.primary-btn-block:active {
+  transform: scale(0.98);
+}
+
 .primary-btn:hover {
   opacity: 0.9;
 }

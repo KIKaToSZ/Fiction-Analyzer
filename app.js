@@ -708,11 +708,17 @@
       await openFileByName(name);
     });
 
-    $("#file-pick").addEventListener("click", async () => {
+    $("#file-pick").addEventListener("click", () => {
       if (!fsSupported()) {
         toast("当前浏览器不支持 File System Access API", "error", 4000);
         return;
       }
+      openFileModalReset();
+      showModal("modal-open-file");
+    });
+
+    // 弹窗：打开文件 — 「用浏览器选择」按钮（拿持久 handle）
+    $("#btn-open-file-pick").addEventListener("click", async () => {
       try {
         const handle = await pickXlsxFile();
         if (!handle) return;
@@ -728,6 +734,7 @@
         });
         save();
         renderAll();
+        hideModal("modal-open-file");
         await loadChaptersFromHandle(handle, { handleKey: fileKey });
       } catch (e) {
         if (e.name === "AbortError") return;
@@ -736,20 +743,133 @@
       }
     });
 
-    $("#file-pick-dir").addEventListener("click", async () => {
+    $("#file-pick-dir").addEventListener("click", () => {
       if (!fsSupported()) {
         toast("当前浏览器不支持 File System Access API", "error", 4000);
         return;
       }
+      showModal("modal-open-dir");
+    });
+
+    // 弹窗：打开文件夹 — 「用浏览器选择」按钮
+    $("#btn-open-dir-pick").addEventListener("click", async () => {
       try {
         const dirHandle = await pickDirectory();
         if (!dirHandle) return;
+        hideModal("modal-open-dir");
         await openDirectory(dirHandle);
       } catch (e) {
         if (e.name === "AbortError") return;
         console.error(e);
         toast("选择文件夹失败：" + (e.message || e), "error", 3000);
       }
+    });
+
+    // ----- 打开文件弹窗（modal-open-file） -----
+    // 弹窗状态：用户拖入或选择 xlsx 后暂存为 File 对象，本次会话可读
+    let openFilePending = null;
+
+    function openFileModalReset() {
+      openFilePending = null;
+      const info = $("#open-file-info");
+      if (info) info.hidden = true;
+      const drop = $("#open-file-drop");
+      if (drop) drop.classList.remove("is-dragover");
+      const confirm = $("#btn-open-file-confirm");
+      if (confirm) {
+        confirm.disabled = true;
+        confirm.dataset.file = "";
+      }
+      const fi = $("#file-xlsx-open");
+      if (fi) fi.value = "";
+    }
+
+    // 弹窗里拖入或选择的 xlsx：暂存为 File 对象，等用户点"确认打开"再加载
+    function setOpenFilePending(file) {
+      openFilePending = file;
+      const info = $("#open-file-info");
+      if (info) {
+        info.hidden = false;
+        info.querySelector(".import-file-name").textContent =
+          `${file.name}（${formatSize(file.size)}）`;
+      }
+      const confirm = $("#btn-open-file-confirm");
+      if (confirm) {
+        confirm.disabled = false;
+        confirm.dataset.file = "1";
+      }
+    }
+
+    // 从 File 对象加载章节（不持久化 handle，仅本次会话有效）
+    async function loadChaptersFromFile(file) {
+      try {
+        const ab = await file.arrayBuffer();
+        const result = parseXlsxFromArrayBuffer(ab);
+        const chapters = rowsToChapters(result.rows);
+        if (chapters.length === 0) {
+          toast("未能解析出任何章节，请检查表头是否包含「章节号 / 章节名 / 文章内容」", "error", 4000);
+          return;
+        }
+        state.chapters = chapters;
+        state.currentChapterId = chapters[0]?.id || null;
+        // 用文件名作 currentFileName，但不持久化到 recentFiles（无 handle）
+        state.currentFileName = file.name;
+        save();
+        renderAll();
+        hideModal("modal-open-file");
+        toast(`已读取 ${chapters.length} 章（本次会话有效）`, "info", 1500);
+      } catch (e) {
+        console.error("读取失败", e);
+        toast("读取失败：" + (e.message || e), "error", 3500);
+      }
+    }
+
+    // 拖拽 / 点击 / 键盘 触发 file input
+    const openDrop = $("#open-file-drop");
+    const openInput = $("#file-xlsx-open");
+    if (openDrop && openInput) {
+      openDrop.addEventListener("click", () => openInput.click());
+      openDrop.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openInput.click();
+        }
+      });
+      openInput.addEventListener("change", (e) => {
+        const f = e.target.files?.[0];
+        if (f) setOpenFilePending(f);
+        e.target.value = "";
+      });
+      ["dragenter", "dragover"].forEach((evt) =>
+        openDrop.addEventListener(evt, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openDrop.classList.add("is-dragover");
+        })
+      );
+      ["dragleave", "drop"].forEach((evt) =>
+        openDrop.addEventListener(evt, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openDrop.classList.remove("is-dragover");
+        })
+      );
+      openDrop.addEventListener("drop", (e) => {
+        const f = e.dataTransfer?.files?.[0];
+        if (f) setOpenFilePending(f);
+      });
+    }
+
+    $("#btn-open-file-clear")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openFileModalReset();
+    });
+
+    $("#btn-open-file-confirm")?.addEventListener("click", async () => {
+      if (!openFilePending) return;
+      const f = openFilePending;
+      openFileModalReset();
+      await loadChaptersFromFile(f);
     });
 
     $("#file-remove").addEventListener("click", async () => {
