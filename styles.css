@@ -1137,6 +1137,114 @@ input[type="range"]::-moz-range-thumb {
   margin-top: 16px;
 }
 
+/* ============================================
+   导入弹窗 - xlsx 上传区
+   ============================================ */
+.import-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 16px;
+  margin: 8px 0;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft, transparent);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  user-select: none;
+}
+
+.import-drop:hover,
+.import-drop:focus-visible {
+  border-color: var(--accent, #4f46e5);
+  background: color-mix(in srgb, var(--accent, #4f46e5) 5%, transparent);
+  outline: none;
+}
+
+.import-drop.is-dragover {
+  border-color: var(--accent, #4f46e5);
+  background: color-mix(in srgb, var(--accent, #4f46e5) 10%, transparent);
+  border-style: solid;
+}
+
+.import-drop-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.import-drop-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.import-file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  margin-top: 4px;
+  background: var(--bg-soft, rgba(0, 0, 0, 0.03));
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.import-file-info .import-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  text-decoration: underline;
+}
+
+.link-btn:hover {
+  color: var(--text);
+}
+
+.import-advanced {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.import-advanced summary {
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.import-advanced summary:hover {
+  color: var(--text);
+}
+
+#import-stats {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+#import-stats.has-error {
+  color: #c0392b;
+}
+
+#import-stats.has-success {
+  color: #2c7a4b;
+}
+
 #import-text {
   width: 100%;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;

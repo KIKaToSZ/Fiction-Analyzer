@@ -327,28 +327,51 @@
         </header>
         <div class="modal-body">
           <p class="muted hint">
-            在飞书多维表格中选中要导入的行（章节号 / 章节名 / 文章内容 三列），Ctrl/Cmd+C 复制后粘贴到下方文本框。
-            支持 Tab / 逗号 / 多空格分隔，可勾选「跳过首行表头」。
+            从飞书多维表格 / Excel 导出为 <code>.xlsx</code> 后上传。表头需包含：<strong>章节号</strong> / <strong>章节名</strong> / <strong>文章内容</strong> 三列，列顺序可任意，解析器按表头名自动识别。
           </p>
-          <textarea id="import-text" rows="6" placeholder="章节号\t章节名\t文章内容&#10;1\t寒江初雪\t……"></textarea>
+
+          <!-- 主区：xlsx 上传 + 拖拽 -->
+          <div id="import-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入 xlsx 文件">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <div class="import-drop-title">点击选择 / 拖入 .xlsx 文件</div>
+            <div class="import-drop-hint">支持 .xlsx / .xlsm 格式，单文件</div>
+            <input id="file-xlsx" type="file" accept=".xlsx,.xlsm" hidden />
+          </div>
+
+          <div id="import-file-info" class="import-file-info" hidden>
+            <span class="import-file-name"></span>
+            <button class="link-btn" id="btn-import-clear" type="button">清除</button>
+          </div>
+
+          <details class="import-advanced">
+            <summary>或粘贴文本（Tab / 逗号 / 多空格分隔）</summary>
+            <textarea id="import-text" rows="6" placeholder="章节号\t章节名\t文章内容&#10;1\t寒江初雪\t……"></textarea>
+          </details>
+
           <div class="form-row">
             <label class="check">
               <input id="import-skip-header" type="checkbox" checked />
               <span>跳过首行表头</span>
             </label>
+            <span id="import-stats" class="muted" aria-live="polite"></span>
           </div>
           <div id="import-preview" class="import-preview"></div>
           <div class="form-actions">
             <button class="secondary-btn" data-close>取消</button>
             <button id="btn-import-confirm" class="primary-btn" disabled>确认导入</button>
           </div>
-        </div>
+        </div></div>
       </div>
     </div>
 
     <!-- ===================== Toast ===================== -->
     <div id="toast" class="toast" hidden></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

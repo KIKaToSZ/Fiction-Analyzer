@@ -948,24 +948,87 @@
   /* ============================================================
      事件：导入
      ============================================================ */
+  // 当前选中的 xlsx 文件（用于解析 + 切 sheet）
+  let importXlsxState = null; // { fileName, workbook, sheetName, rows2d }
+
   function bindImportEvents() {
     $("#btn-import").addEventListener("click", () => {
+      // 重置弹窗状态
       $("#import-text").value = "";
       $("#import-skip-header").checked = true;
       $("#import-preview").innerHTML = "";
       $("#btn-import-confirm").disabled = true;
       $("#btn-import-confirm").dataset.parsed = "";
+      importXlsxState = null;
+      $("#import-file-info").hidden = true;
+      $("#import-drop").classList.remove("is-dragover");
+      setImportStats(null);
       showModal("modal-import");
-      setTimeout(() => $("#import-text").focus(), 50);
     });
 
+    // === xlsx 主区：点击 / 拖拽 / 键盘 ===
+    const drop = $("#import-drop");
+    const fileInput = $("#file-xlsx");
+    drop.addEventListener("click", () => fileInput.click());
+    drop.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+    fileInput.addEventListener("change", (e) => {
+      const f = e.target.files?.[0];
+      if (f) handleXlsxFile(f);
+      e.target.value = ""; // 允许同名重选
+    });
+    ["dragenter", "dragover"].forEach((evt) =>
+      drop.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        drop.classList.add("is-dragover");
+      })
+    );
+    ["dragleave", "drop"].forEach((evt) =>
+      drop.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        drop.classList.remove("is-dragover");
+      })
+    );
+    drop.addEventListener("drop", (e) => {
+      const f = e.dataTransfer?.files?.[0];
+      if (f) handleXlsxFile(f);
+    });
+
+    // 清除已选文件
+    $("#btn-import-clear").addEventListener("click", (e) => {
+      e.stopPropagation();
+      importXlsxState = null;
+      $("#import-file-info").hidden = true;
+      $("#import-preview").innerHTML = "";
+      $("#btn-import-confirm").disabled = true;
+      $("#btn-import-confirm").dataset.parsed = "";
+      setImportStats(null);
+    });
+
+    // 文本粘贴路径
     $("#import-text").addEventListener("input", () => {
-      const rows = parseImport($("#import-text").value);
+      // 文本输入会清掉 xlsx 选中状态
+      if (importXlsxState && $("#import-text").value.trim()) {
+        importXlsxState = null;
+        $("#import-file-info").hidden = true;
+      }
+      const rows = parseImportText($("#import-text").value);
       renderImportPreview(rows);
-      $("#btn-import-confirm").disabled = rows.length === 0;
+      $("#btn-import-confirm").disabled = rows.filter((r) => !r._error).length === 0;
       $("#btn-import-confirm").dataset.parsed = JSON.stringify(rows);
+      setImportStats(rows);
     });
 
+    // 切表头跳过
+    $("#import-skip-header").addEventListener("change", refreshImportPreview);
+
+    // 确认导入
     $("#btn-import-confirm").addEventListener("click", () => {
       const ds = getCurrentDataSource();
       if (!ds) {
@@ -974,7 +1037,7 @@
       }
       const raw = $("#btn-import-confirm").dataset.parsed;
       if (!raw) return;
-      const rows = JSON.parse(raw);
+      const rows = JSON.parse(raw).filter((r) => !r._error);
       if (rows.length === 0) {
         toast("没有可导入的内容", "error");
         return;
@@ -993,7 +1056,6 @@
           added++;
         }
       });
-      // 按 no 排序
       ds.chapters.sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0));
       save();
       hideModal("modal-import");
@@ -1002,15 +1064,156 @@
     });
   }
 
-  function parseImport(text) {
+  // 把 Excel 单元格值解包成纯字符串
+  function unpackCell(v) {
+    if (v == null) return "";
+    if (Array.isArray(v)) return v.map(unpackCell).join("");
+    if (typeof v === "object") {
+      if (typeof v.text === "string") return v.text;
+      if (v.richText) return v.richText.map((r) => r.text || "").join("");
+      if (v instanceof Date) {
+        // 日期格式化为 ISO 日期
+        try {
+          return v.toISOString().slice(0, 10);
+        } catch (_) {
+          return String(v);
+        }
+      }
+      try {
+        return JSON.stringify(v);
+      } catch (_) {
+        return String(v);
+      }
+    }
+    return String(v);
+  }
+
+  // xlsx 解析：按表头识别 no/title/content
+  function parseXlsxRows(rows2d) {
+    if (!rows2d || rows2d.length === 0) return { rows: [], columns: null };
+    // 找最长的有效行作为表头（防止第一行大部分为空）
+    const headerIdx = findHeaderRowIndex(rows2d);
+    const header = rows2d[headerIdx].map((c) => unpackCell(c).trim());
+    const dataRows = rows2d.slice(headerIdx + 1);
+    // 列识别
+    const idxNo = findColumnIndex(header, FIELD_FALLBACKS.no);
+    const idxTitle = findColumnIndex(header, FIELD_FALLBACKS.title);
+    const idxContent = findColumnIndex(header, FIELD_FALLBACKS.content);
+    const out = [];
+    for (let i = 0; i < dataRows.length; i++) {
+      const r = dataRows[i];
+      if (!r || r.every((c) => unpackCell(c).trim() === "")) continue; // 跳过空行
+      const out2 = { _line: i + 1 + headerIdx + 1, _error: null };
+      if (idxNo < 0 || idxTitle < 0 || idxContent < 0) {
+        out2._error = `表头缺少关键列（需含 章节号/章节名/文章内容），当前表头：${header.join(" | ")}`;
+        out.push(out2);
+        continue;
+      }
+      const noRaw = unpackCell(r[idxNo]).trim();
+      const no = Number(noRaw);
+      if (!Number.isFinite(no)) {
+        out2._error = `章节号不是有效数字："${noRaw}"`;
+        out.push(out2);
+        continue;
+      }
+      out2.no = no;
+      out2.title = unpackCell(r[idxTitle]).trim();
+      out2.content = unpackCell(r[idxContent]);
+      out.push(out2);
+    }
+    return {
+      rows: out,
+      columns: { no: idxNo, title: idxTitle, content: idxContent, header },
+    };
+  }
+
+  function findHeaderRowIndex(rows2d) {
+    // 默认第一行就是表头
+    return 0;
+  }
+
+  function findColumnIndex(header, candidates) {
+    // 归一化：去空白 + 小写，兼容 "章节号 " / " 章节号" / 飞书字段名带空格
+    const norm = (s) => String(s || "").replace(/\s+/g, "").toLowerCase();
+    const nHeader = header.map(norm);
+    const nCands = candidates.map(norm);
+    // 完全匹配优先
+    for (let i = 0; i < nHeader.length; i++) {
+      if (nCands.includes(nHeader[i])) return i;
+    }
+    // 模糊匹配（包含关系），命中唯一时返回
+    const hits = [];
+    for (let i = 0; i < nHeader.length; i++) {
+      const h = nHeader[i];
+      if (!h) continue;
+      for (const c of nCands) {
+        if (h.includes(c) || c.includes(h)) {
+          hits.push(i);
+          break;
+        }
+      }
+    }
+    if (hits.length === 1) return hits[0];
+    return -1;
+  }
+
+  function handleXlsxFile(file) {
+    if (!window.XLSX) {
+      toast("xlsx 解析库未加载，请检查网络", "error");
+      return;
+    }
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    if (!["xlsx", "xlsm"].includes(ext)) {
+      toast(`不支持的文件类型：.${ext}（仅支持 .xlsx / .xlsm）`, "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = new Uint8Array(reader.result);
+        const wb = XLSX.read(data, { type: "array", cellDates: true });
+        const sheetName = wb.SheetNames[0];
+        if (!sheetName) {
+          toast("xlsx 内没有可用的 sheet", "error");
+          return;
+        }
+        const sheet = wb.Sheets[sheetName];
+        const rows2d = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
+        importXlsxState = { fileName: file.name, workbook: wb, sheetName, rows2d };
+        // UI
+        const info = $("#import-file-info");
+        info.hidden = false;
+        info.querySelector(".import-file-name").textContent = `${file.name} · sheet: ${sheetName} · ${rows2d.length} 行`;
+        // 文本清空（互斥）
+        $("#import-text").value = "";
+        // 走「按表头识别」逻辑，忽略「跳过首行表头」复选框
+        const result = parseXlsxRows(rows2d);
+        renderImportPreview(result.rows);
+        const okCount = result.rows.filter((r) => !r._error).length;
+        $("#btn-import-confirm").disabled = okCount === 0;
+        $("#btn-import-confirm").dataset.parsed = JSON.stringify(result.rows);
+        setImportStats(result.rows);
+        if (result.columns && (result.columns.no < 0 || result.columns.title < 0 || result.columns.content < 0)) {
+          toast("表头未识别到所有关键列，已在预览中标记", "warn", 3000);
+        } else {
+          toast(`已解析 ${result.rows.length} 行（成功 ${okCount}）`, "info", 1800);
+        }
+      } catch (err) {
+        console.error(err);
+        toast("xlsx 解析失败：" + (err.message || err), "error");
+      }
+    };
+    reader.onerror = () => toast("读取文件失败", "error");
+    reader.readAsArrayBuffer(file);
+  }
+
+  // 文本解析（向后兼容：固定列顺序 no/title/content）
+  function parseImportText(text) {
     if (!text || !text.trim()) return [];
     const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
     if (lines.length === 0) return [];
-
-    // 尝试自动检测分隔符：Tab 优先，其次多空格，最后逗号
     const detectSep = (sample) => {
       if (sample.includes("\t")) return "\t";
-      // 多空格分隔（避免单空格被误判为标题内的空格）
       if (/ {2,}/.test(sample)) return / {2,}/;
       if (sample.includes(",")) return ",";
       return /\s+/;
@@ -1018,40 +1221,92 @@
     const sep = detectSep(lines[0]);
     const splitLine = (line) =>
       sep instanceof RegExp ? line.split(sep) : line.split(sep);
-
     const skipHeader = $("#import-skip-header").checked;
     const startIdx = skipHeader ? 1 : 0;
-
     const out = [];
     for (let i = startIdx; i < lines.length; i++) {
       const parts = splitLine(lines[i]).map((s) => s.trim());
-      if (parts.length < 2) continue;
+      const o = { _line: i + 1, _error: null };
+      if (parts.length < 3) {
+        o._error = `列数不足（需章节号/章节名/文章内容 3 列），实际 ${parts.length} 列`;
+        out.push(o);
+        continue;
+      }
       const no = Number(parts[0]);
-      if (!Number.isFinite(no)) continue;
-      // 标题在第 2 列，内容是第 3 列往后（可能含分隔符）
-      const title = parts[1] || "";
-      const content = parts.slice(2).join(" ").trim();
-      out.push({ no, title, content });
+      if (!Number.isFinite(no)) {
+        o._error = `章节号不是有效数字："${parts[0]}"`;
+        out.push(o);
+        continue;
+      }
+      o.no = no;
+      o.title = parts[1] || "";
+      o.content = parts.slice(2).join(" ").trim();
+      out.push(o);
     }
     return out;
   }
 
+  // 重新解析（切换「跳过表头」时）
+  function refreshImportPreview() {
+    if (importXlsxState) {
+      const result = parseXlsxRows(importXlsxState.rows2d);
+      renderImportPreview(result.rows);
+      const okCount = result.rows.filter((r) => !r._error).length;
+      $("#btn-import-confirm").disabled = okCount === 0;
+      $("#btn-import-confirm").dataset.parsed = JSON.stringify(result.rows);
+      setImportStats(result.rows);
+    } else {
+      const rows = parseImportText($("#import-text").value);
+      renderImportPreview(rows);
+      $("#btn-import-confirm").disabled = rows.filter((r) => !r._error).length === 0;
+      $("#btn-import-confirm").dataset.parsed = JSON.stringify(rows);
+      setImportStats(rows);
+    }
+  }
+
+  function setImportStats(rows) {
+    const el = $("#import-stats");
+    if (!el) return;
+    if (!rows || rows.length === 0) {
+      el.textContent = "";
+      el.className = "muted";
+      return;
+    }
+    const ok = rows.filter((r) => !r._error).length;
+    const err = rows.length - ok;
+    el.classList.remove("has-error", "has-success");
+    if (err === 0) {
+      el.classList.add("has-success");
+      el.textContent = `✓ ${ok} 行可导入`;
+    } else {
+      el.classList.add("has-error");
+      el.textContent = `✓ ${ok} 行 / ✗ ${err} 行解析失败`;
+    }
+  }
+
   function renderImportPreview(rows) {
     const wrap = $("#import-preview");
-    if (rows.length === 0) {
+    if (!rows || rows.length === 0) {
       wrap.innerHTML = "";
       return;
     }
     wrap.innerHTML = rows
-      .map(
-        (r) => `
+      .map((r) => {
+        if (r._error) {
+          return `
+        <div class="preview-row preview-error" title="${escapeHtml(r._error)}">
+          <span class="preview-no">#${r._line || "-"}</span>
+          <span class="preview-title">⚠ ${escapeHtml(r._error)}</span>
+          <span class="preview-len">失败</span>
+        </div>`;
+        }
+        return `
         <div class="preview-row">
           <span class="preview-no">${escapeHtml(String(r.no))}</span>
           <span class="preview-title" title="${escapeHtml(r.title)}">${escapeHtml(r.title || "（无标题）")}</span>
           <span class="preview-len">${r.content.length}字</span>
-        </div>
-      `
-      )
+        </div>`;
+      })
       .join("");
   }
 
