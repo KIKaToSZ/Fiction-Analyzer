@@ -820,6 +820,7 @@ input[type="range"]::-moz-range-thumb {
   max-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
+  min-height: 0; /* 配合 .modal-body 的 flex:1，让 flex 收缩生效 */
   animation: modal-in 200ms ease;
 }
 
@@ -859,6 +860,12 @@ input[type="range"]::-moz-range-thumb {
 .modal-body {
   padding: 16px 20px;
   overflow-y: auto;
+  /* 关键：必须 flex:1 + min-height:0，
+     否则 form 内容（特别是展开【飞书同步配置】后）超过 modal-card 高度时，
+     整个 modal-body 会撑破 .modal-card 的 max-height: calc(100vh - 64px)，
+     底部的【取消 / 保存】按钮被推到视口外，看起来"未在中央显示" */
+  flex: 1;
+  min-height: 0;
 }
 
 /* ---- 数据源列表 ---- */
