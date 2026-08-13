@@ -1288,6 +1288,15 @@
       }
     });
 
+    // data-close 委托：点击带 [data-close] 的元素关闭最近的 .modal
+    // 覆盖弹窗背景遮罩、关闭按钮、取消按钮（HTML 里都标了 data-close）
+    document.addEventListener("click", (e) => {
+      const t = e.target.closest("[data-close]");
+      if (!t) return;
+      const modal = t.closest(".modal");
+      if (modal) modal.hidden = true;
+    });
+
     // 启动时自动恢复最后打开的文件
     tryAutoRestore();
   }
