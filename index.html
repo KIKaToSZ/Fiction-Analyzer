@@ -79,11 +79,12 @@
           </div>
         </header>
 
+        <div id="sheet-tabs" class="sheet-tabs" hidden role="tablist" aria-label="工作表切换"></div>
+
         <ul id="chapter-list" class="chapter-list"></ul>
 
         <footer class="pane-footer">
           <span id="chapter-count" class="muted">0 章</span>
-          <button id="btn-clear" class="link-btn" title="清空当前文件下的所有章节">清空</button>
         </footer>
       </aside>
 
@@ -239,6 +240,13 @@
             <summary>或粘贴文本（Tab / 逗号 / 多空格分隔）</summary>
             <textarea id="import-text" rows="6" placeholder="章节号	章节名	文章内容&#10;1	寒江初雪	……"></textarea>
           </details>
+
+          <div id="import-sheet-wrap" class="form-row form-row-sheets" hidden>
+            <label class="check">
+              <span>来源 sheet：</span>
+              <select id="import-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
+            </label>
+          </div>
 
           <div class="form-row">
             <label class="check">

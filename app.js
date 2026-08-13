@@ -10,7 +10,7 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
 
@@ -77,12 +77,15 @@
   };
 
   /* ============================================================
-     状态（schema v3 - 单文件，无数据源概念）
+     状态（schema v4 - 多 sheet 读写）
      ============================================================ */
   const state = {
     schema: SCHEMA_VERSION,
-    chapters: [],
+    chapters: [], // [{id, no, title, content, sheet}]
     currentChapterId: null,
+    currentSheet: null, // 当前激活的 sheet 名；无文件时为 null
+    sheets: [], // [{name, columns, rowCount, ok}]  文件打开后填入
+    sheetsRaw: [], // [{name, rows2d}]           文件打开后填入，用于写回非章节 sheet
     recentFiles: [], // [{name, lastOpened, mtime, size, handleKey, isMigrated, isDirectory}]
     currentFileName: null,
     theme: { ...DEFAULT_THEME },
@@ -97,6 +100,7 @@
       schema: SCHEMA_VERSION,
       chapters: state.chapters,
       currentChapterId: state.currentChapterId,
+      currentSheet: state.currentSheet,
       recentFiles: state.recentFiles.map((f) => ({
         name: f.name,
         lastOpened: f.lastOpened,
@@ -163,6 +167,21 @@
       state.currentFileName = data.currentFileName || null;
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
       state.ui = { sort: "asc", ...(data.ui || {}) };
+
+      // v3 → v4 迁移：旧章节无 sheet 字段，补 "Sheet1" 占位
+      let needResave = false;
+      for (const c of state.chapters) {
+        if (!c.sheet) {
+          c.sheet = "Sheet1";
+          needResave = true;
+        }
+      }
+      // currentSheet 迁移：取第一个章节的 sheet
+      if (!state.currentSheet) {
+        state.currentSheet = state.chapters[0]?.sheet || null;
+        needResave = true;
+      }
+      if (needResave) save();
     } catch (e) {
       console.error("读取失败，使用默认状态", e);
     }
@@ -324,6 +343,9 @@
       state.currentFileName = null;
       state.chapters = [];
       state.currentChapterId = null;
+      state.currentSheet = null;
+      state.sheets = [];
+      state.sheetsRaw = [];
     }
     save();
   }
@@ -338,7 +360,10 @@
   }
 
   function getSortedChapters() {
-    const arr = [...state.chapters];
+    const cur = state.currentSheet;
+    const arr = state.chapters.filter(
+      (c) => !cur || c.sheet === cur
+    );
     arr.sort((a, b) => {
       const an = Number(a.no) || 0;
       const bn = Number(b.no) || 0;
@@ -409,6 +434,52 @@
       banner.hidden = false;
       removeBtn.hidden = false;
     }
+  }
+
+  function renderSheetTabs() {
+    const wrap = $("#sheet-tabs");
+    if (!wrap) return;
+    if (!state.currentFileName || state.sheets.length === 0) {
+      wrap.hidden = true;
+      wrap.innerHTML = "";
+      return;
+    }
+    wrap.hidden = false;
+    const counts = {};
+    for (const c of state.chapters) {
+      counts[c.sheet] = (counts[c.sheet] || 0) + 1;
+    }
+    wrap.innerHTML = state.sheets
+      .map((s) => {
+        const active = s.name === state.currentSheet ? "active" : "";
+        const count = counts[s.name] || 0;
+        const badge = !s.ok
+          ? `<span class="sheet-tab-count" title="该 sheet 没有匹配的章节表头">⚠</span>`
+          : count > 0
+            ? `<span class="sheet-tab-count">${count}</span>`
+            : "";
+        return `<button class="sheet-tab ${active}" data-sheet="${escapeHtml(
+          s.name
+        )}" role="tab" aria-selected="${s.name === state.currentSheet}">${escapeHtml(
+          s.name
+        )}${badge}</button>`;
+      })
+      .join("");
+    // 绑定点击
+    $$(".sheet-tab", wrap).forEach((b) =>
+      b.addEventListener("click", () => {
+        const name = b.dataset.sheet;
+        if (!name || name === state.currentSheet) return;
+        state.currentSheet = name;
+        // 把当前章节切到当前 sheet 的第一个（如果有）
+        const firstInSheet = state.chapters
+          .filter((c) => c.sheet === name)
+          .sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0))[0];
+        state.currentChapterId = firstInSheet ? firstInSheet.id : null;
+        save();
+        renderAll();
+      })
+    );
   }
 
   function renderChapterList() {
@@ -485,6 +556,7 @@
   function renderAll() {
     renderFileSelect();
     renderFileMeta();
+    renderSheetTabs();
     renderChapterList();
     renderEditor();
     renderTheme();
@@ -523,11 +595,39 @@
   async function loadChaptersFromHandle(handle, meta) {
     try {
       const ab = await readFileAsArrayBuffer(handle);
-      const result = parseXlsxFromArrayBuffer(ab);
-      const chapters = rowsToChapters(result.rows);
+      const { sheets } = parseXlsxAllSheets(ab);
+      const allChapters = [];
+      for (const s of sheets) {
+        if (!s.ok) continue;
+        for (const ch of rowsToChapters(s.parsedRows, s.name)) {
+          allChapters.push(ch);
+        }
+      }
       const desc = await describeFile(handle);
-      state.chapters = chapters;
-      state.currentChapterId = chapters[0]?.id || null;
+      state.chapters = allChapters;
+      state.sheets = sheets.map((s) => ({
+        name: s.name,
+        columns: s.columns,
+        rowCount: s.rowCount,
+        ok: s.ok,
+      }));
+      state.sheetsRaw = sheets.map((s) => ({ name: s.name, rows2d: s.rows2d }));
+      // 选择默认 sheet：优先 ok 状态且章节最多的
+      const okSheets = state.sheets.filter((s) => s.ok);
+      const candidate = okSheets.length > 0 ? okSheets[0] : state.sheets[0];
+      const countBySheet = {};
+      for (const c of allChapters) {
+        countBySheet[c.sheet] = (countBySheet[c.sheet] || 0) + 1;
+      }
+      const best =
+        okSheets.length > 0
+          ? okSheets.sort(
+              (a, b) => (countBySheet[b.name] || 0) - (countBySheet[a.name] || 0)
+            )[0]
+          : candidate;
+      state.currentSheet = best ? best.name : null;
+      state.currentChapterId =
+        allChapters.find((c) => c.sheet === state.currentSheet)?.id || null;
       state.currentFileName = handle.name;
       upsertRecentFile({
         name: handle.name,
@@ -538,11 +638,194 @@
       });
       save();
       renderAll();
-      toast(`已读取 ${chapters.length} 章`, "info", 1500);
+      const okCount = state.sheets.filter((s) => s.ok).length;
+      const total = state.sheets.length;
+      toast(
+        `已读取 ${allChapters.length} 章（${okCount}/${total} 个有效 sheet）`,
+        "info",
+        1500
+      );
     } catch (e) {
       console.error("读取失败", e);
       toast("读取失败：" + (e.message || e), "error", 3500);
     }
+  }
+
+  /* ============================================================
+     写文件 - 把当前 state.chapters 写回 xlsx
+     - 有 file handle：直接写回原文件
+     - 无 handle：作为下载文件提供
+     ============================================================ */
+  async function ensureWritePermission(handle, interactive = true) {
+    if (!handle) return false;
+    if (handle.queryPermission) {
+      try {
+        const cur = await handle.queryPermission({ mode: "readwrite" });
+        if (cur === "granted") return true;
+      } catch (_) {
+        // 某些浏览器实现不支持 readwrite，fallback
+      }
+      if (!interactive) return false;
+      if (handle.requestPermission) {
+        try {
+          const next = await handle.requestPermission({ mode: "readwrite" });
+          return next === "granted";
+        } catch (_) {
+          return false;
+        }
+      }
+    }
+    return false;
+  }
+
+  function buildSheetAoa(sheetMeta, rows2dBase) {
+    // rows2dBase = 原始 rows2d（包含 header）
+    // 返回新的 rows2d：保留 header（如果原文件有） + 最新的章节行
+    const header = rows2dBase && rows2dBase[0] ? rows2dBase[0].slice() : null;
+    if (!sheetMeta || !sheetMeta.ok) {
+      // 非章节 sheet，原样返回
+      return rows2dBase || [];
+    }
+    const cols = sheetMeta.columns || {};
+    const noIdx = cols.no;
+    const titleIdx = cols.title;
+    const contentIdx = cols.content;
+    if (noIdx < 0 || titleIdx < 0 || contentIdx < 0) {
+      return rows2dBase || [];
+    }
+    // 用原 header 的列数决定总列宽（如果原 header 缺失，用三列）
+    const totalCols = header
+      ? Math.max(header.length, noIdx, titleIdx, contentIdx) + 1
+      : 3;
+    // 取该 sheet 的章节并按 no 升序
+    const chs = state.chapters
+      .filter((c) => c.sheet === sheetMeta.name)
+      .sort((a, b) => (Number(a.no) || 0) - (Number(b.no) || 0));
+    // 构造新 rows
+    const out = [];
+    if (header) {
+      const normalized = header.slice(0, totalCols);
+      while (normalized.length < totalCols) normalized.push("");
+      out.push(normalized);
+    } else {
+      out.push(["章节号", "章节名", "文章内容"]);
+    }
+    for (const c of chs) {
+      const row = new Array(totalCols).fill("");
+      row[noIdx] = c.no;
+      row[titleIdx] = c.title || "";
+      row[contentIdx] = c.content || "";
+      out.push(row);
+    }
+    return out;
+  }
+
+  function buildXlsxArrayBuffer() {
+    if (!window.XLSX) throw new Error("xlsx 解析库未加载");
+    if (!state.currentFileName) throw new Error("当前没有打开的文件");
+    if (state.sheetsRaw.length === 0)
+      throw new Error("缺少原始 sheet 缓存，无法写回");
+    const wb = XLSX.utils.book_new();
+    for (const raw of state.sheetsRaw) {
+      const meta = state.sheets.find((s) => s.name === raw.name);
+      const aoa = buildSheetAoa(meta, raw.rows2d);
+      // aoa 是二维数组，用 sheet_add_aoa 添加
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      // 用安全名（≤31 字符）
+      const safeName = raw.name.slice(0, 31);
+      XLSX.utils.book_append_sheet(wb, ws, safeName);
+    }
+    const ab = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    return ab;
+  }
+
+  async function saveToFile({ silent = false } = {}) {
+    if (!state.currentFileName) {
+      if (!silent) toast("当前没有打开的文件", "error");
+      return false;
+    }
+    if (state.sheetsRaw.length === 0) {
+      if (!silent) toast("没有可写的 sheet 缓存，请重新打开文件", "error");
+      return false;
+    }
+    let ab;
+    try {
+      ab = buildXlsxArrayBuffer();
+    } catch (e) {
+      console.error("构造 xlsx 失败", e);
+      if (!silent) toast("构造 xlsx 失败：" + (e.message || e), "error", 3000);
+      return false;
+    }
+
+    const meta = state.recentFiles.find(
+      (f) => f.name === state.currentFileName
+    );
+    if (meta && meta.handleKey && !meta.isMigrated) {
+      // 优先用持久化 handle 写回
+      try {
+        const handle = await fsGet(meta.handleKey);
+        if (!handle) {
+          // handle 失效 → 走下载
+          triggerDownload(ab, state.currentFileName);
+          if (!silent) toast("原文件访问权限已失效，已下载更新版", "info", 2500);
+          return true;
+        }
+        const granted = await ensureWritePermission(handle, true);
+        if (!granted) {
+          if (!silent) toast("未获得写入权限，已下载更新版", "info", 2500);
+          triggerDownload(ab, state.currentFileName);
+          return true;
+        }
+        const writable = await handle.createWritable();
+        await writable.write(ab);
+        await writable.close();
+        if (!silent) toast("已写入 xlsx 文件", "info", 1500);
+        return true;
+      } catch (e) {
+        if (e && e.name === "AbortError") {
+          if (!silent) toast("已取消写入", "info", 1500);
+          return false;
+        }
+        console.error("写入文件失败", e);
+        if (!silent) {
+          // 写入失败 fallback 下载
+          triggerDownload(ab, state.currentFileName);
+          toast("写入失败，已改为下载：" + (e.message || e), "error", 3500);
+        }
+        return false;
+      }
+    } else {
+      // 无 handle：当前会话拖入的文件 / 旧迁移数据
+      triggerDownload(ab, state.currentFileName);
+      if (!silent) {
+        toast(
+          meta && meta.isMigrated
+            ? "旧数据无文件权限，已下载更新版"
+            : "本次会话文件无写入权限，已下载更新版",
+          "info",
+          2500
+        );
+      }
+      return true;
+    }
+  }
+
+  function triggerDownload(ab, fileName) {
+    const blob = new Blob([ab], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    // 名字加 -updated 后缀
+    const base = fileName.replace(/\.xlsx?$/i, "");
+    a.download = `${base}-updated.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
   }
 
   async function openDirectory(dirHandle) {
@@ -671,22 +954,54 @@
     };
   }
 
-  function parseXlsxFromArrayBuffer(ab) {
+  function parseXlsxAllSheets(ab) {
     if (!window.XLSX) throw new Error("xlsx 解析库未加载");
-    const wb = XLSX.read(new Uint8Array(ab), { type: "array", cellDates: true });
-    const sheetName = wb.SheetNames[0];
-    if (!sheetName) throw new Error("xlsx 内没有可用的 sheet");
-    const sheet = wb.Sheets[sheetName];
-    const rows2d = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      defval: "",
-      raw: true,
+    const wb = XLSX.read(new Uint8Array(ab), {
+      type: "array",
+      cellDates: true,
+      cellNF: true,
     });
-    const result = parseXlsxRows(rows2d);
-    return { ...result, sheetName, rowCount: rows2d.length };
+    if (!wb.SheetNames || wb.SheetNames.length === 0) {
+      throw new Error("xlsx 内没有可用的 sheet");
+    }
+    const out = [];
+    for (const name of wb.SheetNames) {
+      const sheet = wb.Sheets[name];
+      if (!sheet) continue;
+      const rows2d = XLSX.utils.sheet_to_json(sheet, {
+        header: 1,
+        defval: "",
+        raw: true,
+      });
+      const parsed = parseXlsxRows(rows2d);
+      const ok =
+        parsed.columns &&
+        parsed.columns.no >= 0 &&
+        parsed.columns.title >= 0 &&
+        parsed.columns.content >= 0;
+      out.push({
+        name,
+        rows2d,
+        columns: parsed.columns,
+        rowCount: rows2d.length,
+        ok,
+        parsedRows: parsed.rows,
+      });
+    }
+    return { sheets: out };
   }
 
-  function rowsToChapters(rows) {
+  function parseXlsxFromArrayBuffer(ab) {
+    const all = parseXlsxAllSheets(ab);
+    const first = all.sheets[0];
+    if (!first) throw new Error("xlsx 内没有可用的 sheet");
+    return {
+      ...first,
+      sheetName: first.name,
+    };
+  }
+
+  function rowsToChapters(rows, sheetName) {
     return rows
       .filter((r) => !r._error)
       .map((r) => ({
@@ -694,6 +1009,7 @@
         no: r.no,
         title: r.title || "",
         content: r.content || "",
+        sheet: sheetName,
       }));
   }
 
@@ -804,20 +1120,52 @@
     async function loadChaptersFromFile(file) {
       try {
         const ab = await file.arrayBuffer();
-        const result = parseXlsxFromArrayBuffer(ab);
-        const chapters = rowsToChapters(result.rows);
-        if (chapters.length === 0) {
+        const { sheets } = parseXlsxAllSheets(ab);
+        const allChapters = [];
+        for (const s of sheets) {
+          if (!s.ok) continue;
+          for (const ch of rowsToChapters(s.parsedRows, s.name)) {
+            allChapters.push(ch);
+          }
+        }
+        if (allChapters.length === 0) {
           toast("未能解析出任何章节，请检查表头是否包含「章节号 / 章节名 / 文章内容」", "error", 4000);
           return;
         }
-        state.chapters = chapters;
-        state.currentChapterId = chapters[0]?.id || null;
-        // 用文件名作 currentFileName，但不持久化到 recentFiles（无 handle）
+        state.chapters = allChapters;
+        state.sheets = sheets.map((s) => ({
+          name: s.name,
+          columns: s.columns,
+          rowCount: s.rowCount,
+          ok: s.ok,
+        }));
+        state.sheetsRaw = sheets.map((s) => ({ name: s.name, rows2d: s.rows2d }));
+        const countBySheet = {};
+        for (const c of allChapters) {
+          countBySheet[c.sheet] = (countBySheet[c.sheet] || 0) + 1;
+        }
+        const okSheets = state.sheets.filter((s) => s.ok);
+        const best =
+          okSheets.length > 0
+            ? okSheets.sort(
+                (a, b) =>
+                  (countBySheet[b.name] || 0) - (countBySheet[a.name] || 0)
+              )[0]
+            : state.sheets[0];
+        state.currentSheet = best ? best.name : null;
+        state.currentChapterId =
+          allChapters.find((c) => c.sheet === state.currentSheet)?.id || null;
         state.currentFileName = file.name;
         save();
         renderAll();
         hideModal("modal-open-file");
-        toast(`已读取 ${chapters.length} 章（本次会话有效）`, "info", 1500);
+        const okCount = state.sheets.filter((s) => s.ok).length;
+        const total = state.sheets.length;
+        toast(
+          `已读取 ${allChapters.length} 章（${okCount}/${total} 个有效 sheet，本次会话有效）`,
+          "info",
+          1500
+        );
       } catch (e) {
         console.error("读取失败", e);
         toast("读取失败：" + (e.message || e), "error", 3500);
@@ -926,20 +1274,34 @@
     });
 
     $("#btn-new").addEventListener("click", () => {
-      const nextNo = state.chapters.reduce(
+      const targetSheet = state.currentSheet || (state.sheets[0] && state.sheets[0].name) || null;
+      const sameSheetChapters = state.chapters.filter(
+        (c) => c.sheet === targetSheet
+      );
+      const nextNo = sameSheetChapters.reduce(
         (m, c) => Math.max(m, Number(c.no) || 0),
         0
       ) + 1;
-      const ch = { id: uid("ch"), no: nextNo, title: "", content: "" };
+      const ch = {
+        id: uid("ch"),
+        no: nextNo,
+        title: "",
+        content: "",
+        sheet: targetSheet,
+      };
       state.chapters.push(ch);
       state.currentChapterId = ch.id;
       save();
       renderAll();
       setTimeout(() => $("#ch-title").focus(), 50);
-      toast(`已新增第 ${nextNo} 章`);
+      toast(
+        targetSheet
+          ? `已新增第 ${nextNo} 章 [${targetSheet}]`
+          : `已新增第 ${nextNo} 章`
+      );
     });
 
-    $("#btn-save").addEventListener("click", () => {
+    $("#btn-save").addEventListener("click", async () => {
       const ch = getCurrentChapter();
       if (!ch) return;
       ch.no = Number($("#ch-no").value) || 0;
@@ -948,13 +1310,24 @@
       save();
       renderChapterList();
       const s = $("#save-status");
-      s.textContent = "✓ 已保存";
+      s.textContent = "✓ 已保存到本地";
       s.classList.add("saved");
       clearTimeout(s._t);
       s._t = setTimeout(() => {
         s.textContent = "";
         s.classList.remove("saved");
       }, 1500);
+      // 写回 xlsx 文件
+      const ok = await saveToFile();
+      if (ok) {
+        s.textContent = "✓ 已保存并写入文件";
+        s.classList.add("saved");
+        clearTimeout(s._t);
+        s._t = setTimeout(() => {
+          s.textContent = "";
+          s.classList.remove("saved");
+        }, 1800);
+      }
     });
 
     $("#btn-delete").addEventListener("click", () => {
@@ -972,24 +1345,6 @@
       updateWordCount();
     });
 
-    $("#btn-clear").addEventListener("click", () => {
-      if (state.chapters.length === 0) {
-        toast("当前已经是空的");
-        return;
-      }
-      if (
-        !confirm(
-          `确定清空所有 ${state.chapters.length} 章？此操作不可恢复。`
-        )
-      )
-        return;
-      state.chapters = [];
-      state.currentChapterId = null;
-      save();
-      renderAll();
-      toast("已清空");
-    });
-
     $("#btn-sort").addEventListener("click", () => {
       state.ui.sort = state.ui.sort === "asc" ? "desc" : "asc";
       save();
@@ -1000,7 +1355,8 @@
   /* ============================================================
      事件：导入（xlsx 拖拽 + 文本粘贴，导入到当前文件）
      ============================================================ */
-  let importXlsxRows2d = null; // xlsx 路径下保留 rows2d 用于 refreshImportPreview
+  let importXlsxAllSheets = null; // xlsx 路径下解析的所有 sheet
+  let importCurrentSheet = null; // 当前选中的 sheet 名
 
   function bindImportEvents() {
     $("#btn-import").addEventListener("click", () => {
@@ -1009,9 +1365,13 @@
       $("#import-preview").innerHTML = "";
       $("#btn-import-confirm").disabled = true;
       $("#btn-import-confirm").dataset.parsed = "";
-      importXlsxRows2d = null;
+      $("#btn-import-confirm").dataset.sheet = "";
+      importXlsxAllSheets = null;
+      importCurrentSheet = null;
       $("#import-file-info").hidden = true;
       $("#import-drop").classList.remove("is-dragover");
+      const wrap = $("#import-sheet-wrap");
+      if (wrap) wrap.hidden = true;
       setImportStats(null);
       showModal("modal-import");
     });
@@ -1051,31 +1411,45 @@
 
     $("#btn-import-clear").addEventListener("click", (e) => {
       e.stopPropagation();
-      importXlsxRows2d = null;
+      importXlsxAllSheets = null;
+      importCurrentSheet = null;
       $("#import-file-info").hidden = true;
       $("#import-preview").innerHTML = "";
       $("#btn-import-confirm").disabled = true;
       $("#btn-import-confirm").dataset.parsed = "";
+      $("#btn-import-confirm").dataset.sheet = "";
+      const wrap = $("#import-sheet-wrap");
+      if (wrap) wrap.hidden = true;
       setImportStats(null);
     });
 
     $("#import-text").addEventListener("input", () => {
-      if (importXlsxRows2d && $("#import-text").value.trim()) {
-        importXlsxRows2d = null;
+      if (importXlsxAllSheets && $("#import-text").value.trim()) {
+        importXlsxAllSheets = null;
+        importCurrentSheet = null;
         $("#import-file-info").hidden = true;
+        const wrap = $("#import-sheet-wrap");
+        if (wrap) wrap.hidden = true;
       }
       const rows = parseImportText($("#import-text").value);
       renderImportPreview(rows);
       $("#btn-import-confirm").disabled =
         rows.filter((r) => !r._error).length === 0;
       $("#btn-import-confirm").dataset.parsed = JSON.stringify(rows);
+      $("#btn-import-confirm").dataset.sheet = "";
       setImportStats(rows);
     });
 
     $("#import-skip-header").addEventListener("change", refreshImportPreview);
 
+    // sheet 选择下拉变化时刷新 preview
+    $("#import-sheet-select")?.addEventListener("change", () => {
+      refreshImportPreview();
+    });
+
     $("#btn-import-confirm").addEventListener("click", () => {
       const raw = $("#btn-import-confirm").dataset.parsed;
+      const sheetName = $("#btn-import-confirm").dataset.sheet || "";
       if (!raw) return;
       const rows = JSON.parse(raw).filter((r) => !r._error);
       if (rows.length === 0) {
@@ -1086,11 +1460,14 @@
         replaced = 0;
       rows.forEach((r) => {
         const existingIdx = state.chapters.findIndex(
-          (c) => Number(c.no) === r.no
+          (c) => Number(c.no) === r.no && c.sheet === sheetName
         );
         const ch = {
           id: existingIdx >= 0 ? state.chapters[existingIdx].id : uid("ch"),
-          ...r,
+          no: r.no,
+          title: r.title,
+          content: r.content,
+          sheet: sheetName,
         };
         if (existingIdx >= 0) {
           state.chapters[existingIdx] = ch;
@@ -1104,7 +1481,9 @@
       save();
       hideModal("modal-import");
       renderAll();
-      toast(`导入完成：新增 ${added} 章，覆盖 ${replaced} 章`);
+      toast(
+        `导入完成：${sheetName ? `[${sheetName}] ` : ""}新增 ${added} 章，覆盖 ${replaced} 章`
+      );
     });
   }
 
@@ -1122,39 +1501,59 @@
     reader.onload = () => {
       try {
         const data = new Uint8Array(reader.result);
-        const wb = XLSX.read(data, { type: "array", cellDates: true });
-        const sheetName = wb.SheetNames[0];
-        if (!sheetName) {
+        const wb = XLSX.read(data, { type: "array", cellDates: true, cellNF: true });
+        if (!wb.SheetNames || wb.SheetNames.length === 0) {
           toast("xlsx 内没有可用的 sheet", "error");
           return;
         }
-        const sheet = wb.Sheets[sheetName];
-        const rows2d = XLSX.utils.sheet_to_json(sheet, {
-          header: 1,
-          defval: "",
-          raw: true,
+        // 解析所有 sheet 暂存
+        importXlsxAllSheets = wb.SheetNames.map((name) => {
+          const sheet = wb.Sheets[name];
+          const rows2d = XLSX.utils.sheet_to_json(sheet, {
+            header: 1,
+            defval: "",
+            raw: true,
+          });
+          const result = parseXlsxRows(rows2d);
+          const ok =
+            result.columns &&
+            result.columns.no >= 0 &&
+            result.columns.title >= 0 &&
+            result.columns.content >= 0;
+          return { name, rows2d, parsed: result, ok };
         });
-        importXlsxRows2d = rows2d;
+        // 多 sheet 时加 sheet 选择下拉
+        const sel = $("#import-sheet-select");
+        const wrap = $("#import-sheet-wrap");
+        if (sel) {
+          sel.innerHTML = importXlsxAllSheets
+            .map(
+              (s) =>
+                `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}${s.ok ? "" : "（非章节表）"}</option>`
+            )
+            .join("");
+        }
+        if (wrap) {
+          wrap.hidden = importXlsxAllSheets.length <= 1;
+        }
+        // 默认选第一个 ok 的 sheet
+        const firstOk = importXlsxAllSheets.find((s) => s.ok);
+        if (sel && firstOk) sel.value = firstOk.name;
+        else if (sel) sel.value = importXlsxAllSheets[0].name;
+
         const info = $("#import-file-info");
         info.hidden = false;
+        const okCount = importXlsxAllSheets.filter((s) => s.ok).length;
         info.querySelector(".import-file-name").textContent =
-          `${file.name} · sheet: ${sheetName} · ${rows2d.length} 行`;
+          `${file.name} · ${importXlsxAllSheets.length} 个 sheet（${okCount} 个有效）`;
         $("#import-text").value = "";
-        const result = parseXlsxRows(rows2d);
-        renderImportPreview(result.rows);
-        const okCount = result.rows.filter((r) => !r._error).length;
-        $("#btn-import-confirm").disabled = okCount === 0;
-        $("#btn-import-confirm").dataset.parsed = JSON.stringify(result.rows);
-        setImportStats(result.rows);
-        if (
-          result.columns &&
-          (result.columns.no < 0 ||
-            result.columns.title < 0 ||
-            result.columns.content < 0)
-        ) {
-          toast("表头未识别到所有关键列，已在预览中标记", "warn", 3000);
+        refreshImportPreview();
+        if (okCount === 0) {
+          toast("没有任何 sheet 含有效章节表头", "warn", 3000);
+        } else if (okCount < importXlsxAllSheets.length) {
+          toast(`解析完成：${okCount}/${importXlsxAllSheets.length} 个 sheet 有效`, "info", 1800);
         } else {
-          toast(`已解析 ${result.rows.length} 行（成功 ${okCount}）`, "info", 1800);
+          toast(`解析完成：${okCount} 个 sheet 均有效`, "info", 1800);
         }
       } catch (err) {
         console.error(err);
@@ -1204,19 +1603,36 @@
   }
 
   function refreshImportPreview() {
-    if (importXlsxRows2d) {
-      const result = parseXlsxRows(importXlsxRows2d);
-      renderImportPreview(result.rows);
-      const okCount = result.rows.filter((r) => !r._error).length;
-      $("#btn-import-confirm").disabled = okCount === 0;
-      $("#btn-import-confirm").dataset.parsed = JSON.stringify(result.rows);
-      setImportStats(result.rows);
+    if (importXlsxAllSheets) {
+      const sel = $("#import-sheet-select");
+      const sheetName = sel ? sel.value : (importCurrentSheet || (importXlsxAllSheets[0] && importXlsxAllSheets[0].name));
+      const target = importXlsxAllSheets.find((s) => s.name === sheetName);
+      if (!target) {
+        renderImportPreview([]);
+        $("#btn-import-confirm").disabled = true;
+        $("#btn-import-confirm").dataset.parsed = "";
+        $("#btn-import-confirm").dataset.sheet = "";
+        setImportStats(null);
+        return;
+      }
+      const rows = target.parsed.rows;
+      renderImportPreview(rows);
+      const okCount = rows.filter((r) => !r._error).length;
+      $("#btn-import-confirm").disabled = !target.ok || okCount === 0;
+      $("#btn-import-confirm").dataset.parsed = JSON.stringify(rows);
+      $("#btn-import-confirm").dataset.sheet = target.name;
+      importCurrentSheet = target.name;
+      setImportStats(rows);
+      if (!target.ok) {
+        setImportStats(rows);
+      }
     } else {
       const rows = parseImportText($("#import-text").value);
       renderImportPreview(rows);
       $("#btn-import-confirm").disabled =
         rows.filter((r) => !r._error).length === 0;
       $("#btn-import-confirm").dataset.parsed = JSON.stringify(rows);
+      $("#btn-import-confirm").dataset.sheet = "";
       setImportStats(rows);
     }
   }
