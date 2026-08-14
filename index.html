@@ -16,7 +16,7 @@
             <select id="file-select" class="file-select" title="切换文件" aria-label="切换文件">
               <option value="">— 暂无文件 —</option>
             </select>
-            <button id="file-pick" class="icon-btn" title="从本地选择一个 .xlsx 文件">
+            <button id="file-pick" class="icon-btn" title="从本地选择一个 .xlsx 或 .json 文件">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
@@ -142,7 +142,8 @@
                 <div class="setting-row">
                   <label>数据</label>
                   <div class="seg seg-data">
-                    <button id="btn-export" class="seg-btn" title="导出全部数据为 JSON">导出</button>
+                    <button id="btn-export" class="seg-btn" title="把当前数据导出为 xlsx（默认日常保存走 json，速度快；需要 xlsx 时点这里）">导出 xlsx</button>
+                    <button id="btn-export-json" class="seg-btn" title="把当前数据导出为 json（用于备份 / 迁移）">导出 json</button>
                     <label for="file-import" class="seg-btn" title="从 JSON 文件恢复">导入</label>
                     <input id="file-import" type="file" accept="application/json" hidden />
                   </div>
@@ -416,7 +417,7 @@
       <div class="modal-backdrop" data-close></div>
       <div class="modal-card">
         <header class="modal-header">
-          <h3>打开 .xlsx 文件</h3>
+          <h3>打开文件</h3>
           <button class="icon-btn" data-close aria-label="关闭">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -426,7 +427,7 @@
         </header>
         <div class="modal-body">
           <p class="muted hint">
-            从本地选择一个 <code>.xlsx</code> 文件。表头需包含：<strong>章节号</strong> / <strong>章节名</strong> / <strong>文章内容</strong> 三列，列顺序可任意，解析器按表头名自动识别。
+            从本地选择 <code>.xlsx</code> 或 <code>.json</code> 文件。xlsx 表头需包含：<strong>章节号</strong> / <strong>章节名</strong> / <strong>文章内容</strong> 三列；json 是应用之前导出的快照。
           </p>
 
           <button id="btn-open-file-pick" class="primary-btn primary-btn-block" type="button">
@@ -436,20 +437,20 @@
               <line x1="12" y1="18" x2="12" y2="12" />
               <line x1="9" y1="15" x2="15" y2="15" />
             </svg>
-            <span>用浏览器选择 .xlsx</span>
+            <span>用浏览器选择文件</span>
           </button>
 
           <details class="import-advanced">
-            <summary>或拖入 .xlsx 文件（仅本次会话有效）</summary>
-            <div id="open-file-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入 xlsx 文件">
+            <summary>或拖入文件（仅本次会话有效）</summary>
+            <div id="open-file-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入文件">
               <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
-              <div class="import-drop-title">点击选择 / 拖入 .xlsx 文件</div>
-              <div class="import-drop-hint">支持 .xlsx / .xlsm 格式，单文件</div>
-              <input id="file-xlsx-open" type="file" accept=".xlsx,.xlsm" hidden />
+              <div class="import-drop-title">点击选择 / 拖入 .xlsx 或 .json 文件</div>
+              <div class="import-drop-hint">支持 .xlsx / .xlsm / .json 格式，单文件</div>
+              <input id="file-xlsx-open" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
             </div>
             <div id="open-file-info" class="import-file-info" hidden>
               <span class="import-file-name"></span>

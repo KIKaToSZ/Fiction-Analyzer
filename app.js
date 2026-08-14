@@ -10,7 +10,7 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 6;
+  const SCHEMA_VERSION = 7;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
 
@@ -305,6 +305,9 @@
     sheetsRaw: [], // [{name, rows2d, columns, rowCount, ok, page}]
     recentFiles: [],
     currentFileName: null,
+    // v7：json 增量保存的关联文件（首次导入 xlsx 后自动生成）
+    jsonFileName: null,
+    jsonHandleKey: null,
     theme: { ...DEFAULT_THEME },
     ui: { sort: "asc" },
   };
@@ -505,22 +508,19 @@
     } catch (_) {}
     // 2) 一定存 localStorage
     save();
-    // 3) 尝试写回 xlsx（无 handle / 权限丢失则降级跳过）
-    let written = false;
+    // 3) 写 json（性能优先；如要 xlsx 请点"导出 xlsx"按钮）
+    let res = { ok: false, mode: "" };
     try {
-      if (typeof saveToFile === "function") {
-        written = await saveToFile({ silent: true });
-      }
+      res = await saveAsJson({ silent: true });
     } catch (e) {
-      // 静默失败；提示用户
-      _setAutosaveStatus("已存到本地，写回 xlsx 失败（需重新授权）", "error");
+      _setAutosaveStatus("已存到本地，写 json 失败", "error");
       return;
     }
     const ts = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-    _setAutosaveStatus(
-      written ? `已自动保存并写回 xlsx · ${ts}` : `已自动保存到本地 · ${ts}`,
-      "saved"
-    );
+    let label = "已自动保存到本地";
+    if (res.mode === "handle" || res.mode === "dir") label = `已自动保存到 json · ${ts}`;
+    else if (res.mode === "download") label = `已自动保存（json 已下载）· ${ts}`;
+    _setAutosaveStatus(label, "saved");
   }
 
   /* ============================================================
@@ -541,6 +541,8 @@
         isMigrated: !!f.isMigrated,
       })),
       currentFileName: state.currentFileName,
+      jsonFileName: state.jsonFileName,
+      jsonHandleKey: state.jsonHandleKey,
       theme: state.theme,
       ui: state.ui,
     };
@@ -649,6 +651,8 @@
         ? data.recentFiles
         : [];
       state.currentFileName = data.currentFileName || null;
+      state.jsonFileName = data.jsonFileName || null;
+      state.jsonHandleKey = data.jsonHandleKey || null;
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
       state.ui = { sort: "asc", layout: {}, ...(data.ui || {}) };
       // 兜底：ui.layout 各字段补默认
@@ -763,6 +767,12 @@
               ".xlsx",
               ".xlsm",
             ],
+          },
+        },
+        {
+          description: "JSON 文件",
+          accept: {
+            "application/json": [".json"],
           },
         },
       ],
@@ -1216,6 +1226,8 @@
       b.addEventListener("click", () => {
         const pid = b.dataset.page;
         if (!pid || pid === state.currentPage) return;
+        // v7：切换页面（章节 ↔ 伏笔）前先保存当前编辑器的输入
+        try { saveCurrentItem(); } catch (_) {}
         state.currentPage = pid;
         save();
         renderAll();
@@ -1253,6 +1265,8 @@
       b.addEventListener("click", () => {
         const name = b.dataset.sheet;
         if (!name || name === curPage().currentSheet) return;
+        // v7：切 sheet 前先保存当前编辑器的输入
+        try { saveCurrentItem(); } catch (_) {}
         curPage().currentSheet = name;
         // 切到当前 sheet 的第一个 item
         const first = getSortedItems()[0];
@@ -1580,11 +1594,20 @@
 
   async function loadFromHandle(handle, meta) {
     try {
+      const lowerName = (handle.name || "").toLowerCase();
+      if (lowerName.endsWith(".json")) {
+        const file = await handle.getFile();
+        await loadFromJsonFile(file);
+        return;
+      }
       const ab = await readFileAsArrayBuffer(handle);
       const { sheets } = parseXlsxAllSheets(ab);
       applySheetsToState(sheets);
       const desc = await describeFile(handle);
       state.currentFileName = handle.name;
+      // 首次/重新加载：也立即生成同名 .json（同目录；如无权限则下载）
+      state.jsonFileName = jsonFileNameFrom(handle.name);
+      state.jsonHandleKey = null;
       upsertRecentFile({
         name: handle.name,
         mtime: desc.mtime,
@@ -1596,6 +1619,10 @@
       // 新文件覆盖了数据，纳入 history
       pushHistory();
       renderAll();
+      // 异步生成 json 文件（不阻塞 UI）
+      saveAsJson({ silent: true }).catch((e) =>
+        console.warn("首次生成 json 失败", e)
+      );
       // 统计哪些页有数据
       const summary = PAGE_IDS.map((pid) => {
         const n = state.pages[pid].items.length;
@@ -1608,8 +1635,15 @@
     }
   }
 
+  // 加载任意文件（xlsx / json），同时自动生成同名 .json（首次导入）
   async function loadFromFile(file) {
+    const lowerName = (file.name || "").toLowerCase();
     try {
+      if (lowerName.endsWith(".json")) {
+        await loadFromJsonFile(file);
+        return;
+      }
+      // xlsx / xlsm
       const ab = await file.arrayBuffer();
       const { sheets } = parseXlsxAllSheets(ab);
       applySheetsToState(sheets);
@@ -1621,9 +1655,16 @@
         return;
       }
       state.currentFileName = file.name;
+      // 首次导入：立即生成同名 .json（在同目录写一份；如无 handle 则下载）
+      state.jsonFileName = jsonFileNameFrom(file.name);
+      state.jsonHandleKey = null;
       save();
       pushHistory();
       renderAll();
+      // 异步生成 json 文件，不阻塞 UI
+      saveAsJson({ silent: true }).catch((e) =>
+        console.warn("首次生成 json 失败", e)
+      );
       hideModal("modal-open-file");
       const summary = PAGE_IDS.map((pid) => {
         const n = state.pages[pid].items.length;
@@ -1636,8 +1677,206 @@
     }
   }
 
+  // 从 json 文件恢复（v7 自身 + v5 旧 dataSources 兼容）
+  async function loadFromJsonFile(file) {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data.pages && !Array.isArray(data.chapters) && !Array.isArray(data.dataSources)) {
+        toast("文件格式不对（不是有效的 Novel App JSON）", "error", 3500);
+        return;
+      }
+      if (!confirm("导入 JSON 将覆盖当前所有数据，确定？")) return;
+      if (data.pages) {
+        for (const pid of PAGE_IDS) {
+          state.pages[pid] = data.pages[pid] || makePageState();
+        }
+        state.currentPage = data.currentPage || DEFAULT_PAGE;
+      }
+      if (Array.isArray(data.chapters) && !data.pages) {
+        state.pages.chapter.items = data.chapters;
+      }
+      if (Array.isArray(data.sheetsRaw)) state.sheetsRaw = data.sheetsRaw;
+      state.currentFileName = data.currentFileName || file.name;
+      state.jsonFileName = data.jsonFileName || file.name;
+      state.jsonHandleKey = data.jsonHandleKey || null;
+      state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
+      state.ui = { sort: "asc", layout: { ...(state.ui.layout || {}) }, ...(data.ui || {}) };
+      if (data.ui && data.ui.layout) state.ui.layout = data.ui.layout;
+      if (Array.isArray(data.dataSources) && !data.pages) {
+        // 极旧格式
+        const target =
+          data.dataSources.find((d) => d.id === data.currentDataSourceId) ||
+          data.dataSources[0];
+        if (target) {
+          state.pages.chapter.items = (target.chapters || []).map((c) => ({
+            id: c.id || uid("ch"),
+            no: c.no ?? 0,
+            title: c.title || "",
+            content: c.content || "",
+            sheet: c.sheet || "Sheet1",
+          }));
+          state.pages.chapter.currentItemId = null;
+        }
+      }
+      save();
+      pushHistory();
+      renderAll();
+      hideModal("modal-open-file");
+      toast("已从 JSON 导入", "info", 1500);
+    } catch (err) {
+      console.error(err);
+      toast("解析失败：文件不是有效 JSON", "error", 3500);
+    }
+  }
+
   /* ============================================================
-     写文件 - 把 state 写回 xlsx
+     保存策略（v7 改造）
+     - saveAsJson：日常保存。直接写同名 .json，毫秒级，无 SheetJS 开销
+     - saveAsXlsx：导出 xlsx。手动触发（"导出 xlsx" 按钮），保留原逻辑
+     - 首次导入 xlsx / 加载 handle 后会自动生成一个同名 .json 留在磁盘
+     - state.jsonFileName 记录当前 .json 文件名；state.jsonHandleKey 记录 handle key
+     ============================================================ */
+
+  // 构造纯 state 快照（剥离 handle、theme.ui 等可还原信息），便于快速序列化
+  function snapshotStateForJson() {
+    return {
+      schema: SCHEMA_VERSION,
+      currentPage: state.currentPage,
+      pages: state.pages,
+      sheetsRaw: state.sheetsRaw,
+      recentFiles: state.recentFiles.map((f) => ({
+        name: f.name,
+        lastOpened: f.lastOpened,
+        mtime: f.mtime,
+        size: f.size,
+        handleKey: f.handleKey,
+        isDirectory: !!f.isDirectory,
+        isMigrated: !!f.isMigrated,
+      })),
+      currentFileName: state.currentFileName,
+      jsonFileName: state.jsonFileName,
+      jsonHandleKey: state.jsonHandleKey,
+      theme: state.theme,
+      ui: state.ui,
+    };
+  }
+
+  function buildJsonBlob() {
+    const json = JSON.stringify(snapshotStateForJson(), null, 2);
+    return new Blob([json], { type: "application/json" });
+  }
+
+  function jsonFileNameFrom(xlsxName) {
+    if (!xlsxName) return "novel-app.json";
+    const base = xlsxName.replace(/\.(xlsx|xlsm|json)$/i, "");
+    return `${base}.json`;
+  }
+
+  // 触发浏览器下载 json（无 handle 时使用）
+  function triggerJsonDownload(blob, suggestedName) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = suggestedName || "novel-app.json";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+  }
+
+  // 写 json 到磁盘
+  // 优先级：jsonHandleKey（持久化）→ currentFileName 的 xlsx handle 同目录 → 下载
+  async function saveAsJson({ silent = false } = {}) {
+    const blob = buildJsonBlob();
+    const suggestedName = state.jsonFileName
+      || jsonFileNameFrom(state.currentFileName)
+      || "novel-app.json";
+
+    // 1) 优先用专属 json handle
+    if (state.jsonHandleKey) {
+      try {
+        const handle = await fsGet(state.jsonHandleKey);
+        if (handle) {
+          const granted = await ensureWritePermission(handle, true);
+          if (granted) {
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            state.jsonFileName = handle.name || suggestedName;
+            if (!silent) toast("✓ 已保存到 json", "info", 1200);
+            return { ok: true, mode: "handle" };
+          }
+        }
+        // handle 失效 → 清掉
+        state.jsonHandleKey = null;
+      } catch (e) {
+        if (e && e.name === "AbortError") {
+          if (!silent) toast("已取消写入", "info", 1200);
+          return { ok: false, mode: "cancelled" };
+        }
+        console.warn("写 json handle 失败，降级", e);
+      }
+    }
+
+    // 2) 退化：与 xlsx 同目录写一个同名 .json
+    if (state.currentFileName) {
+      const meta = state.recentFiles.find(
+        (f) => f.name === state.currentFileName
+      );
+      if (meta && meta.handleKey && !meta.isMigrated) {
+        try {
+          const xlsxHandle = await fsGet(meta.handleKey);
+          if (xlsxHandle) {
+            const dirHandle = xlsxHandle.getParent
+              ? await xlsxHandle.getParent()
+              : null;
+            if (dirHandle) {
+              const jsonName = jsonFileNameFrom(state.currentFileName);
+              const newHandle = await dirHandle.getFileHandle(jsonName, { create: true });
+              const granted = await ensureWritePermission(newHandle, true);
+              if (granted) {
+                const writable = await newHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                // 持久化这个 handle，下次直接用
+                const jsonKey = `json:${state.currentFileName}`;
+                await fsPut(jsonKey, newHandle);
+                state.jsonHandleKey = jsonKey;
+                state.jsonFileName = jsonName;
+                if (!silent) toast("✓ 已保存到 json", "info", 1200);
+                return { ok: true, mode: "dir" };
+              }
+            }
+          }
+        } catch (e) {
+          if (e && e.name === "AbortError") {
+            if (!silent) toast("已取消写入", "info", 1200);
+            return { ok: false, mode: "cancelled" };
+          }
+          console.warn("在 xlsx 同目录写 json 失败，降级下载", e);
+        }
+      }
+    }
+
+    // 3) 兜底：触发下载
+    triggerJsonDownload(blob, suggestedName);
+    if (!silent) {
+      toast(
+        state.currentFileName
+          ? "未获得写文件权限，已下载 json 到本地（请把同名 .json 放回原目录后下次保存即可自动写盘）"
+          : "已下载 json",
+        "info",
+        2500
+      );
+    }
+    return { ok: true, mode: "download" };
+  }
+
+  /* ============================================================
+     写文件 - 把 state 写回 xlsx（导出专用）
      ============================================================ */
   async function ensureWritePermission(handle, interactive = true) {
     if (!handle) return false;
@@ -1720,7 +1959,7 @@
     return ab;
   }
 
-  async function saveToFile({ silent = false } = {}) {
+  async function saveAsXlsx({ silent = false } = {}) {
     if (!state.currentFileName) {
       if (!silent) toast("当前没有打开的文件", "error");
       return false;
@@ -1745,14 +1984,14 @@
       try {
         const handle = await fsGet(meta.handleKey);
         if (!handle) {
-          triggerDownload(ab, state.currentFileName);
+          triggerXlsxDownload(ab, state.currentFileName);
           if (!silent) toast("原文件访问权限已失效，已下载更新版", "info", 2500);
           return true;
         }
         const granted = await ensureWritePermission(handle, true);
         if (!granted) {
           if (!silent) toast("未获得写入权限，已下载更新版", "info", 2500);
-          triggerDownload(ab, state.currentFileName);
+          triggerXlsxDownload(ab, state.currentFileName);
           return true;
         }
         const writable = await handle.createWritable();
@@ -1767,13 +2006,13 @@
         }
         console.error("写入文件失败", e);
         if (!silent) {
-          triggerDownload(ab, state.currentFileName);
+          triggerXlsxDownload(ab, state.currentFileName);
           toast("写入失败，已改为下载：" + (e.message || e), "error", 3500);
         }
         return false;
       }
     } else {
-      triggerDownload(ab, state.currentFileName);
+      triggerXlsxDownload(ab, state.currentFileName);
       if (!silent) {
         toast(
           meta && meta.isMigrated
@@ -1787,7 +2026,7 @@
     }
   }
 
-  function triggerDownload(ab, fileName) {
+  function triggerXlsxDownload(ab, fileName) {
     const blob = new Blob([ab], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
@@ -2548,6 +2787,10 @@
       }
       const item = e.target.closest(".ch-item, .fs-item");
       if (!item) return;
+      // 切到同一条则不做事（避免无谓的 history 抖动）
+      if (curPage().currentItemId === item.dataset.id) return;
+      // v7：切章节前先保存当前编辑器的输入到 item（防止未保存内容丢失）
+      try { saveCurrentItem(); } catch (_) {}
       curPage().currentItemId = item.dataset.id;
       save();
       renderCurrentPage();
@@ -2568,9 +2811,15 @@
       const isDelete = t.id === "btn-delete" || t.id === "btn-fs-delete";
       if (isSave && curItem()) {
         const ok = saveCurrentItem();
-        if (ok) saveToFile().then((written) => {
-          if (written) flashSaveStatus("✓ 已保存并写入文件", 1800);
-        });
+        if (ok) {
+          saveAsJson().then((res) => {
+            if (res.ok && (res.mode === "handle" || res.mode === "dir")) {
+              flashSaveStatus("✓ 已保存到 json", 1800);
+            } else if (res.ok && res.mode === "download") {
+              flashSaveStatus("✓ 已保存（json 已下载，请放回原目录）", 2200);
+            }
+          });
+        }
       } else if (isDelete && curItem()) {
         deleteCurrentItem();
       }
@@ -2597,7 +2846,7 @@
           e.target.isContentEditable);
       const mod = e.ctrlKey || e.metaKey; // Mac 用 Cmd，Win/Linux 用 Ctrl
 
-      // Ctrl+S / Cmd+S：保存当前章节到本地 + 写回 xlsx
+      // Ctrl+S / Cmd+S：保存当前章节（性能优先：写 json 而非 xlsx）
       if (mod && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
         if (!curItem()) {
@@ -2606,9 +2855,14 @@
         }
         const ok = saveCurrentItem();
         if (ok) {
-          saveToFile().then((written) => {
-            if (written) flashSaveStatus("✓ 已保存并写入文件 (Ctrl+S)", 1800);
-            else flashSaveStatus("✓ 已保存到本地（写文件需授权）", 2000);
+          saveAsJson().then((res) => {
+            if (res.ok && (res.mode === "handle" || res.mode === "dir")) {
+              flashSaveStatus("✓ 已保存到 json (Ctrl+S)", 1800);
+            } else if (res.ok && res.mode === "download") {
+              flashSaveStatus("✓ 已保存到本地（json 已下载）", 2200);
+            } else {
+              flashSaveStatus("✓ 已保存到本地（json 写入被取消）", 2000);
+            }
           });
         }
         return;
@@ -2691,22 +2945,18 @@
       renderTheme();
     });
 
-    // JSON 导出
-    $("#btn-export").addEventListener("click", () => {
-      const blob = new Blob([JSON.stringify(state, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `novel-app-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 100);
-      toast("已导出 JSON");
+    // 导出 xlsx（手动触发；日常保存走 json）
+    $("#btn-export").addEventListener("click", async () => {
+      const ok = await saveAsXlsx();
+      if (ok) toast("已导出 xlsx", "info", 1500);
+    });
+    // 导出 json（备份 / 迁移用）
+    $("#btn-export-json")?.addEventListener("click", () => {
+      const blob = buildJsonBlob();
+      const base = (state.currentFileName || "novel-app")
+        .replace(/\.(xlsx|xlsm|json)$/i, "");
+      triggerJsonDownload(blob, `${base}.json`);
+      toast("已导出 json", "info", 1500);
     });
 
     // JSON 导入（v5 + 旧 dataSources 兼容）

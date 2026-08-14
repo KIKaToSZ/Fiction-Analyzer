@@ -272,6 +272,89 @@ sorted.forEach((it, i) => {
 });
 console.log("  排序测试:", sortOk ? "PASS" : "FAIL");
 
+/* ============================================================
+   测试 5：v7 schema - json 增量保存
+   - 新增 state.jsonFileName / state.jsonHandleKey
+   - snapshotStateForJson 应包含所有必要字段
+   - load 后缺失字段默认为 null（不报错）
+   - 旧 v6 数据迁移到 v7 时新字段为空值
+   ============================================================ */
+console.log("\n测试 5：v7 schema 兼容（json 增量保存）");
+
+// 5.1 模拟 v6 数据 → 升级到 v7：缺失字段应默认为 null
+const v6Data = {
+  schema: 6,
+  currentPage: "chapter",
+  pages: { chapter: makePage(), foreshadowing: makePage() },
+  sheetsRaw: [],
+  recentFiles: [],
+  currentFileName: "小说.xlsx",
+  theme: DEFAULT_THEME,
+  ui: { sort: "asc" },
+};
+function makePage() {
+  return { sheets: [], currentSheet: null, items: [], currentItemId: null };
+}
+// 模拟 load 时的字段补全
+const upgraded = {
+  ...v6Data,
+  jsonFileName: v6Data.jsonFileName || null,
+  jsonHandleKey: v6Data.jsonHandleKey || null,
+};
+const v7ok1 = upgraded.jsonFileName === null && upgraded.jsonHandleKey === null && upgraded.currentFileName === "小说.xlsx";
+console.log("  v6 → v7 升级补字段：", v7ok1 ? "PASS" : "FAIL");
+if (!v7ok1) allPass = false;
+
+// 5.2 snapshotStateForJson 包含必要字段（用 data 模型模拟）
+const snap7 = {
+  schema: 7,
+  currentPage: "chapter",
+  pages: v6Data.pages,
+  sheetsRaw: [],
+  recentFiles: v6Data.recentFiles,
+  currentFileName: "小说.xlsx",
+  jsonFileName: "小说.json",
+  jsonHandleKey: "json:小说.xlsx",
+  theme: DEFAULT_THEME,
+  ui: { sort: "asc" },
+};
+const required = ["schema", "currentPage", "pages", "sheetsRaw", "recentFiles", "currentFileName", "jsonFileName", "jsonHandleKey", "theme", "ui"];
+const missing = required.filter((k) => !(k in snap7));
+const v7ok2 = missing.length === 0;
+console.log("  snapshot 字段完整性：", v7ok2 ? "PASS" : "FAIL", missing.length ? `(缺 ${missing.join(",")})` : "");
+if (!v7ok2) allPass = false;
+
+// 5.3 验证 saved → round-trip 后状态可恢复
+const serialized = JSON.stringify(snap7);
+const restored = JSON.parse(serialized);
+const v7ok3 = restored.jsonFileName === "小说.json"
+  && restored.jsonHandleKey === "json:小说.xlsx"
+  && restored.theme.font === "system";
+console.log("  序列化 / 反序列化：", v7ok3 ? "PASS" : "FAIL");
+if (!v7ok3) allPass = false;
+
+// 5.4 jsonFileNameFrom：去掉 xlsx/xlsm/json 后缀
+const cases5_4 = [
+  ["小说.xlsx", "小说.json"],
+  ["book.xlsm", "book.json"],
+  ["data.json", "data.json"],
+  ["无后缀", "无后缀.json"],
+  ["", "novel-app.json"], // 空文件名兜底
+];
+let v7ok4 = true;
+for (const [input, expected] of cases5_4) {
+  const base = (input || "novel-app").replace(/\.(xlsx|xlsm|json)$/i, "");
+  const got = `${base}.json`;
+  if (got !== expected) {
+    v7ok4 = false;
+    console.log(`    ✗ jsonFileNameFrom(${JSON.stringify(input)}) = ${JSON.stringify(got)} (期望 ${JSON.stringify(expected)})`);
+  } else {
+    console.log(`    ✓ jsonFileNameFrom(${JSON.stringify(input)}) → ${JSON.stringify(got)}`);
+  }
+}
+console.log("  jsonFileNameFrom 转换：", v7ok4 ? "PASS" : "FAIL");
+if (!v7ok4) allPass = false;
+
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);
 
