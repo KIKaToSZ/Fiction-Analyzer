@@ -204,9 +204,12 @@
   /* ============================================================
      工具函数
      ============================================================ */
-  const $ = (sel, root = document) => root.querySelector(sel);
+  const $ = (sel, root = document) =>
+    root && root.querySelector ? root.querySelector(sel) : null;
   const $$ = (sel, root = document) =>
-    Array.from(root.querySelectorAll(sel));
+    root && root.querySelectorAll
+      ? Array.from(root.querySelectorAll(sel))
+      : [];
   const uid = (prefix = "id") =>
     `${prefix}_${Date.now().toString(36)}${Math.random()
       .toString(36)
@@ -1140,22 +1143,21 @@
     }
   }
 
-  function renderPageTabs() {
-    const wrap = $("#page-tabs");
+  function renderNavTabs() {
+    const wrap = $("#nav-tabs");
     if (!wrap) return;
     if (PAGE_IDS.length === 0) {
-      wrap.hidden = true;
+      wrap.innerHTML = "";
       return;
     }
-    wrap.hidden = false;
     wrap.innerHTML = PAGE_IDS.map((pid) => {
       const def = PAGES[pid];
       const p = state.pages[pid];
       const count = p.items.length;
       const active = pid === state.currentPage ? "active" : "";
-      return `<button class="page-tab ${active}" data-page="${pid}" role="tab" aria-selected="${pid === state.currentPage}">${def.icon} ${escapeHtml(def.label)}<span class="page-tab-count">${count}</span></button>`;
+      return `<button class="nav-tab ${active}" data-page="${pid}" role="tab" aria-selected="${pid === state.currentPage}"><span class="nav-tab-icon">${def.icon}</span><span class="nav-tab-label">${escapeHtml(def.label)}</span><span class="nav-tab-count">${count}</span></button>`;
     }).join("");
-    $$(".page-tab", wrap).forEach((b) =>
+    $$(".nav-tab", wrap).forEach((b) =>
       b.addEventListener("click", () => {
         const pid = b.dataset.page;
         if (!pid || pid === state.currentPage) return;
@@ -1206,161 +1208,185 @@
     );
   }
 
-  // 列表 + 编辑器的渲染统一走"页面"
-  function renderItemList() {
+  // 列表渲染统一走"页面"——按 currentPage 路由到具体的列表渲染
+  function renderChapterList() {
     const list = $("#chapter-list");
-    const items = getSortedItems();
-    const pid = state.currentPage;
+    if (!list) return;
     const p = curPage();
-    if (pid === "chapter") {
-      list.className = "chapter-list";
-      list.innerHTML = items
-        .map((it) => {
-          const wc = (it.content || "").length;
-          return `
-            <li class="ch-item ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
-              <span class="ch-no">${escapeHtml(String(it.no))}</span>
-              <span class="ch-title">${escapeHtml(it.title || "（无标题）")}</span>
-              <span class="ch-meta">${wc}字</span>
-            </li>`;
-        })
-        .join("");
-    } else if (pid === "foreshadowing") {
-      list.className = "fs-list";
-      list.innerHTML = items
-        .map((it) => {
-          const status = it.status || "活跃";
-          const cls =
-            status === "已回收"
-              ? "fs-status-resolved"
-              : status === "已废弃"
-                ? "fs-status-abandoned"
-                : "fs-status-active";
-          return `
-            <li class="fs-item ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
-              <span class="fs-no">${escapeHtml(String(it.no))}</span>
-              <span class="fs-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
-              <span class="fs-status ${cls}">${escapeHtml(status)}</span>
-            </li>`;
-        })
-        .join("");
-    }
-    // 底部 footer
-    const def = curPageDef();
-    $("#chapter-count").textContent = `${items.length} ${def.label.replace(/管理$|页$/, "")}`;
-    $("#sort-label").textContent = state.ui.sort === "asc" ? "正序" : "倒序";
+    const items = getSortedItems();
+    list.className = "chapter-list";
+    list.innerHTML = items
+      .map((it) => {
+        const wc = (it.content || "").length;
+        return `
+          <li class="ch-item ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
+            <span class="ch-no">${escapeHtml(String(it.no))}</span>
+            <span class="ch-title">${escapeHtml(it.title || "（无标题）")}</span>
+            <span class="ch-meta">${wc}字</span>
+          </li>`;
+      })
+      .join("");
+    const count = $("#chapter-count");
+    if (count) count.textContent = `${items.length} 章`;
+    const sortLabel = $("#sort-label");
+    if (sortLabel) sortLabel.textContent = state.ui.sort === "asc" ? "正序" : "倒序";
   }
 
-  function renderEditor() {
+  function renderFsList() {
+    const list = $("#fs-list");
+    if (!list) return;
+    const p = curPage();
+    const items = getSortedItems();
+    list.className = "fs-list";
+    list.innerHTML = items
+      .map((it) => {
+        const status = it.status || "活跃";
+        const cls =
+          status === "已回收"
+            ? "fs-status-resolved"
+            : status === "已废弃"
+              ? "fs-status-abandoned"
+              : "fs-status-active";
+        return `
+          <li class="fs-item ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
+            <span class="fs-no">${escapeHtml(String(it.no))}</span>
+            <span class="fs-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
+            <span class="fs-status ${cls}">${escapeHtml(status)}</span>
+          </li>`;
+      })
+      .join("");
+    const count = $("#fs-count");
+    if (count) count.textContent = `${items.length} 条`;
+  }
+
+  function renderChapterEditor() {
     const it = curItem();
     const empty = $("#editor-empty");
     const editor = $("#editor");
+    if (!empty || !editor) return;
     if (!it) {
       empty.hidden = false;
       editor.hidden = true;
-      empty.innerHTML = curPageDef().emptyStateHtml();
+      empty.innerHTML = PAGES.chapter.emptyStateHtml();
       return;
     }
     empty.hidden = true;
     editor.hidden = false;
-    if (state.currentPage === "chapter") {
-      editor.innerHTML = `
-        <div class="editor-meta">
-          <div class="meta-field">
-            <label>章节号</label>
-            <input id="ch-no" type="number" min="0" step="1" value="${escapeHtml(String(it.no))}" />
-          </div>
-          <div class="meta-field meta-title">
-            <label>章节名称</label>
-            <input id="ch-title" type="text" value="${escapeHtml(it.title || "")}" placeholder="给本章起个名字" />
-          </div>
-          <div class="meta-actions">
-            <button id="btn-save" class="primary-btn">保存</button>
-            <button id="btn-delete" class="danger-btn">删除</button>
-          </div>
+    editor.innerHTML = `
+      <div class="editor-meta">
+        <div class="meta-field">
+          <label>章节号</label>
+          <input id="ch-no" type="number" min="0" step="1" value="${escapeHtml(String(it.no))}" />
         </div>
-        <div class="editor-body">
-          <label class="body-label">文章内容</label>
-          <textarea id="ch-content" placeholder="正文…">${escapeHtml(it.content || "")}</textarea>
-          <div class="body-stats">
-            <span id="word-count" class="muted">0 字</span>
-            <span id="save-status" class="muted"></span>
-          </div>
-        </div>`;
-    } else if (state.currentPage === "foreshadowing") {
-      const opts = FS_STATUS_OPTIONS.map(
-        (s) =>
-          `<option value="${escapeHtml(s)}" ${it.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`
-      ).join("");
-      editor.innerHTML = `
-        <div class="editor-meta editor-meta-fs">
-          <div class="meta-field meta-num">
-            <label>序号</label>
-            <input id="fs-no" type="number" min="0" step="1" value="${escapeHtml(String(it.no))}" />
-          </div>
-          <div class="meta-field meta-title">
-            <label>伏笔名称</label>
-            <input id="fs-name" type="text" value="${escapeHtml(it.name || "")}" placeholder="给伏笔起个名字" />
-          </div>
-          <div class="meta-field">
-            <label>状态</label>
-            <select id="fs-status">${opts}</select>
-          </div>
-          <div class="meta-actions">
-            <button id="btn-save" class="primary-btn">保存</button>
-            <button id="btn-delete" class="danger-btn">删除</button>
-          </div>
+        <div class="meta-field meta-title">
+          <label>章节名称</label>
+          <input id="ch-title" type="text" value="${escapeHtml(it.title || "")}" placeholder="给本章起个名字" />
         </div>
-        <div class="editor-body">
-          <div class="fs-form-row">
-            <div class="meta-field">
-              <label>铺设章节</label>
-              <input id="fs-setup" type="text" value="${escapeHtml(it.setup || "")}" placeholder="如：第三章、第12章" />
-            </div>
-            <div class="meta-field">
-              <label>回收章节</label>
-              <input id="fs-payoff" type="text" value="${escapeHtml(it.payoff || "")}" placeholder="如：第二十章、第45章" />
-            </div>
-          </div>
-          <label class="body-label">备注 / 详情</label>
-          <textarea id="fs-notes" placeholder="伏笔的具体内容、提示、相关情节等…">${escapeHtml(it.notes || "")}</textarea>
-          <div class="body-stats">
-            <span id="word-count" class="muted">${(it.notes || "").length} 字</span>
-            <span id="save-status" class="muted"></span>
-          </div>
-        </div>`;
-    }
-    bindEditorEvents();
+        <div class="meta-actions">
+          <button id="btn-save" class="primary-btn">保存</button>
+          <button id="btn-delete" class="danger-btn">删除</button>
+        </div>
+      </div>
+      <div class="editor-body">
+        <label class="body-label">文章内容</label>
+        <textarea id="ch-content" placeholder="正文…">${escapeHtml(it.content || "")}</textarea>
+        <div class="body-stats">
+          <span id="word-count" class="muted">${(it.content || "").length} 字</span>
+          <span id="save-status" class="muted"></span>
+        </div>
+      </div>`;
+    bindChapterEditorEvents();
   }
 
-  function bindEditorEvents() {
+  function renderFsEditor() {
+    const it = curItem();
+    const empty = $("#fs-editor-empty");
+    const editor = $("#fs-editor");
+    if (!empty || !editor) return;
+    if (!it) {
+      empty.hidden = false;
+      editor.hidden = true;
+      empty.innerHTML = PAGES.foreshadowing.emptyStateHtml();
+      return;
+    }
+    empty.hidden = true;
+    editor.hidden = false;
+    const opts = FS_STATUS_OPTIONS.map(
+      (s) =>
+        `<option value="${escapeHtml(s)}" ${it.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`
+    ).join("");
+    editor.innerHTML = `
+      <div class="editor-meta editor-meta-fs">
+        <div class="meta-field meta-num">
+          <label>序号</label>
+          <input id="fs-no" type="number" min="0" step="1" value="${escapeHtml(String(it.no))}" />
+        </div>
+        <div class="meta-field meta-title">
+          <label>伏笔名称</label>
+          <input id="fs-name" type="text" value="${escapeHtml(it.name || "")}" placeholder="给伏笔起个名字" />
+        </div>
+        <div class="meta-field">
+          <label>状态</label>
+          <select id="fs-status">${opts}</select>
+        </div>
+        <div class="meta-actions">
+          <button id="btn-fs-save" class="primary-btn">保存</button>
+          <button id="btn-fs-delete" class="danger-btn">删除</button>
+        </div>
+      </div>
+      <div class="editor-body">
+        <div class="fs-form-row">
+          <div class="meta-field">
+            <label>铺设章节</label>
+            <input id="fs-setup" type="text" value="${escapeHtml(it.setup || "")}" placeholder="如：第三章、第12章" />
+          </div>
+          <div class="meta-field">
+            <label>回收章节</label>
+            <input id="fs-payoff" type="text" value="${escapeHtml(it.payoff || "")}" placeholder="如：第二十章、第45章" />
+          </div>
+        </div>
+        <label class="body-label">备注 / 详情</label>
+        <textarea id="fs-notes" placeholder="伏笔的具体内容、提示、相关情节等…">${escapeHtml(it.notes || "")}</textarea>
+        <div class="body-stats">
+          <span id="fs-word-count" class="muted">${(it.notes || "").length} 字</span>
+          <span id="fs-save-status" class="muted"></span>
+        </div>
+      </div>`;
+    bindFsEditorEvents();
+  }
+
+  function bindChapterEditorEvents() {
     const it = curItem();
     if (!it) return;
-    if (state.currentPage === "chapter") {
-      const chContent = $("#ch-content");
-      const chNo = $("#ch-no");
-      const chTitle = $("#ch-title");
-      chContent?.addEventListener("input", () => {
-        const len = chContent.value.length;
-        $("#word-count").textContent = `${len} 字`;
-        debouncedPushHistory();
-      });
-      chNo?.addEventListener("input", debouncedPushHistory);
-      chTitle?.addEventListener("input", debouncedPushHistory);
-    } else if (state.currentPage === "foreshadowing") {
-      const fsNotes = $("#fs-notes");
-      fsNotes?.addEventListener("input", () => {
-        const len = fsNotes.value.length;
-        $("#word-count").textContent = `${len} 字`;
-        debouncedPushHistory();
-      });
-      ["#fs-no", "#fs-name", "#fs-status", "#fs-setup", "#fs-payoff"].forEach(
-        (sel) => $(sel)?.addEventListener("input", debouncedPushHistory)
-      );
-      ["#fs-no", "#fs-name", "#fs-status", "#fs-setup", "#fs-payoff"].forEach(
-        (sel) => $(sel)?.addEventListener("change", debouncedPushHistory)
-      );
-    }
+    const chContent = $("#ch-content");
+    const chNo = $("#ch-no");
+    const chTitle = $("#ch-title");
+    chContent?.addEventListener("input", () => {
+      const len = chContent.value.length;
+      const wc = $("#word-count");
+      if (wc) wc.textContent = `${len} 字`;
+      debouncedPushHistory();
+    });
+    chNo?.addEventListener("input", debouncedPushHistory);
+    chTitle?.addEventListener("input", debouncedPushHistory);
+  }
+
+  function bindFsEditorEvents() {
+    const it = curItem();
+    if (!it) return;
+    const fsNotes = $("#fs-notes");
+    fsNotes?.addEventListener("input", () => {
+      const len = fsNotes.value.length;
+      const wc = $("#fs-word-count");
+      if (wc) wc.textContent = `${len} 字`;
+      debouncedPushHistory();
+    });
+    ["#fs-no", "#fs-name", "#fs-status", "#fs-setup", "#fs-payoff"].forEach(
+      (sel) => $(sel)?.addEventListener("input", debouncedPushHistory)
+    );
+    ["#fs-no", "#fs-name", "#fs-status", "#fs-setup", "#fs-payoff"].forEach(
+      (sel) => $(sel)?.addEventListener("change", debouncedPushHistory)
+    );
   }
 
   function renderTheme() {
@@ -1400,22 +1426,50 @@
   }
 
   function renderNewItemButton() {
-    const btn = $("#btn-new");
-    if (!btn) return;
+    // 文案统一由 curPageDef().newItemLabel 提供；
+    // 由于 #btn-new 只在 chapter 视图、#btn-new-fs 只在 foreshadowing 视图，
+    // 这里两者都更新一次（每个按钮只在自己视图显示），不影响。
     const def = curPageDef();
-    btn.querySelector("span").textContent = def.newItemLabel;
-    btn.title = def.newItemLabel;
+    const label = def.newItemLabel || "新增";
+    const setLabel = (btn) => {
+      if (!btn || typeof btn.querySelector !== "function") return;
+      const span = btn.querySelector("span");
+      if (span) span.textContent = label;
+      btn.title = label;
+    };
+    setLabel($("#btn-new"));
+    setLabel($("#btn-new-fs"));
+  }
+
+  function renderGlobal() {
+    renderFileSelect();
+    renderFileMeta();
+    renderNavTabs();
+    renderTheme();
+  }
+
+  function renderCurrentPage() {
+    // 控制 page-view 显隐
+    const pageChapter = $('[data-page-view="chapter"]');
+    const pageFs = $('[data-page-view="foreshadowing"]');
+    if (state.currentPage === "chapter") {
+      if (pageChapter) pageChapter.hidden = false;
+      if (pageFs) pageFs.hidden = true;
+      renderSheetTabs();
+      renderChapterList();
+      renderChapterEditor();
+    } else if (state.currentPage === "foreshadowing") {
+      if (pageChapter) pageChapter.hidden = true;
+      if (pageFs) pageFs.hidden = false;
+      renderFsList();
+      renderFsEditor();
+    }
+    renderNewItemButton();
   }
 
   function renderAll() {
-    renderFileSelect();
-    renderFileMeta();
-    renderPageTabs();
-    renderSheetTabs();
-    renderItemList();
-    renderEditor();
-    renderNewItemButton();
-    renderTheme();
+    renderGlobal();
+    renderCurrentPage();
   }
 
 
@@ -1741,13 +1795,14 @@
     clearTimeout(_pushHistoryDebounce);
     _pushHistoryDebounce = null;
     pushHistory();
-    renderItemList();
+    renderCurrentPage();
     flashSaveStatus("✓ 已保存到本地");
     return true;
   }
 
   function flashSaveStatus(text, ms = 1500) {
-    const s = $("#save-status");
+    // 兼容章节 (#save-status) 与伏笔 (#fs-save-status)
+    const s = $("#save-status") || $("#fs-save-status");
     if (!s) return;
     s.textContent = text;
     s.classList.add("saved");
@@ -2402,39 +2457,46 @@
   }
 
   function bindListEvents() {
-    // 事件委托 - 同时支持 ch-item 和 fs-item
-    const list = $("#chapter-list");
-    list.addEventListener("click", (e) => {
+    // 事件委托 - 两个列表共用
+    const chapterList = $("#chapter-list");
+    const fsList = $("#fs-list");
+    const onClick = (e) => {
       const item = e.target.closest(".ch-item, .fs-item");
       if (!item) return;
       curPage().currentItemId = item.dataset.id;
       save();
-      renderItemList();
-      renderEditor();
-    });
+      renderCurrentPage();
+    };
+    if (chapterList) chapterList.addEventListener("click", onClick);
+    if (fsList) fsList.addEventListener("click", onClick);
   }
 
   function bindEditorButtons() {
-    $("#btn-new").addEventListener("click", addNewItem);
+    // 章节页：新增 / 导入 / 排序
+    $("#btn-new")?.addEventListener("click", addNewItem);
+    $("#btn-new-fs")?.addEventListener("click", addNewItem);
     // 编辑器按钮是动态生成的，用事件委托
     document.addEventListener("click", (e) => {
       const t = e.target;
-      if (t && t.id === "btn-save" && curItem()) {
+      if (!t) return;
+      const isSave = t.id === "btn-save" || t.id === "btn-fs-save";
+      const isDelete = t.id === "btn-delete" || t.id === "btn-fs-delete";
+      if (isSave && curItem()) {
         const ok = saveCurrentItem();
         if (ok) saveToFile().then((written) => {
           if (written) flashSaveStatus("✓ 已保存并写入文件", 1800);
         });
-      } else if (t && t.id === "btn-delete" && curItem()) {
+      } else if (isDelete && curItem()) {
         deleteCurrentItem();
       }
     });
-    // 排序
-    $("#btn-sort").addEventListener("click", () => {
+    // 排序（仅章节页）
+    $("#btn-sort")?.addEventListener("click", () => {
       const prev = state.ui.sort;
       state.ui.sort = prev === "asc" ? "desc" : "asc";
       save();
       // 排序改动不压栈（数据本身没变，只换展示）
-      renderItemList();
+      renderCurrentPage();
     });
     // 撤销 / 重做
     $("#btn-undo")?.addEventListener("click", undo);

@@ -3,22 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="小说文章分析 - 章节编辑阅读工具" />
+    <meta description="小说文章分析 - 章节编辑阅读工具" />
     <title>小说文章分析</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body data-bg="paper" data-accent="indigo">
     <div class="app">
-      <!-- ===================== 左栏 ===================== -->
-      <aside class="pane pane-left">
-        <header class="pane-header">
-          <!-- 文件路径下拉（替代数据源选择） -->
+      <!-- ===================== 顶部工具栏（全宽） ===================== -->
+      <header class="app-topbar">
+        <div class="topbar-row">
           <div class="file-row">
             <select id="file-select" class="file-select" title="切换文件" aria-label="切换文件">
               <option value="">— 暂无文件 —</option>
             </select>
             <button id="file-pick" class="icon-btn" title="从本地选择一个 .xlsx 文件">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
                 <line x1="12" y1="18" x2="12" y2="12" />
@@ -26,35 +25,21 @@
               </svg>
             </button>
             <button id="file-pick-dir" class="icon-btn" title="从本地选择一个文件夹（列出所有 .xlsx）">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
             </button>
             <button id="file-remove" class="icon-btn" title="从列表中移除当前文件（不删除磁盘文件）" hidden>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
           </div>
 
-          <!-- 权限恢复横幅（handle 存在但权限过期时显示） -->
-          <div id="fs-banner" class="fs-banner" hidden>
-            <span class="fs-banner-text">需要重新授权才能读取本地文件</span>
-            <button id="fs-grant" class="primary-btn primary-btn-sm">重新授权</button>
-          </div>
+          <div class="topbar-divider" aria-hidden="true"></div>
 
-          <!-- 浏览器不支持 File System Access API 时的提示 -->
-          <div id="fs-unsupported" class="fs-banner fs-banner-warn" hidden>
-            <span class="fs-banner-text">当前浏览器不支持 File System Access API，请用 Chrome / Edge / Arc 等 Chromium 内核浏览器打开本页。</span>
-          </div>
-
-          <div class="file-meta">
-            <span class="file-status" id="file-status" title="访问权限状态"></span>
-            <span id="file-meta-text" class="file-meta-text">请选择一个本地 xlsx 文件</span>
-          </div>
-
-          <div class="toolbar">
+          <div class="topbar-actions">
             <button id="btn-undo" class="tool-btn" title="撤销 (Ctrl+Z)" disabled>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
                 <path d="M3 7v6h6" />
@@ -69,173 +54,260 @@
               </svg>
               <span>重做</span>
             </button>
-            <span class="tool-sep" aria-hidden="true"></span>
-            <button id="btn-new" class="tool-btn" title="新增章节">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              <span>新增</span>
-            </button>
-            <button id="btn-import" class="tool-btn" title="从 xlsx 文件导入条目">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              <span>导入</span>
-            </button>
-            <button id="btn-sort" class="tool-btn" title="切换正/倒序">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-              <span id="sort-label">正序</span>
-            </button>
-          </div>
-        </header>
-
-        <div id="page-tabs" class="page-tabs" role="tablist" aria-label="页面切换"></div>
-
-        <div id="sheet-tabs" class="sheet-tabs" hidden role="tablist" aria-label="工作表切换"></div>
-
-        <ul id="chapter-list" class="chapter-list"></ul>
-
-        <footer class="pane-footer">
-          <span id="chapter-count" class="muted">0 章</span>
-        </footer>
-      </aside>
-
-      <!-- ===================== 中栏 ===================== -->
-      <main class="pane pane-center">
-        <div id="editor-empty" class="empty-state">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          </svg>
-          <p>从左侧选一章开始阅读，或新增一章</p>
-        </div>
-
-        <article id="editor" class="editor" hidden>
-          <div class="editor-meta">
-            <div class="meta-field">
-              <label>章节号</label>
-              <input id="ch-no" type="number" min="0" step="1" />
-            </div>
-            <div class="meta-field meta-title">
-              <label>章节名称</label>
-              <input id="ch-title" type="text" placeholder="给本章起个名字" />
-            </div>
-            <div class="meta-actions">
-              <button id="btn-save" class="primary-btn">保存</button>
-              <button id="btn-delete" class="danger-btn">删除</button>
-            </div>
-          </div>
-
-          <div class="editor-body">
-            <label class="body-label">文章内容</label>
-            <textarea id="ch-content" placeholder="正文…"></textarea>
-            <div class="body-stats">
-              <span id="word-count" class="muted">0 字</span>
-              <span id="save-status" class="muted"></span>
-            </div>
-          </div>
-        </article>
-      </main>
-
-      <!-- ===================== 右栏 ===================== -->
-      <aside class="pane pane-right">
-        <header class="pane-header">
-          <h3 class="right-title">相关内容</h3>
-          <nav class="tabs">
-            <button class="tab active" data-tab="characters">人物</button>
-            <button class="tab" data-tab="analysis">分析</button>
-            <button class="tab" data-tab="outline">大纲</button>
-          </nav>
-        </header>
-
-        <div class="tab-panels">
-          <div class="tab-panel active" data-panel="characters">
-            <div class="placeholder-block">
-              <p class="muted">本章出现的人物</p>
-              <p class="hint">选中章节后，此处可展示人物卡片 / 关系图谱 / 出场记录等。内容形态待你定义。</p>
-            </div>
-          </div>
-          <div class="tab-panel" data-panel="analysis">
-            <div class="placeholder-block">
-              <p class="muted">本章内容分析</p>
-              <p class="hint">可放：情节摘要 / 情绪曲线 / 关键事件 / AI 解读等。</p>
-            </div>
-          </div>
-          <div class="tab-panel" data-panel="outline">
-            <div class="placeholder-block">
-              <p class="muted">本章大纲 / 备注</p>
-              <p class="hint">可放：创作笔记 / 章纲 / 灵感碎片 / 待补充内容。</p>
-            </div>
           </div>
         </div>
 
-        <footer class="pane-footer pane-footer-stack">
-          <details class="settings">
-            <summary>主题设置</summary>
-            <div class="settings-body">
-              <div class="setting-row">
-                <label>背景</label>
-                <div class="seg">
-                  <button class="seg-btn" data-bg="paper">宣纸</button>
-                  <button class="seg-btn" data-bg="light">亮</button>
-                  <button class="seg-btn" data-bg="dark">暗</button>
+        <div id="fs-banner" class="fs-banner" hidden>
+          <span class="fs-banner-text">需要重新授权才能读取本地文件</span>
+          <button id="fs-grant" class="primary-btn primary-btn-sm">重新授权</button>
+        </div>
+
+        <div id="fs-unsupported" class="fs-banner fs-banner-warn" hidden>
+          <span class="fs-banner-text">当前浏览器不支持 File System Access API，请用 Chrome / Edge / Arc 等 Chromium 内核浏览器打开本页。</span>
+        </div>
+
+        <div class="file-meta">
+          <span class="file-status" id="file-status" title="访问权限状态"></span>
+          <span id="file-meta-text" class="file-meta-text">请选择一个本地 xlsx 文件</span>
+        </div>
+      </header>
+
+      <!-- ===================== 主体：左导航 + 右主区域 ===================== -->
+      <div class="app-body">
+        <!-- 左侧导航栏 -->
+        <aside class="nav-rail" aria-label="主导航">
+          <nav id="nav-tabs" class="nav-tabs" role="tablist" aria-label="页面切换"></nav>
+          <footer class="nav-footer">
+            <details class="settings">
+              <summary>主题设置</summary>
+              <div class="settings-body">
+                <div class="setting-row">
+                  <label>背景</label>
+                  <div class="seg">
+                    <button class="seg-btn" data-bg="paper">宣纸</button>
+                    <button class="seg-btn" data-bg="light">亮</button>
+                    <button class="seg-btn" data-bg="dark">暗</button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <label>强调色</label>
+                  <div class="seg">
+                    <button class="seg-btn seg-color" data-accent="indigo" style="--c:#5B7FB9"></button>
+                    <button class="seg-btn seg-color" data-accent="sage" style="--c:#7A9B7E"></button>
+                    <button class="seg-btn seg-color" data-accent="amber" style="--c:#B89060"></button>
+                    <button class="seg-btn seg-color" data-accent="rose" style="--c:#B57A8A"></button>
+                    <button class="seg-btn seg-color" data-accent="slate" style="--c:#5C6B7A"></button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <label>字号 <span id="font-size-val" class="muted">16</span></label>
+                  <input id="font-size" type="range" min="13" max="22" step="1" />
+                </div>
+                <div class="setting-row">
+                  <label>行高 <span id="line-height-val" class="muted">1.7</span></label>
+                  <input id="line-height" type="range" min="1.3" max="2.2" step="0.05" />
+                </div>
+                <div class="setting-row">
+                  <label>字体</label>
+                  <div class="seg seg-font">
+                    <button class="seg-btn" data-font="system" title="系统默认（无衬线 UI + 衬线正文）">系统</button>
+                    <button class="seg-btn" data-font="serif" title="宋体 / Songti / Noto Serif CJK">宋体</button>
+                    <button class="seg-btn" data-font="hei" title="黑体 / 苹方 / Microsoft YaHei">黑体</button>
+                    <button class="seg-btn" data-font="kai" title="楷体 / KaiTi">楷体</button>
+                    <button class="seg-btn" data-font="fang" title="仿宋 / FangSong">仿宋</button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <label>自动保存</label>
+                  <div class="seg seg-autosave">
+                    <button class="seg-btn" data-autosave="0">关闭</button>
+                    <button class="seg-btn" data-autosave="60000">1 分钟</button>
+                    <button class="seg-btn" data-autosave="180000">3 分钟</button>
+                    <button class="seg-btn" data-autosave="300000">5 分钟</button>
+                  </div>
+                  <span id="autosave-status" class="muted hint"></span>
+                </div>
+                <div class="setting-row">
+                  <label>数据</label>
+                  <div class="seg seg-data">
+                    <button id="btn-export" class="seg-btn" title="导出全部数据为 JSON">导出</button>
+                    <label for="file-import" class="seg-btn" title="从 JSON 文件恢复">导入</label>
+                    <input id="file-import" type="file" accept="application/json" hidden />
+                  </div>
                 </div>
               </div>
-              <div class="setting-row">
-                <label>强调色</label>
-                <div class="seg">
-                  <button class="seg-btn seg-color" data-accent="indigo" style="--c:#5B7FB9"></button>
-                  <button class="seg-btn seg-color" data-accent="sage" style="--c:#7A9B7E"></button>
-                  <button class="seg-btn seg-color" data-accent="amber" style="--c:#B89060"></button>
-                  <button class="seg-btn seg-color" data-accent="rose" style="--c:#B57A8A"></button>
-                  <button class="seg-btn seg-color" data-accent="slate" style="--c:#5C6B7A"></button>
-                </div>
-              </div>
-              <div class="setting-row">
-                <label>字号 <span id="font-size-val" class="muted">16</span></label>
-                <input id="font-size" type="range" min="13" max="22" step="1" />
-              </div>
-              <div class="setting-row">
-                <label>行高 <span id="line-height-val" class="muted">1.7</span></label>
-                <input id="line-height" type="range" min="1.3" max="2.2" step="0.05" />
-              </div>
-              <div class="setting-row">
-                <label>字体</label>
-                <div class="seg seg-font">
-                  <button class="seg-btn" data-font="system" title="系统默认（无衬线 UI + 衬线正文）">系统</button>
-                  <button class="seg-btn" data-font="serif" title="宋体 / Songti / Noto Serif CJK">宋体</button>
-                  <button class="seg-btn" data-font="hei" title="黑体 / 苹方 / Microsoft YaHei">黑体</button>
-                  <button class="seg-btn" data-font="kai" title="楷体 / KaiTi">楷体</button>
-                  <button class="seg-btn" data-font="fang" title="仿宋 / FangSong">仿宋</button>
-                </div>
-              </div>
-              <div class="setting-row">
-                <label>自动保存</label>
-                <div class="seg seg-autosave">
-                  <button class="seg-btn" data-autosave="0">关闭</button>
-                  <button class="seg-btn" data-autosave="60000">1 分钟</button>
-                  <button class="seg-btn" data-autosave="180000">3 分钟</button>
-                  <button class="seg-btn" data-autosave="300000">5 分钟</button>
-                </div>
-                <span id="autosave-status" class="muted hint"></span>
-              </div>
-              <div class="setting-row">
-                <label>数据</label>
-                <div class="seg seg-data">
-                  <button id="btn-export" class="seg-btn" title="导出全部数据为 JSON">导出</button>
-                  <label for="file-import" class="seg-btn" title="从 JSON 文件恢复">导入</label>
-                  <input id="file-import" type="file" accept="application/json" hidden />
-                </div>
-              </div>
+            </details>
+          </footer>
+        </aside>
+
+        <!-- 右侧主区域 -->
+        <div class="main-area">
+          <!-- ===================== 章节内容页 ===================== -->
+          <section class="page-view" data-page-view="chapter">
+            <div class="page-toolbar">
+              <button id="btn-new" class="tool-btn" title="新增章节">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>新增章节</span>
+              </button>
+              <button id="btn-import" class="tool-btn" title="从 xlsx 文件导入条目">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span>导入</span>
+              </button>
+              <button id="btn-sort" class="tool-btn" title="切换正/倒序">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                <span id="sort-label">正序</span>
+              </button>
+              <span class="page-toolbar-spacer"></span>
+              <span id="chapter-count" class="muted page-toolbar-meta">0 章</span>
             </div>
-          </details>
-        </footer>
-      </aside>
+            <div class="three-cols">
+              <aside class="col col-list">
+                <div id="sheet-tabs" class="sheet-tabs" hidden role="tablist" aria-label="工作表切换"></div>
+                <ul id="chapter-list" class="chapter-list"></ul>
+              </aside>
+              <main class="col col-editor">
+                <div id="editor-empty" class="empty-state">
+                  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                  </svg>
+                  <p>从左侧选一章开始阅读，或新增一章</p>
+                </div>
+                <article id="editor" class="editor" hidden>
+                  <div class="editor-meta">
+                    <div class="meta-field">
+                      <label>章节号</label>
+                      <input id="ch-no" type="number" min="0" step="1" />
+                    </div>
+                    <div class="meta-field meta-title">
+                      <label>章节名称</label>
+                      <input id="ch-title" type="text" placeholder="给本章起个名字" />
+                    </div>
+                    <div class="meta-actions">
+                      <button id="btn-save" class="primary-btn">保存</button>
+                      <button id="btn-delete" class="danger-btn">删除</button>
+                    </div>
+                  </div>
+                  <div class="editor-body">
+                    <label class="body-label">文章内容</label>
+                    <textarea id="ch-content" placeholder="正文…"></textarea>
+                    <div class="body-stats">
+                      <span id="word-count" class="muted">0 字</span>
+                      <span id="save-status" class="muted"></span>
+                    </div>
+                  </div>
+                </article>
+              </main>
+              <aside class="col col-right" aria-label="章节相关内容">
+                <header class="col-right-header">
+                  <h3>相关内容</h3>
+                </header>
+                <nav class="tabs">
+                  <button class="tab active" data-tab="characters">人物</button>
+                  <button class="tab" data-tab="analysis">分析</button>
+                  <button class="tab" data-tab="outline">大纲</button>
+                </nav>
+                <div class="tab-panels">
+                  <div class="tab-panel active" data-panel="characters">
+                    <div class="placeholder-block">
+                      <p class="muted">本章出现的人物</p>
+                      <p class="hint">选中章节后，此处可展示人物卡片 / 关系图谱 / 出场记录等。内容形态待你定义。</p>
+                    </div>
+                  </div>
+                  <div class="tab-panel" data-panel="analysis">
+                    <div class="placeholder-block">
+                      <p class="muted">本章内容分析</p>
+                      <p class="hint">可放：情节摘要 / 情绪曲线 / 关键事件 / AI 解读等。</p>
+                    </div>
+                  </div>
+                  <div class="tab-panel" data-panel="outline">
+                    <div class="placeholder-block">
+                      <p class="muted">本章大纲 / 备注</p>
+                      <p class="hint">可放：创作笔记 / 章纲 / 灵感碎片 / 待补充内容。</p>
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <!-- ===================== 伏笔管理页 ===================== -->
+          <section class="page-view" data-page-view="foreshadowing" hidden>
+            <div class="page-toolbar">
+              <button id="btn-new-fs" class="tool-btn" title="新增伏笔">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>新增伏笔</span>
+              </button>
+              <span class="page-toolbar-spacer"></span>
+              <span id="fs-count" class="muted page-toolbar-meta">0 条</span>
+            </div>
+            <div class="two-cols">
+              <aside class="col col-list">
+                <ul id="fs-list" class="fs-list"></ul>
+              </aside>
+              <main class="col col-editor">
+                <div id="fs-editor-empty" class="empty-state">
+                  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+                    <path d="M3 7h18M3 12h18M3 17h12" />
+                  </svg>
+                  <p>从左侧选一条伏笔查看，或新增一条</p>
+                  <p class="hint">伏笔 = 故事里提前铺设、后续回收的剧情线索</p>
+                </div>
+                <article id="fs-editor" class="editor" hidden>
+                  <div class="editor-meta editor-meta-fs">
+                    <div class="meta-field meta-num">
+                      <label>序号</label>
+                      <input id="fs-no" type="number" min="0" step="1" />
+                    </div>
+                    <div class="meta-field meta-title">
+                      <label>伏笔名称</label>
+                      <input id="fs-name" type="text" placeholder="给伏笔起个名字" />
+                    </div>
+                    <div class="meta-field">
+                      <label>状态</label>
+                      <select id="fs-status"></select>
+                    </div>
+                    <div class="meta-actions">
+                      <button id="btn-fs-save" class="primary-btn">保存</button>
+                      <button id="btn-fs-delete" class="danger-btn">删除</button>
+                    </div>
+                  </div>
+                  <div class="editor-body">
+                    <div class="fs-form-row">
+                      <div class="meta-field">
+                        <label>铺设章节</label>
+                        <input id="fs-setup" type="text" placeholder="如：第三章、第12章" />
+                      </div>
+                      <div class="meta-field">
+                        <label>回收章节</label>
+                        <input id="fs-payoff" type="text" placeholder="如：第二十章、第45章" />
+                      </div>
+                    </div>
+                    <label class="body-label">备注 / 详情</label>
+                    <textarea id="fs-notes" placeholder="伏笔的具体内容、提示、相关情节等…"></textarea>
+                    <div class="body-stats">
+                      <span id="fs-word-count" class="muted">0 字</span>
+                      <span id="fs-save-status" class="muted"></span>
+                    </div>
+                  </div>
+                </article>
+              </main>
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
 
     <!-- ===================== 弹窗：导入 ===================== -->
@@ -244,8 +316,8 @@
       <div class="modal-card modal-card-wide">
         <header class="modal-header">
           <h3>导入 xlsx 条目</h3>
-          <button class="icon-btn" data-close>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <button class="icon-btn" data-close aria-label="关闭">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
@@ -256,7 +328,6 @@
             选择一个本地 <code>.xlsx</code> 文件。系统会按 sheet 名的特征自动归类到对应的页面（章节 / 伏笔管理 / 后续扩展），也可以手动指定。文本粘贴仅作为兜底，默认导入到「章节」页。
           </p>
 
-          <!-- 主区：xlsx 上传 + 拖拽 -->
           <div id="import-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入 xlsx 文件">
             <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -316,7 +387,7 @@
         <header class="modal-header">
           <h3>打开 .xlsx 文件</h3>
           <button class="icon-btn" data-close aria-label="关闭">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
@@ -369,7 +440,7 @@
         <header class="modal-header">
           <h3>打开文件夹</h3>
           <button class="icon-btn" data-close aria-label="关闭">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
