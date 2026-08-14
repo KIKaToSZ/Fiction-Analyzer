@@ -10,7 +10,7 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 5;
+  const SCHEMA_VERSION = 6;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
 
@@ -19,6 +19,8 @@
     accent: "indigo",
     fontSize: 16,
     lineHeight: 1.7,
+    font: "system", // system | serif | hei | kai | fang
+    autosaveMs: 0,  // 0=关闭；60000/180000/300000 = 1/3/5 分钟
   };
 
   const ACCENT_COLORS = {
@@ -266,6 +268,220 @@
     theme: { ...DEFAULT_THEME },
     ui: { sort: "asc" },
   };
+
+  /* ============================================================
+     撤销 / 重做（history）
+     - 快照：state.pages + state.sheetsRaw + state.currentPage
+     - 不存：theme / ui / recentFiles / currentFileName（这些是环境变量）
+     ============================================================ */
+  const HISTORY_MAX = 50;
+  const history = {
+    stack: [],   // [{pages, sheetsRaw, currentPage}, ...]
+    idx: -1,     // 当前指针；-1 表示空
+    suspended: false, // undo/redo 期间禁止入栈，避免覆盖
+  };
+
+  function snapshotState() {
+    return {
+      pages: {
+        chapter: {
+          sheets: JSON.parse(JSON.stringify(state.pages.chapter.sheets || [])),
+          currentSheet: state.pages.chapter.currentSheet,
+          items: JSON.parse(JSON.stringify(state.pages.chapter.items || [])),
+          currentItemId: state.pages.chapter.currentItemId,
+        },
+        foreshadowing: {
+          sheets: JSON.parse(JSON.stringify(state.pages.foreshadowing.sheets || [])),
+          currentSheet: state.pages.foreshadowing.currentSheet,
+          items: JSON.parse(JSON.stringify(state.pages.foreshadowing.items || [])),
+          currentItemId: state.pages.foreshadowing.currentItemId,
+        },
+      },
+      sheetsRaw: JSON.parse(JSON.stringify(state.sheetsRaw || [])),
+      currentPage: state.currentPage,
+    };
+  }
+
+  function applySnapshot(snap) {
+    if (!snap) return;
+    state.pages = {
+      chapter: {
+        ...makePageState(),
+        ...snap.pages.chapter,
+      },
+      foreshadowing: {
+        ...makePageState(),
+        ...snap.pages.foreshadowing,
+      },
+    };
+    state.sheetsRaw = snap.sheetsRaw || [];
+    if (PAGE_IDS.includes(snap.currentPage)) {
+      state.currentPage = snap.currentPage;
+    }
+  }
+
+  function pushHistory() {
+    if (history.suspended) return;
+    // 截断 idx 之后的内容（清空 redo 分支）
+    if (history.idx < history.stack.length - 1) {
+      history.stack = history.stack.slice(0, history.idx + 1);
+    }
+    const snap = snapshotState();
+    // 和栈顶相同则不入栈（避免连续相同快照污染栈）
+    const top = history.stack[history.stack.length - 1];
+    if (top && JSON.stringify(top) === JSON.stringify(snap)) return;
+    history.stack.push(snap);
+    if (history.stack.length > HISTORY_MAX) {
+      history.stack.shift();
+    }
+    history.idx = history.stack.length - 1;
+    updateUndoRedoButtons();
+  }
+
+  function undo() {
+    if (history.idx <= 0) {
+      toast("已是最早的操作", "info", 1200);
+      return;
+    }
+    // 先把当前编辑器的"未保存"输入提交到 item，再切快照
+    try { saveCurrentItem(); } catch (_) {}
+    history.idx--;
+    history.suspended = true;
+    try {
+      applySnapshot(history.stack[history.idx]);
+    } finally {
+      history.suspended = false;
+    }
+    save();
+    renderAll();
+    updateUndoRedoButtons();
+    toast("已撤销", "info", 900);
+  }
+
+  function redo() {
+    if (history.idx >= history.stack.length - 1) {
+      toast("已是最新的操作", "info", 1200);
+      return;
+    }
+    try { saveCurrentItem(); } catch (_) {}
+    history.idx++;
+    history.suspended = true;
+    try {
+      applySnapshot(history.stack[history.idx]);
+    } finally {
+      history.suspended = false;
+    }
+    save();
+    renderAll();
+    updateUndoRedoButtons();
+    toast("已重做", "info", 900);
+  }
+
+  function resetHistory() {
+    history.stack = [];
+    history.idx = -1;
+    updateUndoRedoButtons();
+  }
+
+  function updateUndoRedoButtons() {
+    const u = $("#btn-undo");
+    const r = $("#btn-redo");
+    if (u) u.disabled = !(history.idx > 0);
+    if (r) r.disabled = !(history.idx >= 0 && history.idx < history.stack.length - 1);
+  }
+
+  // 持续编辑场景下用：800ms 停顿才入栈，避免每个字符都打一格
+  let _pushHistoryDebounce = null;
+  function debouncedPushHistory(delay = 800) {
+    if (history.suspended) return;
+    clearTimeout(_pushHistoryDebounce);
+    _pushHistoryDebounce = setTimeout(() => {
+      _pushHistoryDebounce = null;
+      pushHistory();
+    }, delay);
+  }
+
+  /* ============================================================
+     自动保存
+     - 触发：state.theme.autosaveMs（0=关闭，60000/180000/300000）
+     - 动作：把当前编辑器提交到 item → 存 localStorage → 尝试写回 xlsx
+     - 不阻塞：写文件失败不报错，只在状态条上提示
+     ============================================================ */
+  let _autosaveTimer = null;
+  let _autosaveRunning = false;
+  function startAutosave() {
+    stopAutosave();
+    const ms = Number(state.theme.autosaveMs) || 0;
+    if (ms <= 0) {
+      _setAutosaveStatus("已关闭", "");
+      return;
+    }
+    _autosaveTimer = setInterval(async () => {
+      if (_autosaveRunning) return;
+      _autosaveRunning = true;
+      try {
+        await runAutosaveOnce();
+      } finally {
+        _autosaveRunning = false;
+      }
+    }, ms);
+    _setAutosaveStatus(`每 ${formatMinutes(ms)} 自动保存一次`, "");
+  }
+  function stopAutosave() {
+    if (_autosaveTimer) {
+      clearInterval(_autosaveTimer);
+      _autosaveTimer = null;
+    }
+  }
+  function formatMinutes(ms) {
+    if (ms % 60000 === 0) return `${ms / 60000} 分钟`;
+    return `${Math.round(ms / 1000)} 秒`;
+  }
+  function _setAutosaveStatus(text, cls) {
+    const el = $("#autosave-status");
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove("saved", "error");
+    if (cls) el.classList.add(cls);
+  }
+  async function runAutosaveOnce() {
+    // 1) 把编辑器里的"未保存输入"提交到 item（不弹 toast）
+    try {
+      const it = curItem();
+      if (it) {
+        if (state.currentPage === "chapter") {
+          it.no = Number($("#ch-no").value) || 0;
+          it.title = $("#ch-title").value.trim();
+          it.content = $("#ch-content").value;
+        } else if (state.currentPage === "foreshadowing") {
+          it.no = Number($("#fs-no").value) || 0;
+          it.name = $("#fs-name").value.trim();
+          it.status = $("#fs-status").value || "活跃";
+          it.setup = $("#fs-setup").value.trim();
+          it.payoff = $("#fs-payoff").value.trim();
+          it.notes = $("#fs-notes").value;
+        }
+      }
+    } catch (_) {}
+    // 2) 一定存 localStorage
+    save();
+    // 3) 尝试写回 xlsx（无 handle / 权限丢失则降级跳过）
+    let written = false;
+    try {
+      if (typeof saveToFile === "function") {
+        written = await saveToFile({ silent: true });
+      }
+    } catch (e) {
+      // 静默失败；提示用户
+      _setAutosaveStatus("已存到本地，写回 xlsx 失败（需重新授权）", "error");
+      return;
+    }
+    const ts = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+    _setAutosaveStatus(
+      written ? `已自动保存并写回 xlsx · ${ts}` : `已自动保存到本地 · ${ts}`,
+      "saved"
+    );
+  }
 
   /* ============================================================
      持久化 - localStorage（不含 file handles）
@@ -1121,21 +1337,36 @@
     const it = curItem();
     if (!it) return;
     if (state.currentPage === "chapter") {
-      $("#ch-content")?.addEventListener("input", () => {
-        const len = $("#ch-content").value.length;
+      const chContent = $("#ch-content");
+      const chNo = $("#ch-no");
+      const chTitle = $("#ch-title");
+      chContent?.addEventListener("input", () => {
+        const len = chContent.value.length;
         $("#word-count").textContent = `${len} 字`;
+        debouncedPushHistory();
       });
+      chNo?.addEventListener("input", debouncedPushHistory);
+      chTitle?.addEventListener("input", debouncedPushHistory);
     } else if (state.currentPage === "foreshadowing") {
-      $("#fs-notes")?.addEventListener("input", () => {
-        const len = $("#fs-notes").value.length;
+      const fsNotes = $("#fs-notes");
+      fsNotes?.addEventListener("input", () => {
+        const len = fsNotes.value.length;
         $("#word-count").textContent = `${len} 字`;
+        debouncedPushHistory();
       });
+      ["#fs-no", "#fs-name", "#fs-status", "#fs-setup", "#fs-payoff"].forEach(
+        (sel) => $(sel)?.addEventListener("input", debouncedPushHistory)
+      );
+      ["#fs-no", "#fs-name", "#fs-status", "#fs-setup", "#fs-payoff"].forEach(
+        (sel) => $(sel)?.addEventListener("change", debouncedPushHistory)
+      );
     }
   }
 
   function renderTheme() {
     document.body.dataset.bg = state.theme.bg;
     document.body.dataset.accent = state.theme.accent;
+    document.body.dataset.font = state.theme.font || "system";
     document.documentElement.style.setProperty(
       "--accent",
       ACCENT_COLORS[state.theme.accent] || ACCENT_COLORS.indigo
@@ -1154,10 +1385,18 @@
     $$(".seg-btn[data-accent]").forEach((b) =>
       b.classList.toggle("active", b.dataset.accent === state.theme.accent)
     );
+    $$(".seg-btn[data-font]").forEach((b) =>
+      b.classList.toggle("active", b.dataset.font === (state.theme.font || "system"))
+    );
     $("#font-size").value = state.theme.fontSize;
     $("#font-size-val").textContent = state.theme.fontSize;
     $("#line-height").value = state.theme.lineHeight;
     $("#line-height-val").textContent = state.theme.lineHeight.toFixed(2);
+    // 自动保存下拉高亮
+    const cur = String(Number(state.theme.autosaveMs) || 0);
+    $$(".seg-btn[data-autosave]").forEach((b) =>
+      b.classList.toggle("active", b.dataset.autosave === cur)
+    );
   }
 
   function renderNewItemButton() {
@@ -1225,6 +1464,8 @@
         isDirectory: false,
       });
       save();
+      // 新文件覆盖了数据，纳入 history
+      pushHistory();
       renderAll();
       // 统计哪些页有数据
       const summary = PAGE_IDS.map((pid) => {
@@ -1252,6 +1493,7 @@
       }
       state.currentFileName = file.name;
       save();
+      pushHistory();
       renderAll();
       hideModal("modal-open-file");
       const summary = PAGE_IDS.map((pid) => {
@@ -1495,6 +1737,10 @@
       it.notes = $("#fs-notes").value;
     }
     save();
+    // 显式保存：取消任何在等的 debounce 入栈，立即入栈
+    clearTimeout(_pushHistoryDebounce);
+    _pushHistoryDebounce = null;
+    pushHistory();
     renderItemList();
     flashSaveStatus("✓ 已保存到本地");
     return true;
@@ -1522,6 +1768,7 @@
     p.items = p.items.filter((x) => x.id !== it.id);
     p.currentItemId = null;
     save();
+    pushHistory();
     renderAll();
     toast("已删除");
   }
@@ -1538,6 +1785,7 @@
     p.items.push(it);
     p.currentItemId = it.id;
     save();
+    pushHistory();
     renderAll();
     setTimeout(() => {
       // focus 第一个可输入字段
@@ -1722,6 +1970,7 @@
         }
       }
       save();
+      pushHistory();
       hideModal("modal-import");
       // 切到目标页面 + 该 sheet
       state.currentPage = targetPid;
@@ -2181,9 +2430,57 @@
     });
     // 排序
     $("#btn-sort").addEventListener("click", () => {
-      state.ui.sort = state.ui.sort === "asc" ? "desc" : "asc";
+      const prev = state.ui.sort;
+      state.ui.sort = prev === "asc" ? "desc" : "asc";
       save();
+      // 排序改动不压栈（数据本身没变，只换展示）
       renderItemList();
+    });
+    // 撤销 / 重做
+    $("#btn-undo")?.addEventListener("click", undo);
+    $("#btn-redo")?.addEventListener("click", redo);
+
+    // 全局快捷键
+    document.addEventListener("keydown", (e) => {
+      const inEditable =
+        e.target &&
+        (e.target.tagName === "INPUT" ||
+          e.target.tagName === "TEXTAREA" ||
+          e.target.tagName === "SELECT" ||
+          e.target.isContentEditable);
+      const mod = e.ctrlKey || e.metaKey; // Mac 用 Cmd，Win/Linux 用 Ctrl
+
+      // Ctrl+S / Cmd+S：保存当前章节到本地 + 写回 xlsx
+      if (mod && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        if (!curItem()) {
+          toast("没有选中的条目可保存", "error", 1500);
+          return;
+        }
+        const ok = saveCurrentItem();
+        if (ok) {
+          saveToFile().then((written) => {
+            if (written) flashSaveStatus("✓ 已保存并写入文件 (Ctrl+S)", 1800);
+            else flashSaveStatus("✓ 已保存到本地（写文件需授权）", 2000);
+          });
+        }
+        return;
+      }
+      // Ctrl+Z / Cmd+Z：撤销
+      if (mod && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      // Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y：重做
+      if (
+        (mod && e.shiftKey && (e.key === "z" || e.key === "Z")) ||
+        (mod && (e.key === "y" || e.key === "Y"))
+      ) {
+        e.preventDefault();
+        redo();
+        return;
+      }
     });
   }
 
@@ -2211,6 +2508,27 @@
         state.theme.accent = b.dataset.accent;
         save();
         renderTheme();
+      })
+    );
+    $$(".seg-btn[data-font]").forEach((b) =>
+      b.addEventListener("click", () => {
+        state.theme.font = b.dataset.font;
+        save();
+        renderTheme();
+        toast(`已切换为${b.textContent.trim()}字体`);
+      })
+    );
+    $$(".seg-btn[data-autosave]").forEach((b) =>
+      b.addEventListener("click", () => {
+        state.theme.autosaveMs = Number(b.dataset.autosave) || 0;
+        save();
+        renderTheme();
+        startAutosave();
+        if (state.theme.autosaveMs > 0) {
+          toast(`自动保存：每 ${formatMinutes(state.theme.autosaveMs)} 一次`);
+        } else {
+          toast("自动保存已关闭");
+        }
       })
     );
     $("#font-size").addEventListener("input", (e) => {
@@ -2315,11 +2633,22 @@
     bindTabs();
     bindThemeEvents();
 
+    // 初始化 history：在当前 state 上压一个"基线"快照，让用户可以 undo 回到打开状态
+    pushHistory();
+    updateUndoRedoButtons();
+
+    // 启动自动保存（state.theme.autosaveMs 决定）
+    startAutosave();
+
     // 跨标签页同步
     window.addEventListener("storage", (e) => {
       if (e.key === STORAGE_KEY) {
         load();
         renderAll();
+        // 跨标签页后重置 history（避免引用陈旧快照）
+        resetHistory();
+        pushHistory();
+        startAutosave();
       }
     });
 

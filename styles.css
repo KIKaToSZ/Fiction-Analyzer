@@ -30,6 +30,26 @@
     Georgia, "Times New Roman", serif;
 }
 
+/* ---- 字体主题：覆盖 --font-content（正文/章节），UI 字体保持不变 ---- */
+body[data-font="system"] {
+  --font-content: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun",
+    Georgia, "Times New Roman", serif;
+}
+body[data-font="serif"] {
+  --font-content: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", STSong, SimSun,
+    "宋体", Georgia, "Times New Roman", serif;
+}
+body[data-font="hei"] {
+  --font-content: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC",
+    "Noto Sans CJK SC", "黑体", "Heiti SC", sans-serif;
+}
+body[data-font="kai"] {
+  --font-content: "Kaiti SC", "STKaiti", "KaiTi", "楷体", "BiauKai", "Noto Serif CJK SC", serif;
+}
+body[data-font="fang"] {
+  --font-content: "FangSong", "STFangsong", "仿宋", "仿宋_GB2312", "Noto Serif CJK SC", serif;
+}
+
 /* ---- 背景主题 ---- */
 body[data-bg="paper"] {
   --bg: #f5f1e8;
@@ -840,6 +860,44 @@ textarea {
   color: var(--accent);
   font-weight: 500;
   box-shadow: var(--shadow-sm);
+}
+
+/* 字体 / 自动保存分段：让按钮更紧凑以容纳 4-5 个选项 */
+.seg-font .seg-btn,
+.seg-autosave .seg-btn {
+  font-size: 10.5px;
+  padding: 5px 4px;
+  white-space: nowrap;
+}
+
+#autosave-status {
+  display: block;
+  margin-top: 4px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  min-height: 14px;
+}
+#autosave-status.saved {
+  color: var(--accent);
+}
+#autosave-status.error {
+  color: #c75450;
+}
+
+/* 工具栏内的垂直分隔符 */
+.tool-sep {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 4px;
+  vertical-align: middle;
+}
+
+/* 撤销 / 重做按钮的禁用态 */
+.tool-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .seg-color {
