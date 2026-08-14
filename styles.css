@@ -194,7 +194,8 @@ textarea {
 }
 
 .topbar-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 14px;
 }
@@ -205,10 +206,19 @@ textarea {
   background: var(--border-soft);
 }
 
+/* 第 2 列：搜索条放中间，自身可居中、可拉宽 */
+.topbar-search {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+}
+
 .topbar-actions {
   display: flex;
   gap: 6px;
   align-items: center;
+  justify-self: end;
 }
 
 /* ===================== 全局搜索条 ===================== */
@@ -216,7 +226,8 @@ textarea {
   position: relative;
   display: flex;
   align-items: center;
-  margin-left: 6px;
+  width: 100%;
+  max-width: 360px;
 }
 .search-icon {
   position: absolute;
@@ -227,10 +238,10 @@ textarea {
   pointer-events: none;
 }
 .search-input {
-  width: 220px;
-  height: 28px;
-  padding: 0 26px 0 26px;
-  font-size: 12px;
+  width: 100%;
+  height: 30px;
+  padding: 0 28px 0 28px;
+  font-size: 13px;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border-soft);
@@ -331,6 +342,17 @@ textarea {
   background: var(--accent-soft);
   border-radius: 4px;
   flex-shrink: 0;
+}
+.search-result-occ {
+  display: inline-block;
+  margin-left: auto;
+  padding: 0 6px;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--bg-soft);
+  border-radius: 4px;
+  flex-shrink: 0;
+  font-weight: 500;
 }
 .search-empty {
   padding: 14px 12px;
@@ -774,6 +796,16 @@ body.is-resizing .resizer * {
   color: var(--accent);
 }
 
+/* 只有图标没有文字的 tool-btn：不显示下方的 label 空间，整体更紧凑 */
+.tool-btn-icon {
+  padding: 6px 8px;
+  min-width: 32px;
+  min-height: 32px;
+}
+.tool-btn-icon svg {
+  display: block;
+}
+
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -882,13 +914,17 @@ body.is-resizing .resizer * {
 }
 
 .ch-no {
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  min-width: 28px;
+  max-width: 96px;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
-  width: 28px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ch-item.active .ch-no {
@@ -909,6 +945,33 @@ body.is-resizing .resizer * {
   color: var(--muted);
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.ch-delete {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+}
+.ch-item:hover .ch-delete,
+.ch-item.active .ch-delete,
+.ch-delete:focus-visible {
+  opacity: 1;
+}
+.ch-delete:hover {
+  color: #c0392b;
+  background: rgba(192, 57, 43, 0.1);
 }
 
 .link-btn {
@@ -951,8 +1014,8 @@ body.is-resizing .resizer * {
 
 .editor-meta {
   display: grid;
-  grid-template-columns: 100px 1fr auto;
-  gap: 12px;
+  grid-template-columns: minmax(140px, 200px) minmax(0, 1fr);
+  gap: 16px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--border-soft);
   align-items: end;

@@ -1278,6 +1278,7 @@
             <span class="ch-no">${escapeHtml(String(it.no))}</span>
             <span class="ch-title">${escapeHtml(it.title || "（无标题）")}</span>
             <span class="ch-meta">${wc}字</span>
+            <button class="ch-delete" data-id="${escapeHtml(it.id)}" title="删除该章节" aria-label="删除该章节" type="button">×</button>
           </li>`;
       })
       .join("");
@@ -1336,10 +1337,6 @@
         <div class="meta-field meta-title">
           <label>章节名称</label>
           <input id="ch-title" type="text" value="${escapeHtml(it.title || "")}" placeholder="给本章起个名字" />
-        </div>
-        <div class="meta-actions">
-          <button id="btn-save" class="primary-btn">保存</button>
-          <button id="btn-delete" class="danger-btn">删除</button>
         </div>
       </div>
       <div class="editor-body">
@@ -1422,7 +1419,8 @@
       if (wc) wc.textContent = `${len} 字`;
       debouncedPushHistory();
     });
-    // 按回车时，如果光标上一行不是空行，先在光标前补一个 \n，让"行间有空行"
+    // 按回车时，如果当前 textarea 还是单行状态（无换行），保持普通换行（不额外插空行）；
+    // 已经是多行时再在光标前补一个 \n，让"行间有空行"
     chContent?.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1432,8 +1430,9 @@
       const before = ta.value.slice(0, pos);
       const lastNl = before.lastIndexOf("\n");
       const prevLine = before.slice(lastNl + 1);
-      // 上一行有内容（不是空行）→ 在光标前补一个 \n
-      if (prevLine.length > 0) {
+      // 上一行有内容（不是空行）+ 整篇已有换行（即已多行）→ 在光标前补一个 \n
+      // 首次输入时（整篇只有一个 \n 都没有，或光标所在就是唯一一行）保持普通换行，不额外插空行
+      if (prevLine.length > 0 && ta.value.indexOf("\n") >= 0) {
         e.preventDefault();
         const insert = "\n";
         ta.value = before + insert + ta.value.slice(pos);
@@ -2537,6 +2536,16 @@
     const chapterList = $("#chapter-list");
     const fsList = $("#fs-list");
     const onClick = (e) => {
+      // 章节列表的"删除"叉号优先处理，阻止冒泡（避免触发选中）
+      if (e.target.closest(".ch-delete")) {
+        e.stopPropagation();
+        const id = e.target.closest(".ch-delete").dataset.id;
+        if (!id) return;
+        // 先选中该项（让 deleteCurrentItem 找到 curItem），再删
+        curPage().currentItemId = id;
+        deleteCurrentItem();
+        return;
+      }
       const item = e.target.closest(".ch-item, .fs-item");
       if (!item) return;
       curPage().currentItemId = item.dataset.id;
@@ -2931,17 +2940,41 @@
   };
 
   // 提取命中位置 + 周围片段（高亮命中部分）
-  function buildSnippet(text, query) {
-    if (!text) return { html: "", found: false };
+  // occ = 第几个命中（0-based）；传 -1 时取第一个
+  function buildSnippet(text, query, occ = 0) {
+    if (!text) return { html: "", found: false, pos: -1 };
     const lower = text.toLowerCase();
-    const idx = lower.indexOf(query.toLowerCase());
-    if (idx < 0) return { html: "", found: false };
+    const q = query.toLowerCase();
+    let idx = -1;
+    let cur = -1;
+    for (let i = 0; i <= occ; i++) {
+      cur = lower.indexOf(q, cur + 1);
+      if (cur < 0) break;
+      idx = cur;
+    }
+    if (idx < 0) return { html: "", found: false, pos: -1 };
     const start = Math.max(0, idx - SEARCH_SNIPPET_RADIUS);
     const end = Math.min(text.length, idx + query.length + SEARCH_SNIPPET_RADIUS);
     const before = (start > 0 ? "…" : "") + escapeHtml(text.slice(start, idx));
     const hit = `<mark>${escapeHtml(text.slice(idx, idx + query.length))}</mark>`;
     const after = escapeHtml(text.slice(idx + query.length, end)) + (end < text.length ? "…" : "");
-    return { html: `${before}${hit}${after}`, found: true };
+    return { html: `${before}${hit}${after}`, found: true, pos: idx };
+  }
+
+  // 找字段里所有命中位置（不区分大小写）
+  function findAllOccurrences(text, query) {
+    if (!text || !query) return [];
+    const lower = text.toLowerCase();
+    const q = query.toLowerCase();
+    const out = [];
+    let cur = -1;
+    while (true) {
+      cur = lower.indexOf(q, cur + 1);
+      if (cur < 0) break;
+      out.push(cur);
+      if (out.length >= 20) break; // 防止极长内容把结果列表撑爆
+    }
+    return out;
   }
 
   function gatherSearchResults(query) {
@@ -2958,7 +2991,7 @@
           ? ["title", "no", "content"]
           : ["name", "no", "setup", "payoff", "status", "notes"];
         let titleHit = null;
-        let snippet = null;
+        const contentSnippets = []; // 多个 content 命中
         let matchedField = null;
         for (const key of primaryKeys) {
           const label = def.fields[key] ? def.fields[key][0] : key;
@@ -2967,44 +3000,108 @@
           const strVal = String(v);
           if (strVal.toLowerCase().indexOf(q) < 0) continue;
           if (key === "no" || key === "title" || key === "name" || key === "status") {
-            titleHit = titleHit || { key, label, value: strVal };
-            if (!matchedField) matchedField = label;
+            // 短字段：只记一次
+            if (!titleHit) {
+              titleHit = { key, label, value: strVal };
+              if (!matchedField) matchedField = label;
+            }
           } else {
-            if (!snippet) {
-              const snip = buildSnippet(strVal, query);
+            // 长字段（content / notes / setup / payoff）：每个命中位置都生成一条结果
+            const occs = findAllOccurrences(strVal, query);
+            occs.forEach((pos, occIdx) => {
+              const snip = buildSnippet(strVal, query, occIdx);
               if (snip.found) {
-                snippet = snip;
+                contentSnippets.push({
+                  html: snip.html,
+                  pos,
+                  field: key,
+                  label,
+                  occIdx,
+                });
                 if (!matchedField) matchedField = label;
               }
-            }
+            });
           }
         }
-        if (!titleHit && !snippet) continue;
-        const display = (() => {
-          if (titleHit) {
-            // 短字段（no / title / name / status）直接显示带高亮
-            return { html: buildSnippet(String(titleHit.value), query).html, isLong: false };
-          }
-          return { html: snippet.html, isLong: true };
-        })();
+        if (!titleHit && contentSnippets.length === 0) continue;
         // 标题：no + title/name
         const tlabel = pid === "chapter"
           ? `${formatItemNo(it.no)}${it.title ? " · " + it.title : ""}`
           : `${formatItemNo(it.no)}${it.name ? " · " + it.name : ""}`;
-        results.push({
-          pageId: pid,
-          pageLabel: def.label,
-          pageIcon: def.icon,
-          itemId: it.id,
-          sheet: it.sheet,
-          title: tlabel,
-          snippetHtml: display.html,
-          matchedField,
-        });
+        if (titleHit && contentSnippets.length === 0) {
+          // 只在短字段命中——一条结果
+          const display = buildSnippet(String(titleHit.value), query, 0);
+          results.push({
+            pageId: pid,
+            pageLabel: def.label,
+            pageIcon: def.icon,
+            itemId: it.id,
+            sheet: it.sheet,
+            field: titleHit.key,
+            occIdx: 0,
+            pos: display.pos,
+            title: tlabel,
+            snippetHtml: display.html,
+            matchedField,
+          });
+        } else if (!titleHit && contentSnippets.length > 0) {
+          // 只在长字段命中——每处一次（按位置升序）
+          contentSnippets.forEach((s) => {
+            results.push({
+              pageId: pid,
+              pageLabel: def.label,
+              pageIcon: def.icon,
+              itemId: it.id,
+              sheet: it.sheet,
+              field: s.field,
+              occIdx: s.occIdx,
+              pos: s.pos,
+              title: tlabel,
+              snippetHtml: s.html,
+              matchedField: s.label,
+            });
+          });
+        } else {
+          // 短字段 + 长字段都命中：短字段出一条；长字段每个位置出一次
+          const display = buildSnippet(String(titleHit.value), query, 0);
+          results.push({
+            pageId: pid,
+            pageLabel: def.label,
+            pageIcon: def.icon,
+            itemId: it.id,
+            sheet: it.sheet,
+            field: titleHit.key,
+            occIdx: 0,
+            pos: display.pos,
+            title: tlabel,
+            snippetHtml: display.html,
+            matchedField: titleHit.label,
+          });
+          contentSnippets.forEach((s) => {
+            results.push({
+              pageId: pid,
+              pageLabel: def.label,
+              pageIcon: def.icon,
+              itemId: it.id,
+              sheet: it.sheet,
+              field: s.field,
+              occIdx: s.occIdx,
+              pos: s.pos,
+              title: tlabel,
+              snippetHtml: s.html,
+              matchedField: s.label,
+            });
+          });
+        }
         if (results.length >= SEARCH_RESULT_LIMIT) break;
       }
       if (results.length >= SEARCH_RESULT_LIMIT) break;
     }
+    // 按 pos 升序、再按 itemId 分组排序
+    results.sort((a, b) => {
+      if (a.itemId === b.itemId) return a.pos - b.pos;
+      return 0; // 保持原本页/项顺序
+    });
     return results;
   }
 
@@ -3036,8 +3133,12 @@
     const items = searchState.results.map((r, i) => {
       const active = i === searchState.activeIdx ? "is-active" : "";
       const sheetTag = r.sheet ? `<span class="search-result-tag">${escapeHtml(r.sheet)}</span>` : "";
+      // 在长字段里第几处出现，仅当 occIdx > 0 时显示「第2处/第3处…」
+      const occTag = r.occIdx > 0
+        ? `<span class="search-result-occ">第 ${r.occIdx + 1} 处</span>`
+        : "";
       return `<div class="search-result ${active}" data-idx="${i}">
-        <div class="search-result-title">${sheetTag}<span>${escapeHtml(r.title)}</span></div>
+        <div class="search-result-title">${sheetTag}<span>${escapeHtml(r.title)}</span>${occTag}</div>
         ${r.snippetHtml ? `<div class="search-result-snippet">${r.snippetHtml}</div>` : ""}
       </div>`;
     }).join("");
@@ -3059,16 +3160,40 @@
     }
     save();
     renderAll();
-    // 让编辑区滚到顶部，光标定位到 textarea
+    // 让编辑区滚到顶部，光标定位到具体命中位置
     const ta = $("#ch-content") || $("#fs-notes");
     if (ta) {
-      // 高亮第一个匹配位置
+      // 用 r.pos 定位到具体匹配（多结果时各条跳到不同位置）
       const text = ta.value;
       const lower = text.toLowerCase();
-      const pos = lower.indexOf(searchState.query.toLowerCase());
+      const q = searchState.query.toLowerCase();
+      let pos = -1;
+      if (r.pos >= 0) {
+        // 先用 occIdx 重新定位（防止 content 切换时 pos 已变）
+        let cur = -1;
+        for (let i = 0; i <= r.occIdx; i++) {
+          cur = lower.indexOf(q, cur + 1);
+          if (cur < 0) break;
+          pos = cur;
+        }
+      }
+      if (pos < 0) {
+        pos = lower.indexOf(q);
+      }
       if (pos >= 0) {
         ta.focus();
         ta.setSelectionRange(pos, pos + searchState.query.length);
+        // 滚动 textarea，让光标位置可见
+        try {
+          const cs = window.getComputedStyle(ta);
+          const lineHeight = parseFloat(cs.lineHeight) || 22;
+          const paddingTop = parseFloat(cs.paddingTop) || 0;
+          const before = ta.value.slice(0, pos);
+          const lines = before.split("\n").length;
+          // 让光标行出现在 textarea 上方约 1/4 处
+          const targetTop = Math.max(0, (lines - 5) * lineHeight);
+          ta.scrollTop = targetTop;
+        } catch (_) {}
       } else {
         ta.focus();
       }

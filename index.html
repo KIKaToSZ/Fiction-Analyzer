@@ -37,6 +37,18 @@
             </button>
           </div>
 
+          <div class="topbar-search">
+            <div class="search-wrap" id="search-wrap">
+              <svg class="search-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input id="search-input" class="search-input" type="search" placeholder="搜索所有 tab（章节 / 伏笔）…" autocomplete="off" />
+              <button id="search-clear" class="search-clear" type="button" title="清空" hidden>×</button>
+              <div id="search-results" class="search-results" hidden></div>
+            </div>
+          </div>
+
           <div class="topbar-divider" aria-hidden="true"></div>
 
           <div class="topbar-actions">
@@ -54,15 +66,6 @@
               </svg>
               <span>重做</span>
             </button>
-            <div class="search-wrap" id="search-wrap">
-              <svg class="search-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                <circle cx="11" cy="11" r="7" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input id="search-input" class="search-input" type="search" placeholder="搜索所有 tab（章节 / 伏笔）…" autocomplete="off" />
-              <button id="search-clear" class="search-clear" type="button" title="清空" hidden>×</button>
-              <div id="search-results" class="search-results" hidden></div>
-            </div>
           </div>
         </div>
 
@@ -163,6 +166,13 @@
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
                 <span>新增章节</span>
+              </button>
+              <button id="btn-save" class="tool-btn tool-btn-icon" title="保存当前章节 (Ctrl+S)" aria-label="保存当前章节">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                  <polyline points="17 21 17 13 7 13 7 21" />
+                  <polyline points="7 3 7 8 15 8" />
+                </svg>
               </button>
               <button id="btn-import" class="tool-btn" title="从 xlsx 文件导入条目">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
