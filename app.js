@@ -82,7 +82,10 @@
         };
       },
       sortKey(item) {
-        return Number(item.no) || 0;
+        // 返回 {num, str} 复合 key，sort 调用方用 compareChapterNo 比较
+        // 数字章节号 → {num: 12, str: "12"}
+        // 字符串章节号 → 走 parseChapterNo 解析
+        return parseChapterNo(item.no);
       },
       newItemLabel: "新增章节",
       newItemToast(sheet, no) {
@@ -178,7 +181,7 @@
         };
       },
       sortKey(item) {
-        return Number(item.no) || 0;
+        return parseChapterNo(item.no);
       },
       newItemLabel: "新增伏笔",
       newItemToast(sheet, no) {
@@ -453,11 +456,11 @@
       const it = curItem();
       if (it) {
         if (state.currentPage === "chapter") {
-          it.no = Number($("#ch-no").value) || 0;
+          it.no = $("#ch-no").value; // 保留原始字符串（数字 / "第12章" / "序章"），排序由 sortKey 处理
           it.title = $("#ch-title").value.trim();
           it.content = $("#ch-content").value;
         } else if (state.currentPage === "foreshadowing") {
-          it.no = Number($("#fs-no").value) || 0;
+          it.no = $("#fs-no").value;
           it.name = $("#fs-name").value.trim();
           it.status = $("#fs-status").value || "活跃";
           it.setup = $("#fs-setup").value.trim();
@@ -613,7 +616,15 @@
         : [];
       state.currentFileName = data.currentFileName || null;
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
-      state.ui = { sort: "asc", ...(data.ui || {}) };
+      state.ui = { sort: "asc", layout: {}, ...(data.ui || {}) };
+      // 兜底：ui.layout 各字段补默认
+      state.ui.layout = {
+        nav: LAYOUT_DEFAULTS.nav,
+        threeList: LAYOUT_DEFAULTS.threeList,
+        threeRight: LAYOUT_DEFAULTS.threeRight,
+        twoList: LAYOUT_DEFAULTS.twoList,
+        ...(state.ui.layout || {}),
+      };
 
       // 兜底：确保每个 page 至少有基本结构
       for (const pid of PAGE_IDS) {
@@ -816,21 +827,24 @@
       ? p.items.filter((it) => !sheet || it.sheet === sheet)
       : p.items.slice();
     arr.sort((a, b) => {
-      const ak = def.sortKey(a);
-      const bk = def.sortKey(b);
-      return state.ui.sort === "asc" ? ak - bk : bk - ak;
+      const cmp = compareChapterNo(def.sortKey(a), def.sortKey(b));
+      return state.ui.sort === "asc" ? cmp : -cmp;
     });
     return arr;
   }
-  // 找章节中最大的 no
+  // 找章节中最大的 no（只考虑数字序号的；纯文字"序章/楔子"等不参与 max）
   function nextNoInCurrentSheet() {
     const p = curPage();
-    const def = curPageDef();
     const sheet = p.currentSheet;
     const list = sheet
       ? p.items.filter((it) => it.sheet === sheet)
       : p.items;
-    return list.reduce((m, it) => Math.max(m, def.sortKey(it) || 0), 0) + 1;
+    let max = 0;
+    for (const it of list) {
+      const n = parseChapterNo(it.no).num;
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+    return max + 1;
   }
 
   /* ============================================================
@@ -939,10 +953,18 @@
         }
       }
       if (!hasAny) continue;
-      // no 字段尝试转数字
+      // no 字段：保留原始值（数字 / 字符串），让 sortKey 决定如何排序
       if (columns.no >= 0) {
-        const n = Number(data.no);
-        data.no = Number.isFinite(n) ? n : (data.no || 0);
+        // 数字字符串 → 转 number；其他 → 保留字符串原始值
+        const trimmed = String(data.no || "").trim();
+        if (trimmed && /^-?\d+(\.\d+)?$/.test(trimmed)) {
+          data.no = Number(trimmed);
+        } else if (!trimmed) {
+          data.no = 0;
+        } else {
+          // 字符串形式（"第12章"/"序章"/"Chapter 5"），保留原值，sortKey 负责解析
+          data.no = trimmed;
+        }
       } else {
         data.no = 0;
       }
@@ -1066,9 +1088,8 @@
       ? p.items.filter((it) => it.sheet === sheet)
       : p.items.slice();
     arr.sort((a, b) => {
-      const ak = def.sortKey(a);
-      const bk = def.sortKey(b);
-      return state.ui.sort === "asc" ? ak - bk : bk - ak;
+      const cmp = compareChapterNo(def.sortKey(a), def.sortKey(b));
+      return state.ui.sort === "asc" ? cmp : -cmp;
     });
     return arr;
   }
@@ -1276,7 +1297,7 @@
       <div class="editor-meta">
         <div class="meta-field">
           <label>章节号</label>
-          <input id="ch-no" type="number" min="0" step="1" value="${escapeHtml(String(it.no))}" />
+          <input id="ch-no" type="text" inputmode="numeric" placeholder="如：12 / 第12章 / 序章" value="${escapeHtml(String(it.no ?? ""))}" />
         </div>
         <div class="meta-field meta-title">
           <label>章节名称</label>
@@ -1319,7 +1340,7 @@
       <div class="editor-meta editor-meta-fs">
         <div class="meta-field meta-num">
           <label>序号</label>
-          <input id="fs-no" type="number" min="0" step="1" value="${escapeHtml(String(it.no))}" />
+          <input id="fs-no" type="text" inputmode="numeric" placeholder="如：1 / 序章" value="${escapeHtml(String(it.no ?? ""))}" />
         </div>
         <div class="meta-field meta-title">
           <label>伏笔名称</label>
@@ -1599,7 +1620,7 @@
     // 该 sheet 在本页面的 items
     const items = state.pages[page].items
       .filter((it) => it.sheet === sheetEntry.name)
-      .sort((a, b) => def.sortKey(a) - def.sortKey(b));
+      .sort((a, b) => compareChapterNo(def.sortKey(a), def.sortKey(b)));
     // 决定总列宽
     const validIdx = fieldKeys
       .map((k) => cols[k])
@@ -1779,11 +1800,11 @@
     const it = curItem();
     if (!it) return false;
     if (state.currentPage === "chapter") {
-      it.no = Number($("#ch-no").value) || 0;
+      it.no = $("#ch-no").value; // 保留原始字符串，排序由 sortKey 处理
       it.title = $("#ch-title").value.trim();
       it.content = $("#ch-content").value;
     } else if (state.currentPage === "foreshadowing") {
-      it.no = Number($("#fs-no").value) || 0;
+      it.no = $("#fs-no").value;
       it.name = $("#fs-name").value.trim();
       it.status = $("#fs-status").value || "活跃";
       it.setup = $("#fs-setup").value.trim();
@@ -1997,7 +2018,7 @@
           added++;
         }
       });
-      p.items.sort((a, b) => def.sortKey(a) - def.sortKey(b));
+      p.items.sort((a, b) => compareChapterNo(def.sortKey(a), def.sortKey(b)));
       // 把这个 sheet 注册到 state.sheetsRaw（如不存在）+ 该页面的 sheets
       if (sheetName && !state.sheetsRaw.find((s) => s.name === sheetName)) {
         // 没有 raw 缓存时（罕见：用户先 import 后才 open file），构造一个空 raw
@@ -2648,7 +2669,8 @@
             }
             if (Array.isArray(data.sheetsRaw)) state.sheetsRaw = data.sheetsRaw;
             state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
-            state.ui = { sort: "asc", ...(data.ui || {}) };
+            state.ui = { sort: "asc", layout: { ...(state.ui.layout || {}) }, ...(data.ui || {}) };
+            if (data.ui && data.ui.layout) state.ui.layout = data.ui.layout;
             save();
             renderAll();
             toast("已导入");
@@ -2678,10 +2700,250 @@
   }
 
   /* ============================================================
+     布局可调宽度 - resizer 拖拽
+     ============================================================ */
+  const LAYOUT_DEFAULTS = {
+    nav: 220,
+    threeList: 280,
+    threeRight: 320,
+    twoList: 320,
+  };
+  const LAYOUT_LIMITS = {
+    nav: { min: 160, max: 380 },
+    threeList: { min: 200, max: 560 },
+    threeRight: { min: 240, max: 680 },
+    twoList: { min: 200, max: 560 },
+  };
+
+  function clamp(n, min, max) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  // 根据 key 找到对应的 CSS 变量名
+  const RESIZER_VAR = {
+    nav: "--nav-width",
+    "three-list": "--col-list-width",
+    "three-right": "--col-right-width",
+    "two-list": "--two-col-list-width",
+  };
+  const RESIZER_DEFAULT = {
+    nav: LAYOUT_DEFAULTS.nav,
+    "three-list": LAYOUT_DEFAULTS.threeList,
+    "three-right": LAYOUT_DEFAULTS.threeRight,
+    "two-list": LAYOUT_DEFAULTS.twoList,
+  };
+
+  // 初始化：把 state.ui.layout 写到 CSS 变量上
+  function applyLayout() {
+    const layout = state.ui.layout || {};
+    const set = (k, v) => {
+      const cssVar = RESIZER_VAR[k];
+      const def = RESIZER_DEFAULT[k];
+      const lim = LAYOUT_LIMITS[RESIZER_DEFAULT_KEY[k]];
+      const n = clamp(Number(v || def), lim.min, lim.max);
+      document.documentElement.style.setProperty(cssVar, `${n}px`);
+    };
+    set("nav", layout.nav);
+    set("three-list", layout.threeList);
+    set("three-right", layout.threeRight);
+    set("two-list", layout.twoList);
+  }
+  const RESIZER_DEFAULT_KEY = {
+    nav: "nav",
+    "three-list": "threeList",
+    "three-right": "threeRight",
+    "two-list": "twoList",
+  };
+
+  // 写入 state.ui.layout 并持久化
+  function saveLayout(key, value) {
+    if (!state.ui.layout) state.ui.layout = {};
+    const k = RESIZER_DEFAULT_KEY[key];
+    state.ui.layout[k] = value;
+    save();
+  }
+
+  // 单个 resizer 的拖拽行为
+  function bindResizer(el) {
+    const key = el.dataset.resizer;
+    if (!key || !RESIZER_VAR[key]) return;
+    const cssVar = RESIZER_VAR[key];
+    const def = RESIZER_DEFAULT[key];
+    const lim = LAYOUT_LIMITS[RESIZER_DEFAULT_KEY[key]];
+
+    let startX = 0;
+    let startVal = 0;
+    let dragging = false;
+
+    const onDown = (e) => {
+      // 只接受左键 / 单指触摸
+      if (e.button !== undefined && e.button !== 0) return;
+      dragging = true;
+      el.classList.add("is-dragging");
+      document.body.classList.add("is-resizing");
+      const cur = parseInt(
+        getComputedStyle(document.documentElement).getPropertyValue(cssVar),
+        10
+      );
+      startVal = Number.isFinite(cur) ? cur : def;
+      startX = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0;
+      e.preventDefault();
+      el.setPointerCapture?.(e.pointerId);
+    };
+
+    const onMove = (e) => {
+      if (!dragging) return;
+      const x = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0;
+      const dx = x - startX;
+      // nav / three-list / two-list：拖右变宽
+      // three-right：在右侧，拖左变宽（dx 为负，width 增大）
+      const newVal = startVal + dx;
+      const clamped = clamp(newVal, lim.min, lim.max);
+      document.documentElement.style.setProperty(cssVar, `${clamped}px`);
+    };
+
+    const onUp = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      el.classList.remove("is-dragging");
+      document.body.classList.remove("is-resizing");
+      const cur = parseInt(
+        getComputedStyle(document.documentElement).getPropertyValue(cssVar),
+        10
+      );
+      if (Number.isFinite(cur)) {
+        saveLayout(key, cur);
+      }
+      el.releasePointerCapture?.(e.pointerId);
+    };
+
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+
+    // 双击重置
+    el.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      document.documentElement.style.setProperty(cssVar, `${def}px`);
+      saveLayout(key, def);
+      toast("已重置宽度", "info", 1000);
+    });
+
+    // 键盘左右键微调（accessibility）
+    el.addEventListener("keydown", (e) => {
+      const step = e.shiftKey ? 32 : 8;
+      const cur = parseInt(
+        getComputedStyle(document.documentElement).getPropertyValue(cssVar),
+        10
+      );
+      const startVal = Number.isFinite(cur) ? cur : def;
+      let next = startVal;
+      if (e.key === "ArrowLeft") next -= step;
+      else if (e.key === "ArrowRight") next += step;
+      else if (e.key === "Home") next = lim.min;
+      else if (e.key === "End") next = lim.max;
+      else return;
+      e.preventDefault();
+      const clamped = clamp(next, lim.min, lim.max);
+      document.documentElement.style.setProperty(cssVar, `${clamped}px`);
+      saveLayout(key, clamped);
+    });
+  }
+
+  function bindAllResizers() {
+    $$(".resizer").forEach(bindResizer);
+  }
+
+  /* ============================================================
+     章节号 / 序号 解析 - 兼容字符串
+     数字字符串：直接转 Number
+     混合（如「第12章」「Chapter 5」「卷一 第三章」）：正则提取第一个数字
+     纯中文数字（如「第一章」「第二十章」）：中文数字解析
+     纯汉字（如「序章」「楔子」「番外」「后记」）：保字符串，按 localeCompare 排
+     ============================================================ */
+  const CN_NUM_MAP = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+
+  // 简易中文数字解析：支持 一 / 十二 / 二十 / 二十五 / 一百零五 / 三百二十五 / 一千 / 〇
+  // 不支持万以上复杂组合（对章节号足够）
+  function parseChineseNumeral(s) {
+    if (!s) return null;
+    if (!/^[零〇一二两三四五六七八九十百千]+$/.test(s)) return null;
+    let section = 0;
+    let lastDigit = null;
+    let anyDigit = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch in CN_NUM_MAP) {
+        lastDigit = CN_NUM_MAP[ch];
+        anyDigit = true;
+      } else if (ch === "十") {
+        // 上一个数字 * 10（无数字时按 1 处理，即"十"=10）
+        section += (lastDigit ?? 1) * 10;
+        lastDigit = null;
+        anyDigit = true;
+      } else if (ch === "百") {
+        section += (lastDigit ?? 1) * 100;
+        lastDigit = null;
+        anyDigit = true;
+      } else if (ch === "千") {
+        section += (lastDigit ?? 1) * 1000;
+        lastDigit = null;
+        anyDigit = true;
+      } else {
+        return null;
+      }
+    }
+    // 结尾还有个位数
+    if (lastDigit != null) section += lastDigit;
+    return anyDigit ? section : null;
+  }
+
+  // 解析章节号，返回 { num, str, hasNum }
+  //   num: 数字 key（无数字则为 Infinity，排在所有有数字之后）
+  //   str: 原始字符串 key（保证稳定排序）
+  //   hasNum: 是否有数字部分（写回时区分）
+  function parseChapterNo(raw) {
+    if (raw == null) return { num: Infinity, str: "", raw: "", hasNum: false };
+    const s = String(raw).trim();
+    if (!s) return { num: Infinity, str: "", raw: "", hasNum: false };
+    // 1. 纯数字
+    if (/^-?\d+(\.\d+)?$/.test(s)) {
+      const n = Number(s);
+      if (Number.isFinite(n)) return { num: n, str: s, raw: s, hasNum: true };
+    }
+    // 2. 字符串中含阿拉伯数字 → 取第一段连续数字
+    const m = s.match(/-?\d+(\.\d+)?/);
+    if (m) {
+      const n = Number(m[0]);
+      if (Number.isFinite(n)) return { num: n, str: s, raw: s, hasNum: true };
+    }
+    // 3. 字符串中含「第X章/节/卷」 → 把 X 解析成数字
+    const cn = s.match(/第([零〇一二两三四五六七八九十百千]+)/);
+    if (cn) {
+      const n = parseChineseNumeral(cn[1]);
+      if (n != null) return { num: n, str: s, raw: s, hasNum: true };
+    }
+    // 4. 字符串整体就是中文数字（"一"/"二十"/"三百零五"）
+    const allCn = parseChineseNumeral(s);
+    if (allCn != null) return { num: allCn, str: s, raw: s, hasNum: true };
+    // 5. 纯汉字（"序章"/"楔子"/"番外"/"后记"）→ 按字符串排序
+    return { num: Infinity, str: s, raw: s, hasNum: false };
+  }
+
+  // 比较两个 parseChapterNo 结果：先按 num（升序），再按 str（localeCompare）
+  function compareChapterNo(a, b) {
+    if (a.num !== b.num) return a.num - b.num;
+    return a.str.localeCompare(b.str, "zh-Hans-CN");
+  }
+
+  /* ============================================================
      初始化
      ============================================================ */
   async function init() {
     load();
+    // 把 state.ui.layout 写到 CSS 变量（在 renderAll 之前，避免布局闪一下）
+    applyLayout();
     renderAll();
 
     if (!fsSupported()) {
@@ -2694,6 +2956,7 @@
     bindImportEvents();
     bindTabs();
     bindThemeEvents();
+    bindAllResizers();
 
     // 初始化 history：在当前 state 上压一个"基线"快照，让用户可以 undo 回到打开状态
     pushHistory();

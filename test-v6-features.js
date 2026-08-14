@@ -172,4 +172,107 @@ hist.idx = -1;
 for (let i = 0; i < HISTORY_MAX + 5; i++) push({ s: i });
 console.log("  push 55 个后: len =", hist.stack.length, ", idx =", hist.idx, "(应 len=50, idx=49, 最早 5 个被挤掉)");
 
+/* ============================================================
+   测试 4：字符串章节号解析（parseChapterNo + parseChineseNumeral）
+   ============================================================ */
+console.log("\n测试 4：字符串章节号解析");
+
+// 注入到 vm 上下文
+const CN_NUM_MAP = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+ctx.parseChineseNumeral = (s) => {
+  if (!s) return null;
+  if (!/^[零〇一二两三四五六七八九十百千]+$/.test(s)) return null;
+  let section = 0, lastDigit = null, anyDigit = false;
+  for (const ch of s) {
+    if (ch in CN_NUM_MAP) {
+      lastDigit = CN_NUM_MAP[ch];
+      anyDigit = true;
+    } else if (ch === "十") { section += (lastDigit ?? 1) * 10; lastDigit = null; anyDigit = true; }
+    else if (ch === "百") { section += (lastDigit ?? 1) * 100; lastDigit = null; anyDigit = true; }
+    else if (ch === "千") { section += (lastDigit ?? 1) * 1000; lastDigit = null; anyDigit = true; }
+    else return null;
+  }
+  if (lastDigit != null) section += lastDigit;
+  return anyDigit ? section : null;
+};
+ctx.parseChapterNo = (raw) => {
+  if (raw == null) return { num: Infinity, str: "", raw: "", hasNum: false };
+  const s = String(raw).trim();
+  if (!s) return { num: Infinity, str: "", raw: "", hasNum: false };
+  if (/^-?\d+(\.\d+)?$/.test(s)) {
+    const n = Number(s);
+    if (Number.isFinite(n)) return { num: n, str: s, raw: s, hasNum: true };
+  }
+  const m = s.match(/-?\d+(\.\d+)?/);
+  if (m) { const n = Number(m[0]); if (Number.isFinite(n)) return { num: n, str: s, raw: s, hasNum: true }; }
+  const cn = s.match(/第([零〇一二两三四五六七八九十百千]+)/);
+  if (cn) { const n = ctx.parseChineseNumeral(cn[1]); if (n != null) return { num: n, str: s, raw: s, hasNum: true }; }
+  const all = ctx.parseChineseNumeral(s);
+  if (all != null) return { num: all, str: s, raw: s, hasNum: true };
+  return { num: Infinity, str: s, raw: s, hasNum: false };
+};
+ctx.compareChapterNo = (a, b) => {
+  if (a.num !== b.num) return a.num - b.num;
+  return a.str.localeCompare(b.str, "zh-Hans-CN");
+};
+
+const parseCases = [
+  [12, 12, true],
+  ["12", 12, true],
+  ["第12章", 12, true],
+  ["第一章", 1, true],
+  ["第二十章", 20, true],
+  ["第二十五章", 25, true],
+  ["第一百零五章", 105, true],
+  ["序章", Infinity, false],
+  ["楔子", Infinity, false],
+  ["番外", Infinity, false],
+  ["后记", Infinity, false],
+  ["Chapter 5", 5, true],
+  ["卷一 第三章", 3, true],
+];
+let allPass = true;
+for (const [input, expectedNum, expectedHas] of parseCases) {
+  const r = ctx.parseChapterNo(input);
+  const ok = r.num === expectedNum && r.hasNum === expectedHas;
+  if (!ok) allPass = false;
+  console.log(`  ${ok ? "✓" : "✗"} parseChapterNo(${JSON.stringify(input)}) = num=${r.num}, hasNum=${r.hasNum} (期望 num=${expectedNum}, hasNum=${expectedHas})`);
+}
+console.log("  解析测试:", allPass ? "PASS" : "FAIL");
+
+// 排序测试
+const sortItems = [
+  { no: "序章" },
+  { no: "第一章" },
+  { no: "第10章" },
+  { no: "楔子" },
+  { no: "第二十章" },
+  { no: 5 },
+  { no: 100 },
+  { no: "1" },
+  { no: "Chapter 5" },
+  { no: "后记" },
+  { no: "第二十五章" },
+  { no: "第一百零五章" },
+];
+const sorted = sortItems.slice().sort((a, b) =>
+  ctx.compareChapterNo(ctx.parseChapterNo(a.no), ctx.parseChapterNo(b.no))
+);
+const expectedOrder = [
+  "1", "第一章", 5, "Chapter 5", "第10章", "第二十章", "第二十五章",
+  100, "第一百零五章", "后记", "楔子", "序章",
+];
+const sortOk = sorted.every((it, i) => it.no === expectedOrder[i]);
+if (!sortOk) allPass = false;
+console.log("  排序结果:");
+sorted.forEach((it, i) => {
+  const r = ctx.parseChapterNo(it.no);
+  const tag = it.no === expectedOrder[i] ? "✓" : "✗";
+  console.log(`    ${tag} ${r.num === Infinity ? "文字" : String(r.num).padStart(4)}: ${JSON.stringify(it.no)}`);
+});
+console.log("  排序测试:", sortOk ? "PASS" : "FAIL");
+
+console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
+process.exit(allPass ? 0 : 1);
+
 console.log("\n测试完成。");

@@ -139,6 +139,9 @@
             </details>
           </footer>
         </aside>
+        <div class="resizer resizer-nav" data-resizer="nav" title="拖动调整导航栏宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
+          <span class="resizer-reset-hint">双击重置</span>
+        </div>
 
         <!-- 右侧主区域 -->
         <div class="main-area">
@@ -174,6 +177,9 @@
                 <div id="sheet-tabs" class="sheet-tabs" hidden role="tablist" aria-label="工作表切换"></div>
                 <ul id="chapter-list" class="chapter-list"></ul>
               </aside>
+              <div class="resizer resizer-col-list" data-resizer="three-list" title="拖动调整章节列表宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
+                <span class="resizer-reset-hint">双击重置</span>
+              </div>
               <main class="col col-editor">
                 <div id="editor-empty" class="empty-state">
                   <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
@@ -186,7 +192,7 @@
                   <div class="editor-meta">
                     <div class="meta-field">
                       <label>章节号</label>
-                      <input id="ch-no" type="number" min="0" step="1" />
+                      <input id="ch-no" type="text" inputmode="numeric" placeholder="如：12 / 第12章 / 序章" />
                     </div>
                     <div class="meta-field meta-title">
                       <label>章节名称</label>
@@ -207,6 +213,9 @@
                   </div>
                 </article>
               </main>
+              <div class="resizer resizer-col-right" data-resizer="three-right" title="拖动调整右侧相关栏宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
+                <span class="resizer-reset-hint">双击重置</span>
+              </div>
               <aside class="col col-right" aria-label="章节相关内容">
                 <header class="col-right-header">
                   <h3>相关内容</h3>
@@ -257,6 +266,9 @@
               <aside class="col col-list">
                 <ul id="fs-list" class="fs-list"></ul>
               </aside>
+              <div class="resizer resizer-col-list" data-resizer="two-list" title="拖动调整伏笔列表宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
+                <span class="resizer-reset-hint">双击重置</span>
+              </div>
               <main class="col col-editor">
                 <div id="fs-editor-empty" class="empty-state">
                   <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
@@ -269,7 +281,7 @@
                   <div class="editor-meta editor-meta-fs">
                     <div class="meta-field meta-num">
                       <label>序号</label>
-                      <input id="fs-no" type="number" min="0" step="1" />
+                      <input id="fs-no" type="text" inputmode="numeric" placeholder="如：1 / 序章" />
                     </div>
                     <div class="meta-field meta-title">
                       <label>伏笔名称</label>

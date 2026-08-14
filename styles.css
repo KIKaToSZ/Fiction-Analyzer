@@ -24,6 +24,13 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.15);
   --transition: 160ms ease;
+
+  /* 布局可调宽度 - JS 拖拽 resizer 时改这些 var */
+  --nav-width: 220px;
+  --col-list-width: 280px;
+  --col-right-width: 320px;
+  --two-col-list-width: 320px;
+  --resizer-size: 6px;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-content: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun",
@@ -207,10 +214,11 @@ textarea {
 /* ===================== 主体：左导航 + 右主区域 ===================== */
 .app-body {
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: var(--nav-width) var(--resizer-size) 1fr;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
 
 /* ===================== 左侧导航栏 ===================== */
@@ -221,6 +229,13 @@ textarea {
   border-right: 1px solid var(--border);
   min-width: 0;
   overflow: hidden;
+  position: relative;
+  grid-column: 1;
+}
+
+/* resizer 在 .app-body 内占第 2 列 */
+.resizer-nav {
+  grid-column: 2;
 }
 
 .nav-tabs {
@@ -299,6 +314,7 @@ textarea {
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
+  grid-column: 3;
 }
 
 .page-view {
@@ -329,24 +345,103 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* ===================== 章节内容页：三栏 ===================== */
+/* ===================== 拖拽分隔条（resizer）===================== */
+.resizer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  background: transparent;
+  touch-action: none;
+  user-select: none;
+}
+
+/* 拖动时给 col 一些过渡动画 */
+.col,
+.app-body,
+.main-area {
+  transition: none;
+}
+
+/* 拖动中禁用全文档选择 */
+body.is-resizing {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+body.is-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
+  pointer-events: none; /* 让 mousemove 落在 resizer 上，不进其它元素 */
+}
+
+body.is-resizing .resizer,
+body.is-resizing .resizer * {
+  pointer-events: auto;
+}
+
+/* 拖动时 resizer 的视觉反馈 */
+.resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--border-soft);
+  transform: translateX(-50%);
+  transition: background 120ms ease, width 120ms ease;
+}
+
+.resizer:hover::before,
+.resizer.is-dragging::before {
+  background: var(--accent);
+  width: 2px;
+}
+
+.resizer-reset-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  transition: opacity 120ms ease;
+  z-index: 1;
+}
+
+.resizer:hover .resizer-reset-hint {
+  opacity: 0.92;
+}
+
 .three-cols {
   display: grid;
-  grid-template-columns: 280px 1fr 320px;
+  grid-template-columns:
+    var(--col-list-width) var(--resizer-size) 1fr var(--resizer-size) var(--col-right-width);
   flex: 1;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
 
 /* ===================== 伏笔管理页：两栏 ===================== */
 .two-cols {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: var(--two-col-list-width) var(--resizer-size) 1fr;
   flex: 1;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+  position: relative;
 }
 
 /* ===================== 三栏 / 两栏 通用列 ===================== */
@@ -356,6 +451,34 @@ textarea {
   min-height: 0;
   min-width: 0;
   overflow: hidden;
+}
+
+/* 三栏布局内的列：1 / 3 / 5（中间是 resizer） */
+.three-cols .col-list {
+  grid-column: 1;
+}
+.three-cols .col-editor {
+  grid-column: 3;
+}
+.three-cols .col-right {
+  grid-column: 5;
+}
+.three-cols .resizer-col-list {
+  grid-column: 2;
+}
+.three-cols .resizer-col-right {
+  grid-column: 4;
+}
+
+/* 两栏布局内的列：1 / 3（中间是 resizer） */
+.two-cols .col-list {
+  grid-column: 1;
+}
+.two-cols .col-editor {
+  grid-column: 3;
+}
+.two-cols .resizer-col-list {
+  grid-column: 2;
 }
 
 .col-list {
@@ -1013,10 +1136,12 @@ textarea {
   background: var(--bg-soft);
   border-radius: var(--radius-sm);
   padding: 2px;
+  flex-wrap: wrap;
 }
 
 .seg-btn {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 5px 8px;
   font-size: 11px;
   color: var(--text-soft);
@@ -1024,6 +1149,7 @@ textarea {
   transition: background var(--transition), color var(--transition);
   text-align: center;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .seg-btn:hover {
