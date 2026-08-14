@@ -248,6 +248,40 @@
   };
 
   /* ============================================================
+     段落规整 - 让"行与行之间没有空行"的内容自动补上空行
+     规则：
+       1. 折叠 3+ 个连续换行为 2 个（避免重复空行）
+       2. 把"内容 \n 内容"（单换行）变成"内容 \n\n 内容"（双换行）
+          - 只在"非换行字符"之间生效；已经隔一个空行的不动
+     效果：
+       - 原数据 `a\nb\nc` → 显示成 `a\n\nb\n\nc`
+       - 原数据 `a\n\nb\n\nc` → 保持 `a\n\nb\n\nc`
+       - 原数据 `a\n\n\nb` → 先折叠为 `a\n\nb`
+     ============================================================ */
+  function normalizeParagraphs(s) {
+    if (s == null || s === "") return s;
+    s = String(s).replace(/\r\n?/g, "\n");
+    // 1. 折叠 3+ 个连续换行为 2 个
+    s = s.replace(/\n{3,}/g, "\n\n");
+    // 2. 把"行间无空行"的位置补上空行（用 split/join 避免正则 lastIndex 漏匹配）
+    const lines = s.split("\n");
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      out.push(lines[i]);
+      if (i < lines.length - 1) {
+        const curEmpty = lines[i] === "";
+        const nextEmpty = lines[i + 1] === "";
+        // 当前行不是空行 && 下一行不是空行 → 插一个空行
+        // （已隔一个空行的情况自然跳过：nextEmpty 为 true）
+        if (!curEmpty && !nextEmpty) {
+          out.push("");
+        }
+      }
+    }
+    return out.join("\n");
+  }
+
+  /* ============================================================
      状态（schema v5 - 多页面）
      ============================================================ */
   // pages[pageId] = {
@@ -1310,7 +1344,7 @@
       </div>
       <div class="editor-body">
         <label class="body-label">文章内容</label>
-        <textarea id="ch-content" placeholder="正文…">${escapeHtml(it.content || "")}</textarea>
+        <textarea id="ch-content" placeholder="正文…">${escapeHtml(normalizeParagraphs(it.content || ""))}</textarea>
         <div class="body-stats">
           <span id="word-count" class="muted">${(it.content || "").length} 字</span>
           <span id="save-status" class="muted"></span>
@@ -1387,6 +1421,27 @@
       const wc = $("#word-count");
       if (wc) wc.textContent = `${len} 字`;
       debouncedPushHistory();
+    });
+    // 按回车时，如果光标上一行不是空行，先在光标前补一个 \n，让"行间有空行"
+    chContent?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.isComposing) return; // 中文输入法合成中
+      const ta = e.target;
+      const pos = ta.selectionStart;
+      const before = ta.value.slice(0, pos);
+      const lastNl = before.lastIndexOf("\n");
+      const prevLine = before.slice(lastNl + 1);
+      // 上一行有内容（不是空行）→ 在光标前补一个 \n
+      if (prevLine.length > 0) {
+        e.preventDefault();
+        const insert = "\n";
+        ta.value = before + insert + ta.value.slice(pos);
+        const newPos = pos + insert.length;
+        ta.selectionStart = ta.selectionEnd = newPos;
+        // 触发 input，让字数统计和 history 跟着更新
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+      }
     });
     chNo?.addEventListener("input", debouncedPushHistory);
     chTitle?.addEventListener("input", debouncedPushHistory);
@@ -2770,6 +2825,8 @@
     const cssVar = RESIZER_VAR[key];
     const def = RESIZER_DEFAULT[key];
     const lim = LAYOUT_LIMITS[RESIZER_DEFAULT_KEY[key]];
+    // 右侧栏（three-right）位于布局最右，鼠标拖右时栏应变窄，方向与鼠标相反
+    const dir = key === "three-right" ? -1 : 1;
 
     let startX = 0;
     let startVal = 0;
@@ -2795,9 +2852,10 @@
       if (!dragging) return;
       const x = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0;
       const dx = x - startX;
-      // nav / three-list / two-list：拖右变宽
-      // three-right：在右侧，拖左变宽（dx 为负，width 增大）
-      const newVal = startVal + dx;
+      // 鼠标拖右（dx > 0）：
+      //   - nav / three-list / two-list 在左侧 → 栏应变宽（dir = +1）
+      //   - three-right 在最右侧 → 栏应变窄（dir = -1）
+      const newVal = startVal + dx * dir;
       const clamped = clamp(newVal, lim.min, lim.max);
       document.documentElement.style.setProperty(cssVar, `${clamped}px`);
     };
@@ -2839,8 +2897,9 @@
       );
       const startVal = Number.isFinite(cur) ? cur : def;
       let next = startVal;
-      if (e.key === "ArrowLeft") next -= step;
-      else if (e.key === "ArrowRight") next += step;
+      // 方向与拖拽保持一致：three-right 按 ← 变宽、按 → 变窄
+      if (e.key === "ArrowLeft") next -= step * dir;
+      else if (e.key === "ArrowRight") next += step * dir;
       else if (e.key === "Home") next = lim.min;
       else if (e.key === "End") next = lim.max;
       else return;
@@ -2853,6 +2912,258 @@
 
   function bindAllResizers() {
     $$(".resizer").forEach(bindResizer);
+  }
+
+  /* ============================================================
+     全局搜索
+     - 输入框：toolbar 上撤销/重做右侧
+     - 范围：所有 PAGES（chapter / foreshadowing）所有 item
+     - 字段：chapter → no / title / content；foreshadowing → no / name / setup / payoff / status / notes
+     - 匹配：忽略大小写、子串匹配；snippet 显示命中前后 30 字
+     - 结果：弹下拉，点击切换到对应 page + item
+     ============================================================ */
+  const SEARCH_RESULT_LIMIT = 50;
+  const SEARCH_SNIPPET_RADIUS = 30;
+  const searchState = {
+    query: "",
+    activeIdx: 0,
+    results: [],
+  };
+
+  // 提取命中位置 + 周围片段（高亮命中部分）
+  function buildSnippet(text, query) {
+    if (!text) return { html: "", found: false };
+    const lower = text.toLowerCase();
+    const idx = lower.indexOf(query.toLowerCase());
+    if (idx < 0) return { html: "", found: false };
+    const start = Math.max(0, idx - SEARCH_SNIPPET_RADIUS);
+    const end = Math.min(text.length, idx + query.length + SEARCH_SNIPPET_RADIUS);
+    const before = (start > 0 ? "…" : "") + escapeHtml(text.slice(start, idx));
+    const hit = `<mark>${escapeHtml(text.slice(idx, idx + query.length))}</mark>`;
+    const after = escapeHtml(text.slice(idx + query.length, end)) + (end < text.length ? "…" : "");
+    return { html: `${before}${hit}${after}`, found: true };
+  }
+
+  function gatherSearchResults(query) {
+    const results = [];
+    const q = query.toLowerCase();
+    for (const pid of PAGE_IDS) {
+      const def = PAGES[pid];
+      const page = state.pages[pid];
+      if (!def || !page || page.items.length === 0) continue;
+      for (const it of page.items) {
+        // 按字段优先级：title 类字段先看，没命中再看 content 类字段
+        const fields = def.fields;
+        const primaryKeys = pid === "chapter"
+          ? ["title", "no", "content"]
+          : ["name", "no", "setup", "payoff", "status", "notes"];
+        let titleHit = null;
+        let snippet = null;
+        let matchedField = null;
+        for (const key of primaryKeys) {
+          const label = def.fields[key] ? def.fields[key][0] : key;
+          const v = it[key];
+          if (v == null) continue;
+          const strVal = String(v);
+          if (strVal.toLowerCase().indexOf(q) < 0) continue;
+          if (key === "no" || key === "title" || key === "name" || key === "status") {
+            titleHit = titleHit || { key, label, value: strVal };
+            if (!matchedField) matchedField = label;
+          } else {
+            if (!snippet) {
+              const snip = buildSnippet(strVal, query);
+              if (snip.found) {
+                snippet = snip;
+                if (!matchedField) matchedField = label;
+              }
+            }
+          }
+        }
+        if (!titleHit && !snippet) continue;
+        const display = (() => {
+          if (titleHit) {
+            // 短字段（no / title / name / status）直接显示带高亮
+            return { html: buildSnippet(String(titleHit.value), query).html, isLong: false };
+          }
+          return { html: snippet.html, isLong: true };
+        })();
+        // 标题：no + title/name
+        const tlabel = pid === "chapter"
+          ? `${formatItemNo(it.no)}${it.title ? " · " + it.title : ""}`
+          : `${formatItemNo(it.no)}${it.name ? " · " + it.name : ""}`;
+        results.push({
+          pageId: pid,
+          pageLabel: def.label,
+          pageIcon: def.icon,
+          itemId: it.id,
+          sheet: it.sheet,
+          title: tlabel,
+          snippetHtml: display.html,
+          matchedField,
+        });
+        if (results.length >= SEARCH_RESULT_LIMIT) break;
+      }
+      if (results.length >= SEARCH_RESULT_LIMIT) break;
+    }
+    return results;
+  }
+
+  function formatItemNo(no) {
+    if (no == null || no === "") return "—";
+    return String(no);
+  }
+
+  function renderSearchResults() {
+    const wrap = $("#search-results");
+    const meta = $("#search-meta");
+    if (!wrap) return;
+    const q = searchState.query.trim();
+    if (!q) {
+      wrap.hidden = true;
+      wrap.innerHTML = "";
+      return;
+    }
+    searchState.results = gatherSearchResults(q);
+    if (searchState.results.length === 0) {
+      wrap.innerHTML = `<div class="search-empty">未找到包含「${escapeHtml(q)}」的内容</div>`;
+      wrap.hidden = false;
+      return;
+    }
+    const totalLabel = searchState.results.length >= SEARCH_RESULT_LIMIT
+      ? `（前 ${SEARCH_RESULT_LIMIT} 条）`
+      : `（共 ${searchState.results.length} 条）`;
+    const metaHtml = `<div class="search-meta">在所有 tab 中找到匹配${totalLabel}：按 Enter 跳转</div>`;
+    const items = searchState.results.map((r, i) => {
+      const active = i === searchState.activeIdx ? "is-active" : "";
+      const sheetTag = r.sheet ? `<span class="search-result-tag">${escapeHtml(r.sheet)}</span>` : "";
+      return `<div class="search-result ${active}" data-idx="${i}">
+        <div class="search-result-title">${sheetTag}<span>${escapeHtml(r.title)}</span></div>
+        ${r.snippetHtml ? `<div class="search-result-snippet">${r.snippetHtml}</div>` : ""}
+      </div>`;
+    }).join("");
+    wrap.innerHTML = metaHtml + items;
+    wrap.hidden = false;
+  }
+
+  function jumpToSearchResult(idx) {
+    const r = searchState.results[idx];
+    if (!r) return;
+    if (state.currentPage !== r.pageId) {
+      state.currentPage = r.pageId;
+    }
+    const page = state.pages[r.pageId];
+    page.currentItemId = r.itemId;
+    // 跳到该 item 所在的 sheet
+    if (r.sheet) {
+      page.currentSheet = r.sheet;
+    }
+    save();
+    renderAll();
+    // 让编辑区滚到顶部，光标定位到 textarea
+    const ta = $("#ch-content") || $("#fs-notes");
+    if (ta) {
+      // 高亮第一个匹配位置
+      const text = ta.value;
+      const lower = text.toLowerCase();
+      const pos = lower.indexOf(searchState.query.toLowerCase());
+      if (pos >= 0) {
+        ta.focus();
+        ta.setSelectionRange(pos, pos + searchState.query.length);
+      } else {
+        ta.focus();
+      }
+    }
+    // 关闭下拉
+    hideSearchResults();
+  }
+
+  function hideSearchResults() {
+    const wrap = $("#search-results");
+    if (wrap) {
+      wrap.hidden = true;
+      wrap.innerHTML = "";
+    }
+    searchState.activeIdx = 0;
+  }
+
+  function bindSearchEvents() {
+    const input = $("#search-input");
+    const clear = $("#search-clear");
+    const wrap = $("#search-wrap");
+    if (!input) return;
+    let debounce = null;
+    input.addEventListener("input", () => {
+      const v = input.value;
+      searchState.query = v;
+      searchState.activeIdx = 0;
+      if (clear) clear.hidden = !v;
+      clearTimeout(debounce);
+      debounce = setTimeout(renderSearchResults, 120);
+    });
+    input.addEventListener("focus", () => {
+      if (searchState.query.trim()) renderSearchResults();
+    });
+    input.addEventListener("keydown", (e) => {
+      const q = searchState.query.trim();
+      if (e.key === "Escape") {
+        input.value = "";
+        searchState.query = "";
+        if (clear) clear.hidden = true;
+        hideSearchResults();
+        input.blur();
+        e.preventDefault();
+        return;
+      }
+      if (!q) return;
+      if (e.key === "ArrowDown") {
+        if (searchState.results.length === 0) return;
+        searchState.activeIdx = (searchState.activeIdx + 1) % searchState.results.length;
+        renderSearchResults();
+        scrollActiveResultIntoView();
+        e.preventDefault();
+      } else if (e.key === "ArrowUp") {
+        if (searchState.results.length === 0) return;
+        searchState.activeIdx = (searchState.activeIdx - 1 + searchState.results.length) % searchState.results.length;
+        renderSearchResults();
+        scrollActiveResultIntoView();
+        e.preventDefault();
+      } else if (e.key === "Enter") {
+        if (searchState.results.length === 0) return;
+        jumpToSearchResult(searchState.activeIdx);
+        e.preventDefault();
+      }
+    });
+    if (clear) {
+      clear.addEventListener("click", () => {
+        input.value = "";
+        searchState.query = "";
+        clear.hidden = true;
+        hideSearchResults();
+        input.focus();
+      });
+    }
+    // 点击结果项
+    $("#search-results")?.addEventListener("mousedown", (e) => {
+      // 用 mousedown 而非 click，避免 input 失焦先把结果隐藏
+      const t = e.target.closest(".search-result");
+      if (!t) return;
+      const idx = Number(t.dataset.idx);
+      if (Number.isFinite(idx)) jumpToSearchResult(idx);
+    });
+    // 点外部关闭
+    document.addEventListener("click", (e) => {
+      if (!wrap) return;
+      if (!wrap.contains(e.target)) hideSearchResults();
+    });
+  }
+
+  function scrollActiveResultIntoView() {
+    const wrap = $("#search-results");
+    if (!wrap) return;
+    const el = wrap.querySelector(".search-result.is-active");
+    if (el && el.scrollIntoView) {
+      el.scrollIntoView({ block: "nearest" });
+    }
   }
 
   /* ============================================================
@@ -2957,6 +3268,7 @@
     bindTabs();
     bindThemeEvents();
     bindAllResizers();
+    bindSearchEvents();
 
     // 初始化 history：在当前 state 上压一个"基线"快照，让用户可以 undo 回到打开状态
     pushHistory();
