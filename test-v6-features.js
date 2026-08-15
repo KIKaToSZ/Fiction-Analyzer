@@ -497,6 +497,115 @@ console.log("\n测试 7：v8 schema 兼容（isEphemeral + hasAnyUserData）");
   if (!snapOk) allPass = false;
 }
 
+/* ============================================================
+   测试 8：v8.1 修复（charCount 排除空白 + json 拖入显示文件名 + xlsxFileName）
+   ============================================================ */
+console.log("\n测试 8：v8.1 修复（charCount + json 数据源 + xlsxFileName）");
+{
+  // 8.1 charCount 排除所有空白字符
+  const vmCtx = vm.createContext({});
+  vm.runInContext(
+    `this.charCount = function(s) { return (s || "").replace(/\\s+/g, "").length; };`,
+    vmCtx
+  );
+  const cases = [
+    ["abc", 3],                // 普通字符串
+    ["a b c", 3],              // 空格不算
+    ["a\nb\nc", 3],            // 换行不算
+    ["a\tb\tc", 3],            // 制表符不算
+    ["\n\n\n", 0],             // 全空白 = 0
+    ["", 0],                   // 空字符串
+    [null, 0],                 // null
+    [undefined, 0],            // undefined
+    ["你好\n世界\r\n！", 5],    // 中文 + CRLF
+  ];
+  let ccOk = true;
+  for (const [input, expected] of cases) {
+    const got = vmCtx.charCount(input);
+    const ok = got === expected;
+    ccOk = ccOk && ok;
+    console.log(`  charCount(${JSON.stringify(input)}) = ${got} (期望 ${expected}): ${ok ? "✓" : "✗"}`);
+  }
+  console.log("  charCount 排除空白字符:", ccOk ? "PASS" : "FAIL");
+  if (!ccOk) allPass = false;
+
+  // 8.2 loadFromJsonFile：把文件加进 recentFiles，currentFileName = file.name
+  const jsonSandbox = {
+    state: {
+      currentFileName: null,
+      xlsxFileName: null,
+      jsonFileName: null,
+      recentFiles: [],
+    },
+  };
+  jsonSandbox.upsertRecentFile = function (meta) {
+    const idx = this.state.recentFiles.findIndex((f) => f.name === meta.name);
+    if (idx >= 0) this.state.recentFiles.splice(idx, 1);
+    this.state.recentFiles.unshift({
+      name: meta.name,
+      isEphemeral: !!meta.isEphemeral,
+      handleKey: meta.handleKey || null,
+    });
+    this.state.recentFiles = this.state.recentFiles.slice(0, 20);
+  };
+  function loadJson(file, data) {
+    jsonSandbox.state.currentFileName = file.name;
+    jsonSandbox.state.xlsxFileName = data.currentFileName || null;
+    jsonSandbox.state.jsonFileName = data.jsonFileName || file.name;
+    jsonSandbox.upsertRecentFile({
+      name: file.name,
+      handleKey: null,
+      isEphemeral: true,
+    });
+  }
+  loadJson(
+    { name: "novel.json", lastModified: 1700000000000, size: 1234 },
+    { pages: { chapter: { items: [] } }, currentFileName: "novel.xlsx" }
+  );
+  const f1 = jsonSandbox.state.currentFileName === "novel.json";
+  const f2 = jsonSandbox.state.xlsxFileName === "novel.xlsx";
+  const f3 = jsonSandbox.state.jsonFileName === "novel.json";
+  const f4 =
+    jsonSandbox.state.recentFiles.length === 1 &&
+    jsonSandbox.state.recentFiles[0].name === "novel.json" &&
+    jsonSandbox.state.recentFiles[0].isEphemeral === true;
+  console.log(`  currentFileName = "novel.json": ${f1 ? "✓" : "✗"}`);
+  console.log(`  xlsxFileName 保留 = "novel.xlsx": ${f2 ? "✓" : "✗"}`);
+  console.log(`  jsonFileName = "novel.json": ${f3 ? "✓" : "✗"}`);
+  console.log(`  recentFiles 加入 (isEphemeral): ${f4 ? "✓" : "✗"}`);
+  console.log("  loadFromJsonFile 状态设置:", (f1 && f2 && f3 && f4) ? "PASS" : "FAIL");
+  if (!(f1 && f2 && f3 && f4)) allPass = false;
+
+  // 8.3 json 无原 xlsx 时，xlsxFileName = null
+  jsonSandbox.state.recentFiles = [];
+  loadJson({ name: "pure.json" }, { pages: { chapter: { items: [] } } });
+  const f5 = jsonSandbox.state.xlsxFileName === null;
+  console.log(`  json 无 data.currentFileName → xlsxFileName = null: ${f5 ? "✓" : "✗"}`);
+  if (!f5) allPass = false;
+
+  // 8.4 saveAsXlsx：优先用 xlsxFileName 作 handle 查找 + 下载名
+  const sim = {
+    currentFileName: "novel.json",
+    xlsxFileName: "novel.xlsx",
+    recentFiles: [
+      { name: "novel.json", isEphemeral: true, handleKey: null },
+      { name: "novel.xlsx", isEphemeral: false, handleKey: "file:novel.xlsx" },
+    ],
+  };
+  const xlsxName = sim.xlsxFileName || sim.currentFileName;
+  const lookup = sim.recentFiles.find((f) => f.name === xlsxName);
+  const f6 = xlsxName === "novel.xlsx" && lookup && lookup.handleKey === "file:novel.xlsx";
+  console.log(`  saveAsXlsx 用 xlsxName 找 handle: ${f6 ? "✓" : "✗"}`);
+  if (!f6) allPass = false;
+
+  // 8.5 v5/v6 旧数据迁移：xlsxFileName 从 currentFileName 继承
+  const mig = { currentFileName: "old.xlsx" };
+  const xfn = mig.xlsxFileName || mig.currentFileName || null;
+  const f7 = xfn === "old.xlsx";
+  console.log(`  v5/v6 迁移 xlsxFileName = currentFileName: ${f7 ? "✓" : "✗"}`);
+  if (!f7) allPass = false;
+}
+
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);
 

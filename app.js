@@ -314,6 +314,11 @@
     return false;
   }
 
+  // 字数统计：排除所有空白字符（空格 / 换行 / 制表符）
+  function charCount(s) {
+    return (s || "").replace(/\s+/g, "").length;
+  }
+
   const state = {
     schema: SCHEMA_VERSION,
     currentPage: DEFAULT_PAGE,
@@ -324,6 +329,7 @@
     sheetsRaw: [], // [{name, rows2d, columns, rowCount, ok, page}]
     recentFiles: [],
     currentFileName: null,
+    xlsxFileName: null,    // 当前数据对应的「原 xlsx 文件名」——仅用于「导出 xlsx」命名；json-only 流程下可为 null
     // v7：json 增量保存的关联文件（首次导入 xlsx 后自动生成）
     jsonFileName: null,
     jsonHandleKey: null,
@@ -560,6 +566,7 @@
         isMigrated: !!f.isMigrated,
       })),
       currentFileName: state.currentFileName,
+      xlsxFileName: state.xlsxFileName,
       jsonFileName: state.jsonFileName,
       jsonHandleKey: state.jsonHandleKey,
       theme: state.theme,
@@ -670,6 +677,7 @@
         ? data.recentFiles
         : [];
       state.currentFileName = data.currentFileName || null;
+      state.xlsxFileName = data.xlsxFileName || data.currentFileName || null;
       state.jsonFileName = data.jsonFileName || null;
       state.jsonHandleKey = data.jsonHandleKey || null;
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
@@ -1244,7 +1252,7 @@
     list.className = "chapter-list";
     list.innerHTML = items
       .map((it) => {
-        const wc = (it.content || "").length;
+        const wc = charCount(it.content);
         return `
           <li class="ch-item ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
             <span class="ch-no">${escapeHtml(String(it.no))}</span>
@@ -1315,7 +1323,7 @@
         <label class="body-label">文章内容</label>
         <textarea id="ch-content" placeholder="正文…">${escapeHtml(normalizeParagraphs(it.content || ""))}</textarea>
         <div class="body-stats">
-          <span id="word-count" class="muted">${(it.content || "").length} 字</span>
+          <span id="word-count" class="muted">${charCount(it.content)} 字</span>
           <span id="save-status" class="muted"></span>
         </div>
       </div>`;
@@ -1372,7 +1380,7 @@
         <label class="body-label">备注 / 详情</label>
         <textarea id="fs-notes" placeholder="伏笔的具体内容、提示、相关情节等…">${escapeHtml(it.notes || "")}</textarea>
         <div class="body-stats">
-          <span id="fs-word-count" class="muted">${(it.notes || "").length} 字</span>
+          <span id="fs-word-count" class="muted">${charCount(it.notes)} 字</span>
           <span id="fs-save-status" class="muted"></span>
         </div>
       </div>`;
@@ -1386,7 +1394,7 @@
     const chNo = $("#ch-no");
     const chTitle = $("#ch-title");
     chContent?.addEventListener("input", () => {
-      const len = chContent.value.length;
+      const len = charCount(chContent.value);
       const wc = $("#word-count");
       if (wc) wc.textContent = `${len} 字`;
       debouncedPushHistory();
@@ -1402,7 +1410,7 @@
     if (!it) return;
     const fsNotes = $("#fs-notes");
     fsNotes?.addEventListener("input", () => {
-      const len = fsNotes.value.length;
+      const len = charCount(fsNotes.value);
       const wc = $("#fs-word-count");
       if (wc) wc.textContent = `${len} 字`;
       debouncedPushHistory();
@@ -1541,6 +1549,7 @@
       applySheetsToState(sheets);
       const desc = await describeFile(handle);
       state.currentFileName = handle.name;
+      state.xlsxFileName = handle.name;
       // 首次/重新加载：也立即生成同名 .json（同目录；如无权限则下载）
       state.jsonFileName = jsonFileNameFrom(handle.name);
       state.jsonHandleKey = null;
@@ -1617,6 +1626,7 @@
         return;
       }
       state.currentFileName = file.name;
+      state.xlsxFileName = file.name;
       // 首次导入：立即生成同名 .json（在同目录写一份；如无 handle 则下载）
       state.jsonFileName = jsonFileNameFrom(file.name);
       state.jsonHandleKey = null;
@@ -1694,9 +1704,21 @@
         state.pages.chapter.items = data.chapters;
       }
       if (Array.isArray(data.sheetsRaw)) state.sheetsRaw = data.sheetsRaw;
-      state.currentFileName = data.currentFileName || file.name;
+      // 数据源是当前拖入的 json；data.currentFileName 仅作为「原 xlsx 名」保留，
+      // 给「导出 xlsx」时命名用（避免下载文件叫 xxx.json.xlsx）。
+      state.currentFileName = file.name;
+      state.xlsxFileName = data.currentFileName || null;
       state.jsonFileName = data.jsonFileName || file.name;
       state.jsonHandleKey = data.jsonHandleKey || null;
+      // 把拖入的 json 加入 recentFiles（isEphemeral=true），让「数据源」下拉框能选中它
+      upsertRecentFile({
+        name: file.name,
+        mtime: file.lastModified || 0,
+        size: file.size || 0,
+        handleKey: null,
+        isDirectory: false,
+        isEphemeral: true,
+      });
       // v8：恢复 recentFiles（保留 isEphemeral / isMigrated 等标志）
       if (Array.isArray(data.recentFiles)) {
         state.recentFiles = data.recentFiles.map((f) => ({
@@ -1956,7 +1978,7 @@
 
   function buildXlsxArrayBuffer() {
     if (!window.XLSX) throw new Error("xlsx 解析库未加载");
-    if (!state.currentFileName) throw new Error("当前没有打开的文件");
+    if (!state.xlsxFileName && !state.currentFileName) throw new Error("当前没有打开的文件");
     if (state.sheetsRaw.length === 0)
       throw new Error("缺少原始 sheet 缓存，无法写回");
     const wb = XLSX.utils.book_new();
@@ -1971,7 +1993,9 @@
   }
 
   async function saveAsXlsx({ silent = false } = {}) {
-    if (!state.currentFileName) {
+    // 优先用「原 xlsx 名」（json-only 流程下保留的源文件）；否则用当前文件名
+    const xlsxName = state.xlsxFileName || state.currentFileName;
+    if (!xlsxName) {
       if (!silent) toast("当前没有打开的文件", "error");
       return false;
     }
@@ -1989,20 +2013,20 @@
     }
 
     const meta = state.recentFiles.find(
-      (f) => f.name === state.currentFileName
+      (f) => f.name === xlsxName
     );
     if (meta && meta.handleKey && !meta.isMigrated) {
       try {
         const handle = await fsGet(meta.handleKey);
         if (!handle) {
-          triggerXlsxDownload(ab, state.currentFileName);
+          triggerXlsxDownload(ab, xlsxName);
           if (!silent) toast("原文件访问权限已失效，已下载更新版", "info", 2500);
           return true;
         }
         const granted = await ensureWritePermission(handle, true);
         if (!granted) {
           if (!silent) toast("未获得写入权限，已下载更新版", "info", 2500);
-          triggerXlsxDownload(ab, state.currentFileName);
+          triggerXlsxDownload(ab, xlsxName);
           return true;
         }
         const writable = await handle.createWritable();
@@ -2017,13 +2041,13 @@
         }
         console.error("写入文件失败", e);
         if (!silent) {
-          triggerXlsxDownload(ab, state.currentFileName);
+          triggerXlsxDownload(ab, xlsxName);
           toast("写入失败，已改为下载：" + (e.message || e), "error", 3500);
         }
         return false;
       }
     } else {
-      triggerXlsxDownload(ab, state.currentFileName);
+      triggerXlsxDownload(ab, xlsxName);
       if (!silent) {
         toast(
           meta && meta.isMigrated
@@ -2594,7 +2618,7 @@
           <div class="preview-row">
             <span class="preview-no">${escapeHtml(String(r.no))}</span>
             <span class="preview-title" title="${escapeHtml(main)}">${escapeHtml(main)}</span>
-            <span class="preview-len">${(r.content || r.notes || "").length}字</span>
+            <span class="preview-len">${charCount(r.content || r.notes)}字</span>
           </div>`;
       })
       .join("");
