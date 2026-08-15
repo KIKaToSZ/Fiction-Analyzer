@@ -139,8 +139,6 @@
                   <div class="seg seg-data">
                     <button id="btn-export" class="seg-btn" title="把当前数据导出为 xlsx（默认日常保存走 json，速度快；需要 xlsx 时点这里）">导出 xlsx</button>
                     <button id="btn-export-json" class="seg-btn" title="把当前数据导出为 json（用于备份 / 迁移）">导出 json</button>
-                    <label for="file-import" class="seg-btn" title="从 JSON 文件恢复">导入</label>
-                    <input id="file-import" type="file" accept="application/json" hidden />
                   </div>
                 </div>
               </div>
@@ -416,7 +414,7 @@
           <p class="muted hint">
             把本地 <code>.xlsx</code> 或 <code>.json</code> 文件<strong>拖入下方区域</strong>，或点击区域选择。xlsx 表头需包含：<strong>章节号</strong> / <strong>章节名</strong> / <strong>文章内容</strong> 三列；json 是应用之前导出的快照。
             <br />
-            <span class="muted">提示：拖入的文件仅本次会话内可访问，关闭页面前请用「导出 json」或「导出 xlsx」手动备份。</span>
+            <span class="muted">提示：日常保存自动写 json（不会丢数据），但 xlsx 不会被自动写回——拖入时读取的合并 / 超链接 / 列宽 / 其他 sheet 等格式只在你点「导出 xlsx」时才会写回原文件。原始 xlsx 的句柄也不持久化，关闭页面后浏览器不再记得它。</span>
           </p>
 
           <div id="open-file-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入文件">

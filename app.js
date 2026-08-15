@@ -2945,58 +2945,7 @@
       toast("已导出 json", "info", 1500);
     });
 
-    // JSON 导入（v5 + 旧 dataSources 兼容）
-    $("#file-import").addEventListener("change", (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const data = JSON.parse(reader.result);
-          if (data.pages || data.chapters) {
-            if (!confirm("导入将覆盖当前所有数据，确定？")) return;
-            // 整体替换 state（保留 theme 不变以免难看）
-            const newTheme = state.theme;
-            const newUi = state.ui;
-            if (data.pages) {
-              for (const pid of PAGE_IDS) {
-                state.pages[pid] = data.pages[pid] || makePageState();
-              }
-              state.currentPage = data.currentPage || DEFAULT_PAGE;
-            }
-            if (Array.isArray(data.chapters) && !data.pages) {
-              state.pages.chapter.items = data.chapters;
-            }
-            if (Array.isArray(data.sheetsRaw)) state.sheetsRaw = data.sheetsRaw;
-            state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
-            state.ui = { sort: "asc", layout: { ...(state.ui.layout || {}) }, ...(data.ui || {}) };
-            if (data.ui && data.ui.layout) state.ui.layout = data.ui.layout;
-            save();
-            renderAll();
-            toast("已导入");
-          } else if (Array.isArray(data.dataSources)) {
-            if (!confirm("检测到老版本数据格式，导入将覆盖当前所有数据，确定？")) return;
-            const target =
-              data.dataSources.find((d) => d.id === data.currentDataSourceId) ||
-              data.dataSources[0];
-            if (target) {
-              state.pages.chapter.items = target.chapters || [];
-              state.currentFileName = null;
-              save();
-              renderAll();
-              toast("已导入（旧格式）");
-            }
-          } else {
-            toast("文件格式不对", "error");
-          }
-        } catch (err) {
-          console.error(err);
-          toast("解析失败：文件不是有效 JSON", "error");
-        }
-        e.target.value = "";
-      };
-      reader.readAsText(file);
-    });
+    // JSON 导入走「打开文件」弹窗的拖入区（v8+），这里不再单独挂事件
   }
 
   /* ============================================================
