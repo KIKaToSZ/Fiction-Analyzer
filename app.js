@@ -1397,6 +1397,11 @@
       const len = charCount(chContent.value);
       const wc = $("#word-count");
       if (wc) wc.textContent = `${len} 字`;
+      // 实时把正文写回 state，并更新左侧列表当前项的字数（不等保存）
+      // ——避免每次都调 renderAll() 重渲染整个列表导致 textarea 焦点/选区丢失
+      it.content = chContent.value;
+      const meta = document.querySelector(".ch-item.active .ch-meta");
+      if (meta) meta.textContent = `${len}字`;
       debouncedPushHistory();
       // 让光标始终停留在视口上方 1/3 处，留出下方 2/3 的"留白"
       // 覆盖：回车后自动向上滚（需求 4）+ 输入时下方填充空白保持视野中央（需求 5）
