@@ -948,6 +948,73 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
 
   console.log("  v10 修复:", (u10_1 && u10_2 && u10_3 && u10_4 && u10_5 && u10_6 && u10_7 && tt1 && tt2 && tt3) ? "PASS" : "FAIL");
   if (!(u10_1 && u10_2 && u10_3 && u10_4 && u10_5 && u10_6 && u10_7 && tt1 && tt2 && tt3)) allPass = false;
+
+  // ============================================================
+  // 测试 11：v10.1 修复（保存后路径持久显示 + 去除冗余的「已保存到 json」提示）
+  // ============================================================
+  console.log("\n测试 11：v10.1 修复（路径持久 + 去除冗余 toast 重复）");
+
+  // 11.1 renderChapterEditor 末尾必须调 updateFilePathDisplay()
+  // ——否则 innerHTML 重写后 #ch-file-path 是新元素，旧 textContent 丢失
+  const idx1 = SRC.indexOf("function renderChapterEditor");
+  const idx2 = SRC.indexOf("function renderFsEditor");
+  const idxEnd1 = SRC.indexOf("function renderFsEditor", idx1);
+  const idxEnd2 = SRC.indexOf("function bindChapterEditorEvents", idx2);
+  const chEditorBlock = SRC.slice(idx1, idxEnd1 > 0 ? idxEnd1 : idx1 + 4000);
+  const fsEditorBlock = SRC.slice(idx2, idxEnd2 > 0 ? idxEnd2 : idx2 + 4000);
+  const t11_1a = chEditorBlock.includes("updateFilePathDisplay()");
+  const t11_1b = fsEditorBlock.includes("updateFilePathDisplay()");
+  console.log(`  renderChapterEditor 末尾补 updateFilePathDisplay: ${t11_1a ? "✓" : "✗"}`);
+  console.log(`  renderFsEditor 末尾补 updateFilePathDisplay: ${t11_1b ? "✓" : "✗"}`);
+  if (!t11_1a || !t11_1b) allPass = false;
+
+  // 11.2 renderChapterEditor 中 updateFilePathDisplay() 必须在 bindChapterEditorEvents() 之后
+  // ——否则 #ch-file-path 还不在 DOM 上就调了，无效
+  const chOrderMatch = chEditorBlock.match(/bindChapterEditorEvents\(\);\s*\/\/ v10\.1[\s\S]{0,200}?updateFilePathDisplay\(\);/);
+  const fsOrderMatch = fsEditorBlock.match(/bindFsEditorEvents\(\);\s*\/\/ v10\.1[\s\S]{0,200}?updateFilePathDisplay\(\);/);
+  const t11_2a = !!chOrderMatch;
+  const t11_2b = !!fsOrderMatch;
+  console.log(`  顺序：bindChapterEditorEvents → updateFilePathDisplay: ${t11_2a ? "✓" : "✗"}`);
+  console.log(`  顺序：bindFsEditorEvents → updateFilePathDisplay: ${t11_2b ? "✓" : "✗"}`);
+  if (!t11_2a || !t11_2b) allPass = false;
+
+  // 11.3 手动保存按钮（btn-save / btn-fs-save）处理后不再调 flashSaveStatus
+  // ——toast 已弹，#save-status 不应再重复「已保存到 json」
+  const idxBtn = SRC.indexOf('t.id === "btn-save" || t.id === "btn-fs-save"');
+  const idxCtrlS = SRC.indexOf("Ctrl+S / Cmd+S");
+  const idxNextUndo = SRC.indexOf("Ctrl+Z / Cmd+Z");
+  const btnSaveBlock = SRC.slice(idxBtn, idxCtrlS > 0 ? idxCtrlS : idxBtn + 1500);
+  const ctrlSBlock = SRC.slice(idxCtrlS, idxNextUndo > 0 ? idxNextUndo : idxCtrlS + 1500);
+  // 之前这里有 3 个 flashSaveStatus("✓ 已保存到 json / 已下载 / 已保存到浏览器")
+  // 现在应只调 saveAsJson()，不再有 flashSaveStatus
+  const t11_3a = !btnSaveBlock.includes("flashSaveStatus");
+  const t11_3b = !ctrlSBlock.includes("flashSaveStatus");
+  console.log(`  保存按钮处理：已去除 flashSaveStatus（toast 替代）: ${t11_3a ? "✓" : "✗"}`);
+  console.log(`  Ctrl+S 处理：已去除 flashSaveStatus（toast 替代）: ${t11_3b ? "✓" : "✗"}`);
+  if (!t11_3a || !t11_3b) allPass = false;
+
+  // 11.4 切章节/失焦的"已保存到本地"反馈仍保留（该场景无 toast）
+  // ——saveCurrentItem 末尾 flashSaveStatus("✓ 已保存到本地")
+  const saveCurrentItemBlock = SRC.slice(
+    SRC.indexOf("function saveCurrentItem"),
+    SRC.indexOf("function deleteCurrentItem")
+  );
+  const t11_4 = saveCurrentItemBlock.includes('flashSaveStatus("✓ 已保存到本地")');
+  console.log(`  saveCurrentItem 保留「已保存到本地」（切章节反馈）: ${t11_4 ? "✓" : "✗"}`);
+  if (!t11_4) allPass = false;
+
+  // 11.5 saveAsJson 内的 toast 提示仍保留（用户要的 toast 提示）
+  const saveAsJsonBlock = SRC.slice(
+    SRC.indexOf("async function saveAsJson"),
+    SRC.indexOf("async function enableAutoSave")
+  );
+  const toastCount = (saveAsJsonBlock.match(/toast\("✓ 已保存到 json"/g) || []).length;
+  const t11_5 = toastCount >= 3; // 第 1/1.5/2 步成功都有 toast
+  console.log(`  saveAsJson 内 toast 仍存在（>=3 处）: ${t11_5 ? "✓" : "✗"} (${toastCount} 处)`);
+  if (!t11_5) allPass = false;
+
+  console.log("  v10.1 修复:", (t11_1a && t11_1b && t11_2a && t11_2b && t11_3a && t11_3b && t11_4 && t11_5) ? "PASS" : "FAIL");
+  if (!(t11_1a && t11_1b && t11_2a && t11_2b && t11_3a && t11_3b && t11_4 && t11_5)) allPass = false;
 }
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

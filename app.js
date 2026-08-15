@@ -1379,6 +1379,9 @@
         </div>
       </div>`;
     bindChapterEditorEvents();
+    // v10.1：editor.innerHTML 重写后 #ch-file-path 是新元素，
+    // 必须补一次 updateFilePathDisplay()，否则保存/切章节后路径消失
+    updateFilePathDisplay();
   }
 
   function renderFsEditor() {
@@ -1439,6 +1442,9 @@
         </div>
       </div>`;
     bindFsEditorEvents();
+    // v10.1：editor.innerHTML 重写后 #fs-file-path 是新元素，
+    // 必须补一次 updateFilePathDisplay()，否则保存/切伏笔后路径消失
+    updateFilePathDisplay();
   }
 
   function bindChapterEditorEvents() {
@@ -3031,15 +3037,8 @@
       if (isSave && curItem()) {
         const ok = saveCurrentItem();
         if (ok) {
-          saveAsJson().then((res) => {
-            if (res.ok && (res.mode === "handle" || res.mode === "dir")) {
-              flashSaveStatus("✓ 已保存到 json", 1800);
-            } else if (res.ok && res.mode === "download") {
-              flashSaveStatus("✓ 已保存（json 已下载，请放回原目录）", 2200);
-            } else if (res.ok && res.mode === "ephemeral") {
-              flashSaveStatus("✓ 已保存到浏览器", 1800);
-            }
-          });
+          // v10.1：toast 已经提示，#save-status 不再重复（避免冗余）
+          saveAsJson();
         }
       } else if (isDelete && curItem()) {
         deleteCurrentItem();
@@ -3076,17 +3075,8 @@
         }
         const ok = saveCurrentItem();
         if (ok) {
-          saveAsJson().then((res) => {
-            if (res.ok && (res.mode === "handle" || res.mode === "dir")) {
-              flashSaveStatus("✓ 已保存到 json (Ctrl+S)", 1800);
-            } else if (res.ok && res.mode === "download") {
-              flashSaveStatus("✓ 已保存到本地（json 已下载）", 2200);
-            } else if (res.ok && res.mode === "ephemeral") {
-              flashSaveStatus("✓ 已保存到本地 (Ctrl+S)", 1800);
-            } else {
-              flashSaveStatus("✓ 已保存到本地（json 写入被取消）", 2000);
-            }
-          });
+          // v10.1：toast 已经提示，#save-status 不再重复（避免冗余）
+          saveAsJson();
         }
         return;
       }
