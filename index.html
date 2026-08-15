@@ -414,40 +414,29 @@
         </header>
         <div class="modal-body">
           <p class="muted hint">
-            从本地选择 <code>.xlsx</code> 或 <code>.json</code> 文件。xlsx 表头需包含：<strong>章节号</strong> / <strong>章节名</strong> / <strong>文章内容</strong> 三列；json 是应用之前导出的快照。
+            把本地 <code>.xlsx</code> 或 <code>.json</code> 文件<strong>拖入下方区域</strong>，或点击区域选择。xlsx 表头需包含：<strong>章节号</strong> / <strong>章节名</strong> / <strong>文章内容</strong> 三列；json 是应用之前导出的快照。
+            <br />
+            <span class="muted">提示：拖入的文件仅本次会话内可访问，关闭页面前请用「导出 json」或「导出 xlsx」手动备份。</span>
           </p>
 
-          <button id="btn-open-file-pick" class="primary-btn primary-btn-block" type="button">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="12" y1="18" x2="12" y2="12" />
-              <line x1="9" y1="15" x2="15" y2="15" />
+          <div id="open-file-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入文件">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            <span>用浏览器选择文件</span>
-          </button>
-
-          <details class="import-advanced">
-            <summary>或拖入文件（仅本次会话有效）</summary>
-            <div id="open-file-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入文件">
-              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-              <div class="import-drop-title">点击选择 / 拖入 .xlsx 或 .json 文件</div>
-              <div class="import-drop-hint">支持 .xlsx / .xlsm / .json 格式，单文件</div>
-              <input id="file-xlsx-open" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
-            </div>
-            <div id="open-file-info" class="import-file-info" hidden>
-              <span class="import-file-name"></span>
-              <button class="link-btn" id="btn-open-file-clear" type="button">清除</button>
-            </div>
-            <div class="form-actions">
-              <button class="secondary-btn" data-close>取消</button>
-              <button id="btn-open-file-confirm" class="primary-btn" disabled>确认打开</button>
-            </div>
-          </details>
+            <div class="import-drop-title">点击选择 / 拖入 .xlsx 或 .json 文件</div>
+            <div class="import-drop-hint">支持 .xlsx / .xlsm / .json 格式，单文件</div>
+            <input id="file-xlsx-open" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
+          </div>
+          <div id="open-file-info" class="import-file-info" hidden>
+            <span class="import-file-name"></span>
+            <button class="link-btn" id="btn-open-file-clear" type="button">清除</button>
+          </div>
+          <div class="form-actions">
+            <button class="secondary-btn" data-close>取消</button>
+            <button id="btn-open-file-confirm" class="primary-btn" disabled>确认打开</button>
+          </div>
         </div>
       </div>
     </div>

@@ -397,6 +397,106 @@ if (!fnMatch) {
   if (!npOk) allPass = false;
 }
 
+/* ============================================================
+   测试 7：v8 schema 兼容（isEphemeral + hasAnyUserData）
+   ============================================================ */
+console.log("\n测试 7：v8 schema 兼容（isEphemeral + hasAnyUserData）");
+{
+  // 7.1 hasAnyUserData 判定逻辑
+  // 重新搭一个最小 sandbox 复现逻辑
+  const sandbox = {
+    state: {
+      currentFileName: null,
+      pages: {
+        chapter: { items: [] },
+        foreshadowing: { items: [] },
+      },
+    },
+  };
+  sandbox.hasAnyUserData = function () {
+    if (this.state.currentFileName) return true;
+    for (const pid of Object.keys(this.state.pages)) {
+      if (this.state.pages[pid] && this.state.pages[pid].items.length > 0) return true;
+    }
+    return false;
+  };
+  const f1 = sandbox.hasAnyUserData.call(sandbox);
+  const t1 = !f1;
+  console.log("  空状态 → false:", t1 ? "✓" : "✗");
+  if (!t1) allPass = false;
+
+  sandbox.state.currentFileName = "book.xlsx";
+  const t2 = sandbox.hasAnyUserData.call(sandbox);
+  console.log("  有 currentFileName → true:", t2 ? "✓" : "✗");
+  if (!t2) allPass = false;
+
+  sandbox.state.currentFileName = null;
+  sandbox.state.pages.chapter.items.push({ id: "x" });
+  const t3 = sandbox.hasAnyUserData.call(sandbox);
+  console.log("  有 chapter items → true:", t3 ? "✓" : "✗");
+  if (!t3) allPass = false;
+
+  sandbox.state.pages.chapter.items = [];
+  sandbox.state.pages.foreshadowing.items.push({ id: "y" });
+  const t4 = sandbox.hasAnyUserData.call(sandbox);
+  console.log("  有 foreshadowing items → true:", t4 ? "✓" : "✗");
+  if (!t4) allPass = false;
+  console.log("  hasAnyUserData 行为:", (t1 && t2 && t3 && t4) ? "PASS" : "FAIL");
+  if (!(t1 && t2 && t3 && t4)) allPass = false;
+
+  // 7.2 isEphemeral 字段在 upsertRecentFile 后正确保留
+  const vmCtx = vm.createContext(sandbox);
+  vm.runInContext(
+    `const __state = { recentFiles: [] };
+     this.__test_state = __state;
+     this.upsertRecentFile = function(meta) {
+       const idx = __state.recentFiles.findIndex(f => f.name === meta.name);
+       if (idx >= 0) __state.recentFiles.splice(idx, 1);
+       __state.recentFiles.unshift({
+         name: meta.name, lastOpened: meta.lastOpened || new Date().toISOString(),
+         mtime: meta.mtime || 0, size: meta.size || 0,
+         handleKey: meta.handleKey || null,
+         isDirectory: !!meta.isDirectory, isMigrated: !!meta.isMigrated,
+         isEphemeral: !!meta.isEphemeral,
+       });
+       __state.recentFiles = __state.recentFiles.slice(0, 20);
+     };`,
+    vmCtx
+  );
+  vm.runInContext(
+    `this.snapshotStateForJson = function() {
+       return {
+         recentFiles: __state.recentFiles.map(f => ({
+           name: f.name, isEphemeral: !!f.isEphemeral, isMigrated: !!f.isMigrated,
+         })),
+       };
+     };`,
+    vmCtx
+  );
+  vm.runInContext(`this.upsertRecentFile({ name: "a.xlsx", isEphemeral: true })`, vmCtx);
+  vm.runInContext(`this.upsertRecentFile({ name: "b.xlsx", isEphemeral: false })`, vmCtx);
+  vm.runInContext(`this.upsertRecentFile({ name: "c.xlsx" })`, vmCtx); // 默认 false
+  const isEphemA = sandbox.__test_state.recentFiles.find((f) => f.name === "a.xlsx")?.isEphemeral;
+  const isEphemB = sandbox.__test_state.recentFiles.find((f) => f.name === "b.xlsx")?.isEphemeral;
+  const isEphemC = sandbox.__test_state.recentFiles.find((f) => f.name === "c.xlsx")?.isEphemeral;
+  const iso7_2 = isEphemA === true && isEphemB === false && isEphemC === false;
+  console.log(`  a.xlsx.isEphemeral = true: ${isEphemA === true ? "✓" : "✗"}`);
+  console.log(`  b.xlsx.isEphemeral = false: ${isEphemB === false ? "✓" : "✗"}`);
+  console.log(`  c.xlsx.isEphemeral (默认) = false: ${isEphemC === false ? "✓" : "✗"}`);
+  console.log("  isEphemeral 字段保留:", iso7_2 ? "PASS" : "FAIL");
+  if (!iso7_2) allPass = false;
+
+  // 7.3 snapshot 序列化 isEphemeral
+  const snap = sandbox.snapshotStateForJson.call(sandbox);
+  const snapOk =
+    snap.recentFiles.length === 3 &&
+    snap.recentFiles.find((f) => f.name === "a.xlsx")?.isEphemeral === true &&
+    snap.recentFiles.find((f) => f.name === "b.xlsx")?.isEphemeral === false;
+  console.log("  snapshot 保留 isEphemeral:", snapOk ? "✓" : "✗");
+  console.log("  snapshot 序列化 isEphemeral:", snapOk ? "PASS" : "FAIL");
+  if (!snapOk) allPass = false;
+}
+
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);
 

@@ -10,7 +10,7 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 7;
+  const SCHEMA_VERSION = 8;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
 
@@ -303,6 +303,15 @@
   // sheetsRaw:  [{name, rows2d, columns, rowCount, ok, page}]  // 全量 raw，写回用
   function makePageState() {
     return { sheets: [], currentSheet: null, items: [], currentItemId: null };
+  }
+
+  // 是否有任何用户数据（用于在覆盖前判断是否需要先导出 json 备份）
+  function hasAnyUserData() {
+    if (state.currentFileName) return true;
+    for (const pid of PAGE_IDS) {
+      if (state.pages[pid] && state.pages[pid].items.length > 0) return true;
+    }
+    return false;
   }
 
   const state = {
@@ -766,31 +775,6 @@
     return false;
   }
 
-  async function pickXlsxFile() {
-    if (!fsSupported()) throw new Error("当前浏览器不支持 File System Access API");
-    const handles = await window.showOpenFilePicker({
-      types: [
-        {
-          description: "Excel 文件",
-          accept: {
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
-              ".xlsx",
-              ".xlsm",
-            ],
-          },
-        },
-        {
-          description: "JSON 文件",
-          accept: {
-            "application/json": [".json"],
-          },
-        },
-      ],
-      multiple: false,
-    });
-    return handles[0];
-  }
-
   async function pickDirectory() {
     if (!fsSupported()) throw new Error("当前浏览器不支持 File System Access API");
     return await window.showDirectoryPicker({ mode: "read" });
@@ -833,6 +817,8 @@
       handleKey: meta.handleKey || null,
       isDirectory: !!meta.isDirectory,
       isMigrated: !!meta.isMigrated,
+      // v8：仅本次会话有效（拖入的文件，无 handle 不可持久化）
+      isEphemeral: !!meta.isEphemeral,
     });
     state.recentFiles = state.recentFiles.slice(0, 20);
   }
@@ -1165,7 +1151,8 @@
       .map((f) => {
         const selected = f.name === state.currentFileName ? "selected" : "";
         const icon = f.isMigrated ? "🔒" : f.isDirectory ? "📁" : "📄";
-        return `<option value="${escapeHtml(f.name)}" ${selected}>${icon} ${escapeHtml(f.name)}</option>`;
+        const tag = f.isEphemeral ? "（本次会话）" : "";
+        return `<option value="${escapeHtml(f.name)}" ${selected}>${icon} ${escapeHtml(f.name)} ${tag}</option>`;
       })
       .join("");
     if (state.currentFileName) sel.value = state.currentFileName;
@@ -1593,6 +1580,32 @@
         return;
       }
       // xlsx / xlsm
+      // 1) 覆盖确认 + 先把当前数据导出 json（避免覆盖丢失）
+      const hasExistingData = hasAnyUserData();
+      if (hasExistingData) {
+        if (
+          !confirm(
+            `打开新文件会覆盖当前所有数据。\n\n点击「确定」：先把当前数据保存为 json，再导入新文件。\n点击「取消」：中止操作，保留当前数据。`
+          )
+        ) {
+          return;
+        }
+        // 先把当前数据导出 json（不导出 xlsx）
+        try {
+          const r = await saveAsJson({ silent: true });
+          if (r && r.ok && r.mode === "download") {
+            toast(
+              "已下载当前数据的 json 备份（请放到合适位置后，下次可从「打开文件」恢复）",
+              "info",
+              3000
+            );
+          }
+        } catch (e) {
+          console.warn("保存当前数据为 json 失败", e);
+          toast("保存当前数据为 json 失败，已中止导入", "error", 3000);
+          return;
+        }
+      }
       const ab = await file.arrayBuffer();
       const { sheets } = parseXlsxAllSheets(ab);
       applySheetsToState(sheets);
@@ -1607,6 +1620,15 @@
       // 首次导入：立即生成同名 .json（在同目录写一份；如无 handle 则下载）
       state.jsonFileName = jsonFileNameFrom(file.name);
       state.jsonHandleKey = null;
+      // 把拖入的文件加入 recentFiles（isEphemeral=true：仅本次会话）
+      upsertRecentFile({
+        name: file.name,
+        mtime: file.lastModified ? file.lastModified : 0,
+        size: file.size || 0,
+        handleKey: null,
+        isDirectory: false,
+        isEphemeral: true,
+      });
       save();
       pushHistory();
       renderAll();
@@ -1635,7 +1657,33 @@
         toast("文件格式不对（不是有效的 Novel App JSON）", "error", 3500);
         return;
       }
-      if (!confirm("导入 JSON 将覆盖当前所有数据，确定？")) return;
+      // v8：先弹覆盖确认；如有数据则先导出 json 备份再恢复
+      const hasExistingData = hasAnyUserData();
+      if (hasExistingData) {
+        if (
+          !confirm(
+            `打开新文件会覆盖当前所有数据。\n\n点击「确定」：先把当前数据保存为 json，再导入新文件。\n点击「取消」：中止操作，保留当前数据。`
+          )
+        ) {
+          return;
+        }
+        try {
+          const r = await saveAsJson({ silent: true });
+          if (r && r.ok && r.mode === "download") {
+            toast(
+              "已下载当前数据的 json 备份（请放到合适位置后，下次可从「打开文件」恢复）",
+              "info",
+              3000
+            );
+          }
+        } catch (e) {
+          console.warn("保存当前数据为 json 失败", e);
+          toast("保存当前数据为 json 失败，已中止导入", "error", 3000);
+          return;
+        }
+      } else {
+        if (!confirm("导入 JSON 将覆盖当前所有数据，确定？")) return;
+      }
       if (data.pages) {
         for (const pid of PAGE_IDS) {
           state.pages[pid] = data.pages[pid] || makePageState();
@@ -1649,6 +1697,19 @@
       state.currentFileName = data.currentFileName || file.name;
       state.jsonFileName = data.jsonFileName || file.name;
       state.jsonHandleKey = data.jsonHandleKey || null;
+      // v8：恢复 recentFiles（保留 isEphemeral / isMigrated 等标志）
+      if (Array.isArray(data.recentFiles)) {
+        state.recentFiles = data.recentFiles.map((f) => ({
+          name: f.name,
+          lastOpened: f.lastOpened || new Date().toISOString(),
+          mtime: f.mtime || 0,
+          size: f.size || 0,
+          handleKey: f.handleKey || null,
+          isDirectory: !!f.isDirectory,
+          isMigrated: !!f.isMigrated,
+          isEphemeral: !!f.isEphemeral,
+        }));
+      }
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
       state.ui = { sort: "asc", layout: { ...(state.ui.layout || {}) }, ...(data.ui || {}) };
       if (data.ui && data.ui.layout) state.ui.layout = data.ui.layout;
@@ -1702,6 +1763,7 @@
         handleKey: f.handleKey,
         isDirectory: !!f.isDirectory,
         isMigrated: !!f.isMigrated,
+        isEphemeral: !!f.isEphemeral,
       })),
       currentFileName: state.currentFileName,
       jsonFileName: state.jsonFileName,
@@ -2556,31 +2618,6 @@
       }
       openFileModalReset();
       showModal("modal-open-file");
-    });
-
-    $("#btn-open-file-pick").addEventListener("click", async () => {
-      try {
-        const handle = await pickXlsxFile();
-        if (!handle) return;
-        const fileKey = `file:${handle.name}`;
-        await fsPut(fileKey, handle);
-        const desc = await describeFile(handle);
-        upsertRecentFile({
-          name: handle.name,
-          mtime: desc.mtime,
-          size: desc.size,
-          handleKey: fileKey,
-          isDirectory: false,
-        });
-        save();
-        renderAll();
-        hideModal("modal-open-file");
-        await loadFromHandle(handle, { handleKey: fileKey });
-      } catch (e) {
-        if (e.name === "AbortError") return;
-        console.error(e);
-        toast("选择文件失败：" + (e.message || e), "error", 3000);
-      }
     });
 
     $("#file-pick-dir").addEventListener("click", () => {
