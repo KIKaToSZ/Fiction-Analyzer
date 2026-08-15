@@ -1154,9 +1154,11 @@
      ============================================================ */
   function renderFileSelect() {
     const sel = $("#file-select");
+    const removeBtn = $("#file-remove");
     if (state.recentFiles.length === 0) {
       sel.innerHTML = '<option value="">— 暂无文件 —</option>';
       sel.value = "";
+      if (removeBtn) removeBtn.hidden = true;
       return;
     }
     sel.innerHTML = state.recentFiles
@@ -1167,54 +1169,13 @@
       })
       .join("");
     if (state.currentFileName) sel.value = state.currentFileName;
-  }
 
-  function renderFileMeta() {
-    const elText = $("#file-meta-text");
-    const dot = $("#file-status");
-    const removeBtn = $("#file-remove");
-    const banner = $("#fs-banner");
-
-    const cur = state.recentFiles.find(
-      (f) => f.name === state.currentFileName
-    );
-    if (!cur) {
-      elText.textContent = "请选择一个本地 xlsx 文件";
-      dot.dataset.status = "";
-      dot.title = "";
-      removeBtn.hidden = true;
-      banner.hidden = true;
-      return;
-    }
-
-    // 统计所有页面的总条目数
-    let total = 0;
-    for (const pid of PAGE_IDS) {
-      total += state.pages[pid].items.length;
-    }
-    const parts = [`${total} 条`];
-    if (cur.mtime) {
-      parts.push(`修改于 ${new Date(cur.mtime).toLocaleString()}`);
-    }
-    if (cur.size) parts.push(formatSize(cur.size));
-    elText.textContent = parts.join(" · ");
-    elText.title = cur.name;
-
-    if (cur.isMigrated) {
-      dot.dataset.status = "migrated";
-      dot.title = "已迁移的旧数据，无文件访问权限";
-      banner.hidden = true;
-      removeBtn.hidden = true;
-    } else if (cur.handleKey) {
-      dot.dataset.status = "ok";
-      dot.title = "已授权，可随时重新读取本地文件";
-      banner.hidden = true;
-      removeBtn.hidden = false;
-    } else {
-      dot.dataset.status = "need-perm";
-      dot.title = "需要重新授权才能读取";
-      banner.hidden = false;
-      removeBtn.hidden = false;
+    // 当前文件的「移除」按钮显隐：migrated 旧数据 / 无当前文件时隐藏
+    if (removeBtn) {
+      const cur = state.recentFiles.find(
+        (f) => f.name === state.currentFileName
+      );
+      removeBtn.hidden = !cur || cur.isMigrated;
     }
   }
 
@@ -1521,7 +1482,6 @@
 
   function renderGlobal() {
     renderFileSelect();
-    renderFileMeta();
     renderNavTabs();
     renderTheme();
   }
@@ -3694,7 +3654,7 @@
       }
       if (!granted) {
         $("#fs-banner").hidden = false;
-        renderFileMeta();
+        renderFileSelect();
         return;
       }
       await loadFromHandle(handle, meta);
