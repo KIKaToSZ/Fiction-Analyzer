@@ -1433,27 +1433,39 @@
       if (wc) wc.textContent = `${len} 字`;
       debouncedPushHistory();
     });
-    // 按回车时，如果当前 textarea 还是单行状态（无换行），保持普通换行（不额外插空行）；
-    // 已经是多行时再在光标前补一个 \n，让"行间有空行"
+    // 回车 / 退格：让"段间空行"成为默认行为
+    //   Enter     → 在光标位置插入 \n\n（一个换行 + 一个空行），光标落到空行之后的新一行
+    //   Backspace → 如果光标前一行是空行（连续两个 \n），一次删掉所有空行，光标落到上一行有文字的末尾
     chContent?.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter") return;
-      if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.isComposing) return; // 中文输入法合成中
       const ta = e.target;
       const pos = ta.selectionStart;
-      const before = ta.value.slice(0, pos);
-      const lastNl = before.lastIndexOf("\n");
-      const prevLine = before.slice(lastNl + 1);
-      // 上一行有内容（不是空行）+ 整篇已有换行（即已多行）→ 在光标前补一个 \n
-      // 首次输入时（整篇只有一个 \n 都没有，或光标所在就是唯一一行）保持普通换行，不额外插空行
-      if (prevLine.length > 0 && ta.value.indexOf("\n") >= 0) {
+      const end = ta.selectionEnd;
+      if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
-        const insert = "\n";
-        ta.value = before + insert + ta.value.slice(pos);
+        const insert = "\n\n";
+        ta.value = ta.value.slice(0, pos) + insert + ta.value.slice(pos);
         const newPos = pos + insert.length;
         ta.selectionStart = ta.selectionEnd = newPos;
         // 触发 input，让字数统计和 history 跟着更新
         ta.dispatchEvent(new Event("input", { bubbles: true }));
+      } else if (e.key === "Backspace" && pos === end && pos > 0) {
+        // 只在"光标在行首"且"上一行是空行"时智能退格（连续两个 \n 表示中间夹着空行）
+        if (ta.value[pos - 1] === "\n" && pos >= 2 && ta.value[pos - 2] === "\n") {
+          // 找到上一行有内容的行的末尾位置（从 pos-2 往回走，跳过所有连续的 \n）
+          let textEnd = pos - 2;
+          while (textEnd >= 0 && ta.value[textEnd] === "\n") {
+            textEnd--;
+          }
+          if (textEnd >= 0) {
+            e.preventDefault();
+            // 删除 textEnd+1 到 pos 的所有内容（保留 textEnd 之后的 \n 作为段间分隔）
+            const removeStart = textEnd + 2;
+            ta.value = ta.value.slice(0, removeStart) + ta.value.slice(pos);
+            ta.selectionStart = ta.selectionEnd = textEnd + 1; // 光标到上一行有文字的末尾
+            ta.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        }
       }
     });
     chNo?.addEventListener("input", debouncedPushHistory);
