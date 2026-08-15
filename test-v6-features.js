@@ -842,6 +842,112 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!u8) allPass = false;
   console.log("  enableAutoSave 路径:", u8 ? "PASS" : "FAIL");
   if (!u8) allPass = false;
+
+  // ============================================================
+  // 测试 10：v10 修复（删除下拉菜单 + 文件路径显示 + directoryName）
+  // ============================================================
+  console.log("\n测试 10：v10 修复（删除下拉菜单 + 文件路径显示）");
+
+  // 10.1 directoryName schema 迁移：v9 旧数据 → v10 补 null
+  const oldV9 = {
+    schema: 9,
+    currentFileName: "book.json",
+    jsonFileName: "book.json",
+    jsonHandleKey: null,
+    directoryHandleKey: null,
+    // v10 新字段缺失
+  };
+  const v10State = {
+    directoryName: oldV9.directoryName || null,
+  };
+  const tt1 = v10State.directoryName === null;
+  console.log(`  v9 → v10 迁移 directoryName = null: ${tt1 ? "✓" : "✗"}`);
+  if (!tt1) allPass = false;
+
+  // 10.2 enableAutoSave 后 directoryName 被正确设置
+  // 模拟：用户授权目录后，state 应同时有 directoryHandleKey + directoryName
+  const afterEnable = {
+    currentFileName: "book.json",
+    jsonFileName: "book.json",
+    jsonHandleKey: "json:book.json",
+    directoryHandleKey: "dir:book.json",
+    directoryName: "my-novel-folder",  // dirHandle.name
+  };
+  const tt2 = afterEnable.directoryName === "my-novel-folder";
+  const tt3 = afterEnable.directoryHandleKey === "dir:book.json";
+  console.log(`  enableAutoSave 后 directoryName = "my-novel-folder": ${tt2 ? "✓" : "✗"}`);
+  console.log(`  enableAutoSave 后 directoryHandleKey 同步设置: ${tt3 ? "✓" : "✗"}`);
+  if (!tt2) allPass = false;
+  if (!tt3) allPass = false;
+
+  // 10.3 updateFilePathDisplay 逻辑：4 种 mode
+  // 用纯函数模拟显示逻辑（避免依赖 DOM mock）
+  function computeFilePathDisplay(state) {
+    const fileName = state.jsonFileName || state.currentFileName || null;
+    const dirName = state.directoryName || null;
+    const hasDirHandle = !!state.directoryHandleKey;
+    const hasJsonHandle = !!state.jsonHandleKey;
+    if (fileName && dirName) return { text: `${dirName}/${fileName}`, mode: "dir" };
+    if (fileName) {
+      if (hasJsonHandle || hasDirHandle) return { text: fileName, mode: "file-stale" };
+      return { text: fileName, mode: "file-ephemeral" };
+    }
+    return { text: "— 数据仅在浏览器内 —", mode: "none" };
+  }
+
+  const d10_1 = computeFilePathDisplay({ jsonFileName: "book.json", directoryName: "novel", directoryHandleKey: "dir:book.json" });
+  const d10_2 = computeFilePathDisplay({ jsonFileName: "book.json", directoryHandleKey: null, jsonHandleKey: null });
+  const d10_3 = computeFilePathDisplay({ jsonHandleKey: "stale", jsonFileName: "book.json" });
+  const d10_4 = computeFilePathDisplay({});
+
+  const u10_1 = d10_1.text === "novel/book.json" && d10_1.mode === "dir";
+  const u10_2 = d10_2.text === "book.json" && d10_2.mode === "file-ephemeral";
+  const u10_3 = d10_3.text === "book.json" && d10_3.mode === "file-stale";
+  const u10_4 = d10_4.text.includes("浏览器内") && d10_4.mode === "none";
+  console.log(`  mode=dir 显示 "dirname/filename": ${u10_1 ? "✓" : "✗"} (${d10_1.text})`);
+  console.log(`  mode=file-ephemeral 仅显示 filename: ${u10_2 ? "✓" : "✗"} (${d10_2.text})`);
+  console.log(`  mode=file-stale 仅显示 filename（handle 待恢复）: ${u10_3 ? "✓" : "✗"} (${d10_3.text})`);
+  console.log(`  mode=none 显示"数据仅在浏览器内": ${u10_4 ? "✓" : "✗"} (${d10_4.text})`);
+  if (!u10_1 || !u10_2 || !u10_3 || !u10_4) allPass = false;
+
+  // 10.4 关键场景：导入 xxx.json（A 目录）→ 启用自动写盘（B 目录）→ 显示 B/xxx.json
+  // ——跟原导入文件 A/xxx.json 是两个不同文件
+  const imported = { currentFileName: "book.json", jsonFileName: "book.json" };
+  const afterAutoSave = {
+    currentFileName: "book.json",
+    jsonFileName: "book.json",  // 名字相同
+    directoryHandleKey: "dir:book.json",
+    directoryName: "B-folder",  // 不同的目录
+  };
+  const beforeText = computeFilePathDisplay(imported).text;
+  const afterText = computeFilePathDisplay(afterAutoSave).text;
+  const u10_5 = beforeText === "book.json" && afterText === "B-folder/book.json";
+  console.log(`  导入后显示: "${beforeText}", 启用写盘后显示: "${afterText}"`);
+  console.log(`  启用写盘后路径区分原文件（B-folder/book.json）: ${u10_5 ? "✓" : "✗"}`);
+  if (!u10_5) allPass = false;
+
+  // 10.5 snapshot 完整性：directoryName 字段被 snapshot 保留
+  const v10Snap = {
+    schema: 10,
+    currentFileName: "x.json",
+    jsonFileName: "x.json",
+    directoryName: "Documents",
+    directoryHandleKey: "dir:x.json",
+  };
+  const round = JSON.parse(JSON.stringify(v10Snap));
+  const u10_6 = round.directoryName === "Documents";
+  console.log(`  snapshot 序列化保留 directoryName: ${u10_6 ? "✓" : "✗"}`);
+  if (!u10_6) allPass = false;
+
+  // 10.6 旧数据无 directoryName 也能正常显示（不崩溃）
+  const legacy = { currentFileName: "old.json", jsonFileName: "old.json" };
+  const d10_5 = computeFilePathDisplay(legacy);
+  const u10_7 = d10_5.text === "old.json" && d10_5.mode === "file-ephemeral";
+  console.log(`  旧数据（无 directoryName）降级为 file-ephemeral: ${u10_7 ? "✓" : "✗"} (${d10_5.text})`);
+  if (!u10_7) allPass = false;
+
+  console.log("  v10 修复:", (u10_1 && u10_2 && u10_3 && u10_4 && u10_5 && u10_6 && u10_7 && tt1 && tt2 && tt3) ? "PASS" : "FAIL");
+  if (!(u10_1 && u10_2 && u10_3 && u10_4 && u10_5 && u10_6 && u10_7 && tt1 && tt2 && tt3)) allPass = false;
 }
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

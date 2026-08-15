@@ -338,6 +338,9 @@
     // v9：用户授权过的目录 handle key（用于"启用自动写盘"功能后持久化写盘）
     // 完整 key = "dir:" + currentFileName；对应 directory handle 存于 indexeddb
     directoryHandleKey: null,
+    // v10：directory handle 的 basename（仅显示用，浏览器不暴露绝对路径）
+    // ——让用户能区分"导入的 xxx.json"和"启用写盘后创建的 xxx.json"
+    directoryName: null,
     theme: { ...DEFAULT_THEME },
     ui: { sort: "asc" },
   };
@@ -579,6 +582,8 @@
       jsonFileName: state.jsonFileName,
       jsonHandleKey: state.jsonHandleKey,
       directoryHandleKey: state.directoryHandleKey,
+      // v10：directory handle 的 basename（仅显示用，浏览器不暴露绝对路径）
+      directoryName: state.directoryName,
       // v9：每个文件是否已经提示过"启用自动写盘"（避免重复弹）
       autoSavePromptDismissed: state._autoSavePromptDismissed || {},
       theme: state.theme,
@@ -694,6 +699,8 @@
       state.jsonHandleKey = data.jsonHandleKey || null;
       // v9：directoryHandleKey 是新字段，旧数据迁移时给个 null
       state.directoryHandleKey = data.directoryHandleKey || null;
+      // v10：directoryName（仅显示用，旧数据为 null）
+      state.directoryName = data.directoryName || null;
       // v9：恢复自动写盘提示的 dismissed 状态
       state._autoSavePromptDismissed = data.autoSavePromptDismissed || {};
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
@@ -859,12 +866,16 @@
     state.recentFiles = state.recentFiles.filter((f) => f.name !== name);
     if (state.currentFileName === name) {
       state.currentFileName = null;
+      // v10：移除当前文件后，文件路径显示回到"仅浏览器内"
+      state.jsonFileName = null;
+      state.directoryName = null;
       for (const pid of PAGE_IDS) {
         state.pages[pid] = makePageState();
       }
       state.sheetsRaw = [];
     }
     save();
+    updateFilePathDisplay();
   }
 
   /* ============================================================
@@ -1162,32 +1173,53 @@
   /* ============================================================
      渲染
      ============================================================ */
-  function renderFileSelect() {
-    const sel = $("#file-select");
-    const removeBtn = $("#file-remove");
-    if (state.recentFiles.length === 0) {
-      sel.innerHTML = '<option value="">— 暂无文件 —</option>';
-      sel.value = "";
-      if (removeBtn) removeBtn.hidden = true;
-      return;
-    }
-    sel.innerHTML = state.recentFiles
-      .map((f) => {
-        const selected = f.name === state.currentFileName ? "selected" : "";
-        const icon = f.isMigrated ? "🔒" : f.isDirectory ? "📁" : "📄";
-        const tag = f.isEphemeral ? "（本次会话）" : "";
-        return `<option value="${escapeHtml(f.name)}" ${selected}>${icon} ${escapeHtml(f.name)} ${tag}</option>`;
-      })
-      .join("");
-    if (state.currentFileName) sel.value = state.currentFileName;
+  // v10：底部「文件路径」显示（替代原来的数据源下拉菜单）
+  // ——展示「实际写入目标」：<dirname>/<filename>（浏览器不暴露绝对路径，只能拿到 basename）
+  // ——不要显示「导入的源文件」，因为浏览器对拖入文件没有写权限，
+  // 启用自动写盘后实际写入的是另一个新文件，跟原文件是两个东西。
+  function updateFilePathDisplay() {
+    // v10：章节和伏笔编辑器各有独立的 file-path 元素（id 不同避免重复）
+    const els = document.querySelectorAll("#ch-file-path, #fs-file-path");
+    if (!els || els.length === 0) return;
 
-    // 当前文件的「移除」按钮显隐：migrated 旧数据 / 无当前文件时隐藏
-    if (removeBtn) {
-      const cur = state.recentFiles.find(
-        (f) => f.name === state.currentFileName
-      );
-      removeBtn.hidden = !cur || cur.isMigrated;
+    const fileName = state.jsonFileName || state.currentFileName || null;
+    const dirName = state.directoryName || null;
+    const hasDirHandle = !!state.directoryHandleKey;
+    const hasJsonHandle = !!state.jsonHandleKey;
+
+    let displayText, tooltip, mode;
+    if (fileName && dirName) {
+      // 两个都知道：显示 dirname/filename
+      displayText = `${dirName}/${fileName}`;
+      tooltip = `保存时写入：${dirName}/${fileName}\n（启用自动写盘后这里就是实际写入目标，跟原导入文件可能不同）`;
+      mode = "dir";
+    } else if (fileName) {
+      // 只有文件名
+      displayText = fileName;
+      if (hasJsonHandle || hasDirHandle) {
+        tooltip = `保存目标：${fileName}（目录权限待恢复）`;
+        mode = "file-stale";
+      } else {
+        tooltip = `保存目标：${fileName}（未配置写盘目录，数据仅在浏览器内）`;
+        mode = "file-ephemeral";
+      }
+    } else {
+      displayText = "— 数据仅在浏览器内 —";
+      tooltip = "尚未打开任何文件。点工具栏的「打开」按钮选择 .xlsx 或 .json";
+      mode = "none";
     }
+
+    els.forEach((el) => {
+      el.textContent = displayText;
+      el.title = tooltip;
+      el.dataset.mode = mode;
+    });
+  }
+
+  // 兼容旧名：保留 renderFileSelect 作为 renderGlobal 的入口
+  // ——以前负责下拉菜单的渲染，v10 改名为 updateFilePathDisplay
+  function renderFileSelect() {
+    updateFilePathDisplay();
   }
 
   function renderNavTabs() {
@@ -1339,8 +1371,11 @@
         <label class="body-label">文章内容</label>
         <textarea id="ch-content" placeholder="正文…">${escapeHtml(normalizeParagraphs(it.content || ""))}</textarea>
         <div class="body-stats">
-          <span id="word-count" class="muted">${charCount(it.content)} 字</span>
-          <span id="save-status" class="muted"></span>
+          <div class="stats-left">
+            <span id="word-count" class="muted">${charCount(it.content)} 字</span>
+            <span id="save-status" class="muted"></span>
+          </div>
+          <span id="ch-file-path" class="muted file-path" title=""></span>
         </div>
       </div>`;
     bindChapterEditorEvents();
@@ -1396,8 +1431,11 @@
         <label class="body-label">备注 / 详情</label>
         <textarea id="fs-notes" placeholder="伏笔的具体内容、提示、相关情节等…">${escapeHtml(it.notes || "")}</textarea>
         <div class="body-stats">
-          <span id="fs-word-count" class="muted">${charCount(it.notes)} 字</span>
-          <span id="fs-save-status" class="muted"></span>
+          <div class="stats-left">
+            <span id="fs-word-count" class="muted">${charCount(it.notes)} 字</span>
+            <span id="fs-save-status" class="muted"></span>
+          </div>
+          <span id="fs-file-path" class="muted file-path" title=""></span>
         </div>
       </div>`;
     bindFsEditorEvents();
@@ -1735,6 +1773,8 @@
       state.jsonHandleKey = data.jsonHandleKey || null;
       // v9：从 json 恢复 directoryHandleKey
       state.directoryHandleKey = data.directoryHandleKey || null;
+      // v10：恢复 directoryName（旧数据为 null）
+      state.directoryName = data.directoryName || null;
       // v9：恢复 autoSavePromptDismissed
       state._autoSavePromptDismissed = data.autoSavePromptDismissed || {};
       // v8：先恢复 recentFiles（保留 isEphemeral / isMigrated 等标志）。
@@ -1827,6 +1867,8 @@
       jsonFileName: state.jsonFileName,
       jsonHandleKey: state.jsonHandleKey,
       directoryHandleKey: state.directoryHandleKey,
+      // v10：directory handle 的 basename（仅显示用，浏览器不暴露绝对路径）
+      directoryName: state.directoryName,
       theme: state.theme,
       ui: state.ui,
     };
@@ -1910,6 +1952,9 @@
             await fsPut(jsonKey, fileHandle);
             state.jsonHandleKey = jsonKey;
             state.jsonFileName = fileHandle.name || jsonName;
+            // v10：dir handle 重新可用时补上 directoryName
+            if (!state.directoryName) state.directoryName = dirHandle.name || null;
+            updateFilePathDisplay();
             if (!silent) toast("✓ 已保存到 json", "info", 1200);
             return { ok: true, mode: "dir" };
           }
@@ -2043,7 +2088,10 @@
       await fsPut(jsonKey, fileHandle);
       state.jsonHandleKey = jsonKey;
       state.jsonFileName = fileHandle.name || jsonName;
+      // v10：把 directory handle 的 basename 存下来，给底部「文件路径」显示用
+      state.directoryName = dirHandle.name || null;
       save();
+      updateFilePathDisplay();
       toast("✓ 已启用自动写盘：之后保存会写到该目录", "info", 2500);
       return true;
     } catch (e) {
@@ -2802,11 +2850,8 @@
      事件：文件 / 列表点击 / 编辑器按钮
      ============================================================ */
   function bindFileEvents() {
-    $("#file-select").addEventListener("change", async (e) => {
-      const name = e.target.value;
-      if (!name) return;
-      await openFileByName(name);
-    });
+    // v10：数据源下拉菜单已移除。openFileByName 现在只被 openDirectory（文件夹内文件列表）调用。
+    // 这里不再绑定 #file-select（已删除）。
 
     $("#file-pick").addEventListener("click", () => {
       if (!fsSupported()) {
@@ -2913,17 +2958,8 @@
       await loadFromFile(f);
     });
 
-    $("#file-remove").addEventListener("click", async () => {
-      if (!state.currentFileName) return;
-      if (
-        !confirm(
-          `从列表中移除「${state.currentFileName}」？\n（不会删除磁盘文件）`
-        )
-      )
-        return;
-      await removeRecentFile(state.currentFileName);
-      renderAll();
-    });
+    // v10：file-remove 按钮已移除（下拉菜单不在了，「从列表移除」入口也拿掉）。
+    // 仍然可以从「主题设置 → 数据 → 导出 xlsx / json」里手动操作；后续如需批量管理再加。
 
     $("#fs-grant").addEventListener("click", async () => {
       const meta = state.recentFiles.find(

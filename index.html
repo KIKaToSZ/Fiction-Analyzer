@@ -14,10 +14,7 @@
         <div class="topbar-row">
           <div class="topbar-left">
             <div class="file-row">
-              <select id="file-select" class="file-select" title="切换文件" aria-label="切换文件">
-                <option value="">— 暂无文件 —</option>
-              </select>
-              <button id="file-pick" class="icon-btn" title="从本地选择一个 .xlsx 或 .json 文件">
+              <button id="file-pick" class="icon-btn" title="打开 .xlsx 或 .json 文件（也可以拖入）">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
@@ -25,15 +22,9 @@
                   <line x1="9" y1="15" x2="15" y2="15" />
                 </svg>
               </button>
-              <button id="file-pick-dir" class="icon-btn" title="从本地选择一个文件夹（列出所有 .xlsx）">
+              <button id="file-pick-dir" class="icon-btn" title="打开一个文件夹（列出其中所有 .xlsx）">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                </svg>
-              </button>
-              <button id="file-remove" class="icon-btn" title="从列表中移除当前文件（不删除磁盘文件）" hidden>
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
             </div>
@@ -213,8 +204,11 @@
                     <label class="body-label">文章内容</label>
                     <textarea id="ch-content" placeholder="正文…"></textarea>
                     <div class="body-stats">
-                      <span id="word-count" class="muted">0 字</span>
-                      <span id="save-status" class="muted"></span>
+                      <div class="stats-left">
+                        <span id="word-count" class="muted">0 字</span>
+                        <span id="save-status" class="muted"></span>
+                      </div>
+                      <span id="ch-file-path" class="muted file-path" title=""></span>
                     </div>
                   </div>
                 </article>
@@ -316,8 +310,11 @@
                     <label class="body-label">备注 / 详情</label>
                     <textarea id="fs-notes" placeholder="伏笔的具体内容、提示、相关情节等…"></textarea>
                     <div class="body-stats">
-                      <span id="fs-word-count" class="muted">0 字</span>
-                      <span id="fs-save-status" class="muted"></span>
+                      <div class="stats-left">
+                        <span id="fs-word-count" class="muted">0 字</span>
+                        <span id="fs-save-status" class="muted"></span>
+                      </div>
+                      <span id="fs-file-path" class="muted file-path" title=""></span>
                     </div>
                   </div>
                 </article>
