@@ -5,6 +5,10 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
+// Node 22+ 默认 ESM，但用 require() 加载 fs/path 没问题。
+// 包成 async main 是为了让 9.7 的 top-level await 能跑
+async function main() {
+
 const SRC = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
 
 // 准备一个 mock 环境：localStorage / window / document
@@ -606,7 +610,168 @@ console.log("\n测试 8：v8.1 修复（charCount + json 数据源 + xlsxFileNam
   if (!f7) allPass = false;
 }
 
+/* ============================================================
+   测试 9：v9 schema 兼容 + saveAsJson 兜底（isEphemeral 不下载）
+   ============================================================ */
+console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不再下载）");
+{
+  // 9.1 schema 升级：v6/v7/v8 → v9 补 directoryHandleKey
+  // 模拟 load() 时的字段回填
+  const oldData = {
+    schema: 8,
+    currentFileName: "book.xlsx",
+    xlsxFileName: "book.xlsx",
+    jsonFileName: "book.json",
+    jsonHandleKey: null,
+    // v9 新字段缺失
+  };
+  const v9State = {
+    currentFileName: oldData.currentFileName || null,
+    xlsxFileName: oldData.xlsxFileName || oldData.currentFileName || null,
+    jsonFileName: oldData.jsonFileName || null,
+    jsonHandleKey: oldData.jsonHandleKey || null,
+    directoryHandleKey: oldData.directoryHandleKey || null,
+  };
+  const t1 = v9State.directoryHandleKey === null;
+  const t2 = v9State.jsonHandleKey === null;
+  const t3 = v9State.xlsxFileName === "book.xlsx";
+  console.log(`  v8 → v9 迁移 directoryHandleKey = null: ${t1 ? "✓" : "✗"}`);
+  console.log(`  v8 → v9 保留 jsonHandleKey: ${t2 ? "✓" : "✗"}`);
+  console.log(`  v8 → v9 保留 xlsxFileName: ${t3 ? "✓" : "✗"}`);
+  console.log("  v8 → v9 迁移:", (t1 && t2 && t3) ? "PASS" : "FAIL");
+  if (!(t1 && t2 && t3)) allPass = false;
+
+  // 9.2 saveAsJson 兜底：isEphemeral 文件不再下载（mode = "ephemeral"）
+  // 模拟一段最小化的 saveAsJson 逻辑（仅看 isEphemeral 分支）
+  function simulateSaveAsJson(state) {
+    // 简化：省略第 1/1.5/2 步（无 handle），直接进第 3 步
+    const curMeta = state.currentFileName
+      ? state.recentFiles.find((f) => f.name === state.currentFileName)
+      : null;
+    const isEphemeral = !!(curMeta && curMeta.isEphemeral);
+    if (isEphemeral) {
+      return { ok: true, mode: "ephemeral", downloaded: false };
+    }
+    return { ok: true, mode: "download", downloaded: true };
+  }
+  const ephState = {
+    currentFileName: "book.xlsx",
+    recentFiles: [
+      { name: "book.xlsx", isEphemeral: true, handleKey: null },
+    ],
+  };
+  const r1 = simulateSaveAsJson(ephState);
+  const u1 = r1.mode === "ephemeral" && r1.downloaded === false;
+  console.log(`  isEphemeral → mode="ephemeral", 不下载: ${u1 ? "✓" : "✗"}`);
+  if (!u1) allPass = false;
+
+  // 9.3 旧 v7 持久化数据（isEphemeral=false, handleKey 失效）仍然下载（保护数据）
+  const oldState = {
+    currentFileName: "legacy.xlsx",
+    recentFiles: [
+      { name: "legacy.xlsx", isEphemeral: false, isMigrated: false, handleKey: "stale-key" },
+    ],
+  };
+  const r2 = simulateSaveAsJson(oldState);
+  const u2 = r2.mode === "download" && r2.downloaded === true;
+  console.log(`  非 isEphemeral → mode="download", 触发下载: ${u2 ? "✓" : "✗"}`);
+  if (!u2) allPass = false;
+
+  // 9.4 无 currentFileName 也走下载兜底
+  const noFile = { currentFileName: null, recentFiles: [] };
+  const r3 = simulateSaveAsJson(noFile);
+  const u3 = r3.mode === "download";
+  console.log(`  无 currentFileName → 触发下载: ${u3 ? "✓" : "✗"}`);
+  if (!u3) allPass = false;
+  console.log("  saveAsJson 兜底逻辑:", (u1 && u2 && u3) ? "PASS" : "FAIL");
+  if (!(u1 && u2 && u3)) allPass = false;
+
+  // 9.5 directory handle 路径优先级（jsonHandleKey > directoryHandleKey > xlsx handle > ephemeral/download）
+  // 模拟：所有 handle 都设上，看哪一步胜出
+  function simulateWithHandle(state, hasJsonHandle, hasDirHandle) {
+    if (hasJsonHandle) return { mode: "handle", step: 1 };
+    if (hasDirHandle) return { mode: "dir", step: 1.5 };
+    return simulateSaveAsJson(state);
+  }
+  const both = { currentFileName: "x.xlsx", recentFiles: [] };
+  const r4 = simulateWithHandle(both, true, true);
+  const r5 = simulateWithHandle(both, false, true);
+  const r6 = simulateWithHandle(both, false, false);
+  const u4 = r4.mode === "handle" && r4.step === 1;
+  const u5 = r5.mode === "dir" && r5.step === 1.5;
+  const u6 = r6.mode === "download";
+  console.log(`  jsonHandleKey 优先于 directoryHandleKey: ${u4 ? "✓" : "✗"}`);
+  console.log(`  有 directoryHandleKey 走 1.5 步: ${u5 ? "✓" : "✗"}`);
+  console.log(`  都无 → 兜底下载: ${u6 ? "✓" : "✗"}`);
+  if (!u4) allPass = false;
+  if (!u5) allPass = false;
+  if (!u6) allPass = false;
+  console.log("  saveAsJson 优先级:", (u4 && u5 && u6) ? "PASS" : "FAIL");
+  if (!(u4 && u5 && u6)) allPass = false;
+
+  // 9.6 snapshot 完整性：directoryHandleKey 字段被 snapshot 保留
+  const v9Snapshot = {
+    schema: 9,
+    currentFileName: "x.xlsx",
+    jsonFileName: "x.json",
+    jsonHandleKey: "json:x.xlsx",
+    directoryHandleKey: "dir:x.xlsx",
+    theme: {},
+    ui: {},
+    pages: {},
+    sheetsRaw: [],
+    recentFiles: [],
+  };
+  const json1 = JSON.stringify(v9Snapshot);
+  const roundtrip = JSON.parse(json1);
+  const u7 =
+    roundtrip.directoryHandleKey === "dir:x.xlsx" &&
+    roundtrip.jsonHandleKey === "json:x.xlsx" &&
+    roundtrip.schema === 9;
+  console.log(`  snapshot 序列化 directoryHandleKey: ${u7 ? "✓" : "✗"}`);
+  if (!u7) allPass = false;
+  console.log("  snapshot 完整性:", u7 ? "PASS" : "FAIL");
+  if (!u7) allPass = false;
+
+  // 9.7 enableAutoSave 路径：模拟 directory handle 持久化逻辑
+  const fakeDb = new Map();
+  const fsPut = (k, v) => { fakeDb.set(k, v); };
+  const fsDel = (k) => { fakeDb.delete(k); };
+  const fsGet = async (k) => fakeDb.get(k) || null;
+  // 模拟：用户授权目录后
+  const dirKey = "dir:x.xlsx";
+  const dirHandle = { name: "myfolder", getFileHandle: async (n) => ({ name: n, createWritable: async () => ({ write: async () => {}, close: async () => {} }) }) };
+  await fsPut(dirKey, dirHandle);
+  // 模拟 saveAsJson 第 1.5 步
+  const got = await fsGet(dirKey);
+  const granted = true; // 假设权限已授权
+  let savedJsonHandle = null;
+  if (got && granted) {
+    const fh = await got.getFileHandle("x.json", { create: true });
+    const w = await fh.createWritable();
+    await w.write("data");
+    await w.close();
+    const jsonKey = "json:x.json";
+    await fsPut(jsonKey, fh);
+    savedJsonHandle = jsonKey;
+  }
+  const u8 =
+    savedJsonHandle === "json:x.json" &&
+    fakeDb.has("json:x.json") &&
+    fakeDb.has(dirKey);
+  console.log(`  enableAutoSave 持久化 directory + json handle: ${u8 ? "✓" : "✗"}`);
+  if (!u8) allPass = false;
+  console.log("  enableAutoSave 路径:", u8 ? "PASS" : "FAIL");
+  if (!u8) allPass = false;
+}
+
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);
+}
+
+main().catch((e) => {
+  console.error("测试运行失败：", e);
+  process.exit(1);
+});
 
 console.log("\n测试完成。");

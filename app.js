@@ -10,9 +10,11 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 8;
+  const SCHEMA_VERSION = 9;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
+  // 持久化 directory handle 的 key 前缀（完整 key = "dir:" + currentFileName）
+  const DIR_HANDLE_KEY_PREFIX = "dir:";
 
   const DEFAULT_THEME = {
     bg: "paper",
@@ -333,6 +335,9 @@
     // v7：json 增量保存的关联文件（首次导入 xlsx 后自动生成）
     jsonFileName: null,
     jsonHandleKey: null,
+    // v9：用户授权过的目录 handle key（用于"启用自动写盘"功能后持久化写盘）
+    // 完整 key = "dir:" + currentFileName；对应 directory handle 存于 indexeddb
+    directoryHandleKey: null,
     theme: { ...DEFAULT_THEME },
     ui: { sort: "asc" },
   };
@@ -545,6 +550,7 @@
     let label = "已自动保存到本地";
     if (res.mode === "handle" || res.mode === "dir") label = `已自动保存到 json · ${ts}`;
     else if (res.mode === "download") label = `已自动保存（json 已下载）· ${ts}`;
+    else if (res.mode === "ephemeral") label = `已自动保存到浏览器 · ${ts}`;
     _setAutosaveStatus(label, "saved");
   }
 
@@ -569,6 +575,9 @@
       xlsxFileName: state.xlsxFileName,
       jsonFileName: state.jsonFileName,
       jsonHandleKey: state.jsonHandleKey,
+      directoryHandleKey: state.directoryHandleKey,
+      // v9：每个文件是否已经提示过"启用自动写盘"（避免重复弹）
+      autoSavePromptDismissed: state._autoSavePromptDismissed || {},
       theme: state.theme,
       ui: state.ui,
     };
@@ -680,6 +689,10 @@
       state.xlsxFileName = data.xlsxFileName || data.currentFileName || null;
       state.jsonFileName = data.jsonFileName || null;
       state.jsonHandleKey = data.jsonHandleKey || null;
+      // v9：directoryHandleKey 是新字段，旧数据迁移时给个 null
+      state.directoryHandleKey = data.directoryHandleKey || null;
+      // v9：恢复自动写盘提示的 dismissed 状态
+      state._autoSavePromptDismissed = data.autoSavePromptDismissed || {};
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
       state.ui = { sort: "asc", layout: {}, ...(data.ui || {}) };
       // 兜底：ui.layout 各字段补默认
@@ -1657,6 +1670,8 @@
         return n > 0 ? `${PAGES[pid].label} ${n}` : null;
       }).filter(Boolean).join(" · ");
       toast(`已读取（本次会话）：${summary}`, "info", 1800);
+      // v9：拖入 xlsx 后引导用户启用自动写盘（仅一次 / 文件）
+      maybePromptEnableAutoSave();
     } catch (e) {
       console.error("读取失败", e);
       toast("读取失败：" + (e.message || e), "error", 3500);
@@ -1715,6 +1730,10 @@
       state.xlsxFileName = data.currentFileName || null;
       state.jsonFileName = data.jsonFileName || file.name;
       state.jsonHandleKey = data.jsonHandleKey || null;
+      // v9：从 json 恢复 directoryHandleKey
+      state.directoryHandleKey = data.directoryHandleKey || null;
+      // v9：恢复 autoSavePromptDismissed
+      state._autoSavePromptDismissed = data.autoSavePromptDismissed || {};
       // 把拖入的 json 加入 recentFiles（isEphemeral=true），让「数据源」下拉框能选中它
       upsertRecentFile({
         name: file.name,
@@ -1795,6 +1814,7 @@
       currentFileName: state.currentFileName,
       jsonFileName: state.jsonFileName,
       jsonHandleKey: state.jsonHandleKey,
+      directoryHandleKey: state.directoryHandleKey,
       theme: state.theme,
       ui: state.ui,
     };
@@ -1826,14 +1846,14 @@
   }
 
   // 写 json 到磁盘
-  // 优先级：jsonHandleKey（持久化）→ currentFileName 的 xlsx handle 同目录 → 下载
+  // v9 优先级：jsonHandleKey（持久化）→ directoryHandleKey（持久化目录）→ xlsx handle 同目录（v7 旧数据兼容）→ 兜底
   async function saveAsJson({ silent = false } = {}) {
     const blob = buildJsonBlob();
     const suggestedName = state.jsonFileName
       || jsonFileNameFrom(state.currentFileName)
       || "novel-app.json";
 
-    // 1) 优先用专属 json handle
+    // 1) 优先用专属 json handle（用户授权过自动写盘后会设这个 key）
     if (state.jsonHandleKey) {
       try {
         const handle = await fsGet(state.jsonHandleKey);
@@ -1859,7 +1879,45 @@
       }
     }
 
-    // 2) 退化：与 xlsx 同目录写一个同名 .json
+    // 1.5) v9：用持久化的 directory handle 写 json（用户授权过"自动写盘"目录）
+    if (state.directoryHandleKey) {
+      try {
+        const dirHandle = await fsGet(state.directoryHandleKey);
+        if (dirHandle) {
+          const granted = await ensureWritePermission(dirHandle, false);
+          if (granted) {
+            const jsonName = state.jsonFileName
+              || jsonFileNameFrom(state.currentFileName)
+              || "novel-app.json";
+            const fileHandle = await dirHandle.getFileHandle(jsonName, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            // 顺手把 json handle 也持久化，下次走第 1 步更快
+            const jsonKey = `json:${state.currentFileName || jsonName}`;
+            await fsPut(jsonKey, fileHandle);
+            state.jsonHandleKey = jsonKey;
+            state.jsonFileName = fileHandle.name || jsonName;
+            if (!silent) toast("✓ 已保存到 json", "info", 1200);
+            return { ok: true, mode: "dir" };
+          }
+          // 权限失效 → 清掉 directoryHandleKey
+          state.directoryHandleKey = null;
+        } else {
+          state.directoryHandleKey = null;
+        }
+      } catch (e) {
+        if (e && e.name === "AbortError") {
+          if (!silent) toast("已取消写入", "info", 1200);
+          return { ok: false, mode: "cancelled" };
+        }
+        console.warn("用 directory handle 写 json 失败，降级", e);
+        // 写失败也清掉，避免每次都尝试
+        state.directoryHandleKey = null;
+      }
+    }
+
+    // 2) 退化：与 xlsx 同目录写一个同名 .json（v7 旧数据兼容——xlsx 走 FS Access API 拿过 handle 时）
     if (state.currentFileName) {
       const meta = state.recentFiles.find(
         (f) => f.name === state.currentFileName
@@ -1899,7 +1957,24 @@
       }
     }
 
-    // 3) 兜底：触发下载
+    // 3) 兜底
+    // v9：当前文件是「拖入」（isEphemeral=true）时不再误报"未获得写文件权限"，
+    // 也**不下载**（避免污染下载目录）。改为简短提示 + 给"启用自动写盘"入口。
+    const curMeta = state.currentFileName
+      ? state.recentFiles.find((f) => f.name === state.currentFileName)
+      : null;
+    const isEphemeral = !!(curMeta && curMeta.isEphemeral);
+    if (isEphemeral) {
+      if (!silent) {
+        toast(
+          "已保存到浏览器（拖入文件无写盘权限，要写盘请点「启用自动写盘」）",
+          "info",
+          2200
+        );
+      }
+      return { ok: true, mode: "ephemeral" };
+    }
+    // 旧数据 / 未配置写盘权限的兜底：触发下载
     triggerJsonDownload(blob, suggestedName);
     if (!silent) {
       toast(
@@ -1911,6 +1986,87 @@
       );
     }
     return { ok: true, mode: "download" };
+  }
+
+  // v9：让用户授权一个目录，之后所有保存都自动写 json 到该目录
+  // （绕开浏览器对拖入文件无 handle 的限制）
+  async function enableAutoSave() {
+    if (!window.showDirectoryPicker) {
+      toast("当前浏览器不支持目录选择，请用 Chrome / Edge / Arc 等 Chromium 内核浏览器", "error", 3500);
+      return false;
+    }
+    let dirHandle;
+    try {
+      dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    } catch (e) {
+      if (e && e.name === "AbortError") {
+        toast("已取消授权", "info", 1200);
+      } else {
+        console.warn("选择目录失败", e);
+        toast("选择目录失败：" + (e.message || e), "error", 3000);
+      }
+      return false;
+    }
+    // 持久化 directory handle
+    const dirKey = `${DIR_HANDLE_KEY_PREFIX}${state.currentFileName || "_default"}`;
+    try {
+      await fsPut(dirKey, dirHandle);
+    } catch (e) {
+      console.error("保存 directory handle 失败", e);
+      toast("保存目录权限失败", "error");
+      return false;
+    }
+    state.directoryHandleKey = dirKey;
+    // 立即在该目录写一个 json，并拿到 file handle 存为 jsonHandleKey（之后都走第 1 步）
+    const jsonName = state.jsonFileName
+      || jsonFileNameFrom(state.currentFileName)
+      || "novel-app.json";
+    try {
+      const fileHandle = await dirHandle.getFileHandle(jsonName, { create: true });
+      const blob = buildJsonBlob();
+      const writable = await fileHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      const jsonKey = `json:${state.currentFileName || jsonName}`;
+      await fsPut(jsonKey, fileHandle);
+      state.jsonHandleKey = jsonKey;
+      state.jsonFileName = fileHandle.name || jsonName;
+      save();
+      toast("✓ 已启用自动写盘：之后保存会写到该目录", "info", 2500);
+      return true;
+    } catch (e) {
+      console.error("启用自动写盘后首次写入失败", e);
+      toast("首次写入失败：" + (e.message || e), "error", 3000);
+      // 回滚
+      state.directoryHandleKey = null;
+      try { await fsDel(dirKey); } catch (_) {}
+      return false;
+    }
+  }
+
+  // v9：拖入文件后只提示一次（每个文件名一次）。已经启用过就跳过。
+  function maybePromptEnableAutoSave() {
+    if (!state.currentFileName) return;
+    if (state.directoryHandleKey) return; // 已启用
+    if (state.jsonHandleKey) return; // v7 旧路径仍有写盘能力
+    if (typeof window === "undefined" || !window.showDirectoryPicker) return;
+    const dismissed = state._autoSavePromptDismissed || {};
+    if (dismissed[state.currentFileName]) return;
+    if (!confirm(
+      `要让「保存」自动写 json 到磁盘吗？\n\n拖入的文件没有写入权限，每次保存目前只是写浏览器内。\n点击「确定」：选择一个目录（建议选 xlsx 所在目录），之后保存会直接覆盖同名 .json。\n点击「取消」：跳过这步，继续用「导出 json」手动备份。`
+    )) {
+      dismissed[state.currentFileName] = true;
+      state._autoSavePromptDismissed = dismissed;
+      save();
+      return;
+    }
+    enableAutoSave().then((ok) => {
+      if (ok) {
+        dismissed[state.currentFileName] = true;
+        state._autoSavePromptDismissed = dismissed;
+        save();
+      }
+    });
   }
 
   /* ============================================================
@@ -2832,6 +2988,8 @@
               flashSaveStatus("✓ 已保存到 json", 1800);
             } else if (res.ok && res.mode === "download") {
               flashSaveStatus("✓ 已保存（json 已下载，请放回原目录）", 2200);
+            } else if (res.ok && res.mode === "ephemeral") {
+              flashSaveStatus("✓ 已保存到浏览器", 1800);
             }
           });
         }
@@ -2875,6 +3033,8 @@
               flashSaveStatus("✓ 已保存到 json (Ctrl+S)", 1800);
             } else if (res.ok && res.mode === "download") {
               flashSaveStatus("✓ 已保存到本地（json 已下载）", 2200);
+            } else if (res.ok && res.mode === "ephemeral") {
+              flashSaveStatus("✓ 已保存到本地 (Ctrl+S)", 1800);
             } else {
               flashSaveStatus("✓ 已保存到本地（json 写入被取消）", 2000);
             }
@@ -2972,6 +3132,10 @@
         .replace(/\.(xlsx|xlsm|json)$/i, "");
       triggerJsonDownload(blob, `${base}.json`);
       toast("已导出 json", "info", 1500);
+    });
+    // v9：启用自动写盘（授权目录，让保存直接写 json 到磁盘）
+    $("#btn-enable-autosave")?.addEventListener("click", () => {
+      enableAutoSave();
     });
 
     // JSON 导入走「打开文件」弹窗的拖入区（v8+），这里不再单独挂事件
