@@ -195,7 +195,7 @@ textarea {
 
 .topbar-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 14px;
 }
@@ -206,10 +206,10 @@ textarea {
   background: var(--border-soft);
 }
 
-/* 第 2 列：搜索条放中间，自身可居中、可拉宽 */
+/* 第 3 列：搜索条靠右，自身可拉宽 */
 .topbar-search {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   align-items: center;
   min-width: 0;
 }
@@ -218,7 +218,7 @@ textarea {
   display: flex;
   gap: 6px;
   align-items: center;
-  justify-self: end;
+  justify-self: start;
 }
 
 /* ===================== 全局搜索条 ===================== */
