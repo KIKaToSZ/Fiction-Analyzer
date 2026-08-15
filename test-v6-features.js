@@ -355,6 +355,48 @@ for (const [input, expected] of cases5_4) {
 console.log("  jsonFileNameFrom 转换：", v7ok4 ? "PASS" : "FAIL");
 if (!v7ok4) allPass = false;
 
+/* ============================================================
+   测试 6：normalizeParagraphs - 显示时移除空行
+   - 折叠 2+ 个连续换行为 1 个换行（移除段落间空行）
+   - 单换行保持不变
+   - \r\n 统一为 \n
+   ============================================================ */
+console.log("\n测试 6：normalizeParagraphs（移除空行）");
+
+// 从 app.js 提取 normalizeParagraphs 函数源码
+const fnMatch = SRC.match(/function normalizeParagraphs\(s\) \{[\s\S]*?\n  \}/);
+if (!fnMatch) {
+  console.log("  ✗ 找不到 normalizeParagraphs 函数");
+  allPass = false;
+} else {
+  const sandboxFn = { };
+  vm.createContext(sandboxFn);
+  vm.runInContext(fnMatch[0] + "\nthis.normalizeParagraphs = normalizeParagraphs;", sandboxFn);
+  const np = sandboxFn.normalizeParagraphs;
+
+  const cases6 = [
+    // [输入, 期望, 描述]
+    ["a\nb\nc", "a\nb\nc", "无空行：保持不变"],
+    ["a\n\nb\n\nc", "a\nb\nc", "段间空行被移除"],
+    ["a\n\n\nb", "a\nb", "连续空行折叠为单换行"],
+    ["a\r\nb\r\nc", "a\nb\nc", "CRLF 归一为 LF"],
+    ["", "", "空字符串"],
+    [null, null, "null"],
+    [undefined, undefined, "undefined"],
+    ["a\n\n\n\nb", "a\nb", "4 个连续空行"],
+    ["a\nb\n\nc\nd", "a\nb\nc\nd", "混合：保留单换行、移除空行"],
+  ];
+  let npOk = true;
+  for (const [input, expected, desc] of cases6) {
+    const got = np(input);
+    const pass = got === expected;
+    if (!pass) npOk = false;
+    console.log(`  ${pass ? "✓" : "✗"} ${desc}: ${JSON.stringify(input)} → ${JSON.stringify(got)}${pass ? "" : ` (期望 ${JSON.stringify(expected)})`}`);
+  }
+  console.log("  normalizeParagraphs 单元测试:", npOk ? "PASS" : "FAIL");
+  if (!npOk) allPass = false;
+}
+
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);
 

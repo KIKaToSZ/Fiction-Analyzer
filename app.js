@@ -248,37 +248,47 @@
   };
 
   /* ============================================================
-     段落规整 - 让"行与行之间没有空行"的内容自动补上空行
+     段落规整 - 显示时移除空行（段间紧凑显示）
      规则：
-       1. 折叠 3+ 个连续换行为 2 个（避免重复空行）
-       2. 把"内容 \n 内容"（单换行）变成"内容 \n\n 内容"（双换行）
-          - 只在"非换行字符"之间生效；已经隔一个空行的不动
+       1. \r\n 统一为 \n
+       2. 把 2+ 个连续换行（段落间的空行）折叠为 1 个换行
      效果：
-       - 原数据 `a\nb\nc` → 显示成 `a\n\nb\n\nc`
-       - 原数据 `a\n\nb\n\nc` → 保持 `a\n\nb\n\nc`
-       - 原数据 `a\n\n\nb` → 先折叠为 `a\n\nb`
+       - 原数据 `a\nb\nc` → 显示成 `a\nb\nc`（无变化，原本就没空行）
+       - 原数据 `a\n\nb\n\nc` → 显示成 `a\nb\nc`（空行被移除）
+       - 原数据 `a\n\n\nb` → 先折叠为 `a\nb`（连续空行也折叠）
+     说明：源数据不修改，只在渲染 textarea 时调用。
+     写入 json / xlsx 时存的是原始 content（含空行），便于后续编辑时还原。
      ============================================================ */
   function normalizeParagraphs(s) {
     if (s == null || s === "") return s;
     s = String(s).replace(/\r\n?/g, "\n");
-    // 1. 折叠 3+ 个连续换行为 2 个
-    s = s.replace(/\n{3,}/g, "\n\n");
-    // 2. 把"行间无空行"的位置补上空行（用 split/join 避免正则 lastIndex 漏匹配）
-    const lines = s.split("\n");
-    const out = [];
-    for (let i = 0; i < lines.length; i++) {
-      out.push(lines[i]);
-      if (i < lines.length - 1) {
-        const curEmpty = lines[i] === "";
-        const nextEmpty = lines[i + 1] === "";
-        // 当前行不是空行 && 下一行不是空行 → 插一个空行
-        // （已隔一个空行的情况自然跳过：nextEmpty 为 true）
-        if (!curEmpty && !nextEmpty) {
-          out.push("");
-        }
-      }
-    }
-    return out.join("\n");
+    // 折叠 2+ 个连续换行为 1 个（移除段落间空行）
+    s = s.replace(/\n{2,}/g, "\n");
+    return s;
+  }
+
+  /* ============================================================
+     把 textarea 的光标位置"顶"到视口上方约 1/3 处
+     - 避免光标紧贴 textarea 底部、看起来很挤
+     - 适用于：回车后、输入文字后、删除后 等所有内容变化场景
+     - 内容不够长、视口内就装得下时，scrollTop 本来就是 0，不会有副作用
+     ============================================================ */
+  function ensureCaretInView(ta) {
+    if (!ta) return;
+    try {
+      const cs = window.getComputedStyle(ta);
+      const lineHeight = parseFloat(cs.lineHeight);
+      const paddingTop = parseFloat(cs.paddingTop) || 0;
+      const viewportH = ta.clientHeight;
+      if (!lineHeight || !viewportH) return;
+      const pos = ta.selectionStart;
+      const before = ta.value.slice(0, pos);
+      const caretLine = before.split("\n").length; // 1-based
+      const caretTop = (caretLine - 1) * lineHeight + paddingTop;
+      // 把光标顶到视口上方 1/3 处（即下方留 2/3 视口高度的"留白"）
+      const desired = Math.max(0, caretTop - viewportH / 3);
+      if (ta.scrollTop !== desired) ta.scrollTop = desired;
+    } catch (_) {}
   }
 
   /* ============================================================
@@ -1432,46 +1442,13 @@
       const wc = $("#word-count");
       if (wc) wc.textContent = `${len} 字`;
       debouncedPushHistory();
-    });
-    // 回车 / 退格：让"段间空行"成为默认行为
-    //   Enter     → 在光标位置插入 \n\n（一个换行 + 一个空行），光标落到空行之后的新一行
-    //   Backspace → 如果光标前一行是空行（连续两个 \n），一次删掉所有空行，光标落到上一行有文字的末尾
-    chContent?.addEventListener("keydown", (e) => {
-      if (e.isComposing) return; // 中文输入法合成中
-      const ta = e.target;
-      const pos = ta.selectionStart;
-      const end = ta.selectionEnd;
-      if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        const insert = "\n\n";
-        ta.value = ta.value.slice(0, pos) + insert + ta.value.slice(pos);
-        const newPos = pos + insert.length;
-        ta.selectionStart = ta.selectionEnd = newPos;
-        // 触发 input，让字数统计和 history 跟着更新
-        ta.dispatchEvent(new Event("input", { bubbles: true }));
-      } else if (e.key === "Backspace" && pos === end && pos > 0) {
-        // 只在"光标在行首"且"上一行是空行"时智能退格（连续两个 \n 表示中间夹着空行）
-        if (ta.value[pos - 1] === "\n" && pos >= 2 && ta.value[pos - 2] === "\n") {
-          // 找到上一行有内容的行的末尾位置（从 pos-2 往回走，跳过所有连续的 \n）
-          let textEnd = pos - 2;
-          while (textEnd >= 0 && ta.value[textEnd] === "\n") {
-            textEnd--;
-          }
-          if (textEnd >= 0) {
-            e.preventDefault();
-            // 删除 textEnd+1 到 pos 的所有内容（保留 textEnd 之后的 \n 作为段间分隔）
-            const removeStart = textEnd + 2;
-            ta.value = ta.value.slice(0, removeStart) + ta.value.slice(pos);
-            ta.selectionStart = ta.selectionEnd = textEnd + 1; // 光标到上一行有文字的末尾
-            ta.dispatchEvent(new Event("input", { bubbles: true }));
-          }
-        }
-      }
+      // 让光标始终停留在视口上方 1/3 处，留出下方 2/3 的"留白"
+      // 覆盖：回车后自动向上滚（需求 4）+ 输入时下方填充空白保持视野中央（需求 5）
+      ensureCaretInView(chContent);
     });
     chNo?.addEventListener("input", debouncedPushHistory);
     chTitle?.addEventListener("input", debouncedPushHistory);
   }
-
   function bindFsEditorEvents() {
     const it = curItem();
     if (!it) return;
