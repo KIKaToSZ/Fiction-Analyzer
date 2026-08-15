@@ -608,6 +608,85 @@ console.log("\n测试 8：v8.1 修复（charCount + json 数据源 + xlsxFileNam
   const f7 = xfn === "old.xlsx";
   console.log(`  v5/v6 迁移 xlsxFileName = currentFileName: ${f7 ? "✓" : "✗"}`);
   if (!f7) allPass = false;
+
+  // 8.6 v8.1 修 bug：跨设备 / 旧版本导出的 json 拖入后，recentFiles 仍能找到
+  // 根因：之前是 upsertRecentFile → state.recentFiles = data.recentFiles.map(...)
+  // 顺序反了，被 data.recentFiles 整体覆盖。修复后：先恢复 data.recentFiles，
+  // 再 upsertRecentFile 置顶 file.name。
+  function loadJsonFixed(file, data) {
+    const state = { recentFiles: [] };
+    if (Array.isArray(data.recentFiles)) {
+      state.recentFiles = data.recentFiles.map((f) => ({
+        name: f.name, lastOpened: f.lastOpened || new Date().toISOString(),
+        mtime: f.mtime || 0, size: f.size || 0,
+        handleKey: f.handleKey || null,
+        isDirectory: !!f.isDirectory, isMigrated: !!f.isMigrated,
+        isEphemeral: !!f.isEphemeral,
+      }));
+    } else {
+      state.recentFiles = [];
+    }
+    // 然后再 upsert
+    const idx = state.recentFiles.findIndex((f) => f.name === file.name);
+    if (idx >= 0) state.recentFiles.splice(idx, 1);
+    state.recentFiles.unshift({
+      name: file.name, lastOpened: new Date().toISOString(),
+      mtime: 0, size: 0, handleKey: null,
+      isDirectory: false, isMigrated: false, isEphemeral: true,
+    });
+    return state;
+  }
+  // 场景 A：跨设备复制 json，data.recentFiles 不含 file.name
+  const cross = loadJsonFixed(
+    { name: "novel.json" },
+    { recentFiles: [{ name: "other.json", isEphemeral: false, lastOpened: "x", mtime: 0, size: 0, handleKey: null, isDirectory: false, isMigrated: false }] }
+  );
+  const f8a = cross.recentFiles[0].name === "novel.json"
+    && cross.recentFiles[0].isEphemeral === true
+    && cross.recentFiles.length === 2
+    && cross.recentFiles.some((f) => f.name === "other.json");
+  console.log(`  跨设备 json：recentFiles[0]=novel.json (isEphemeral): ${f8a ? "✓" : "✗"}`);
+  if (!f8a) allPass = false;
+
+  // 场景 B：本机二次打开，data.recentFiles 含 file.name（不带 isEphemeral）
+  const local = loadJsonFixed(
+    { name: "novel.json" },
+    { recentFiles: [
+      { name: "old.xlsx", isEphemeral: false, lastOpened: "x", mtime: 0, size: 0, handleKey: null, isDirectory: false, isMigrated: false },
+      { name: "novel.json", isEphemeral: false, lastOpened: "x", mtime: 0, size: 0, handleKey: null, isDirectory: false, isMigrated: false },
+    ] }
+  );
+  const f8b = local.recentFiles[0].name === "novel.json"
+    && local.recentFiles[0].isEphemeral === true
+    && local.recentFiles.length === 2;
+  console.log(`  本机二次打开：recentFiles[0]=novel.json (isEphemeral=true): ${f8b ? "✓" : "✗"}`);
+  if (!f8b) allPass = false;
+
+  // 场景 C：data.recentFiles 不存在（极旧 json）
+  const old = loadJsonFixed({ name: "novel.json" }, {});
+  const f8c = old.recentFiles.length === 1
+    && old.recentFiles[0].name === "novel.json"
+    && old.recentFiles[0].isEphemeral === true;
+  console.log(`  无 data.recentFiles：只有 novel.json (isEphemeral): ${f8c ? "✓" : "✗"}`);
+  if (!f8c) allPass = false;
+  console.log("  loadFromJsonFile recentFiles 顺序:", (f8a && f8b && f8c) ? "PASS" : "FAIL");
+  if (!(f8a && f8b && f8c)) allPass = false;
+
+  // 8.7 save() 序列化保留 isEphemeral（让 json 跨设备也能恢复标签）
+  const saveOut = {
+    recentFiles: [
+      { name: "a.json", isEphemeral: true, lastOpened: "x", mtime: 0, size: 0, handleKey: null, isDirectory: false, isMigrated: false },
+      { name: "b.xlsx", isEphemeral: false, lastOpened: "x", mtime: 0, size: 0, handleKey: "k", isDirectory: false, isMigrated: false },
+    ].map((f) => ({
+      name: f.name, lastOpened: f.lastOpened, mtime: f.mtime, size: f.size,
+      handleKey: f.handleKey, isDirectory: !!f.isDirectory, isMigrated: !!f.isMigrated,
+      isEphemeral: !!f.isEphemeral,
+    })),
+  };
+  const f9a = saveOut.recentFiles.find((f) => f.name === "a.json")?.isEphemeral === true;
+  const f9b = saveOut.recentFiles.find((f) => f.name === "b.xlsx")?.isEphemeral === false;
+  console.log(`  save() 序列化保留 isEphemeral (a.json/b.xlsx): ${f9a && f9b ? "✓" : "✗"}`);
+  if (!(f9a && f9b)) allPass = false;
 }
 
 /* ============================================================

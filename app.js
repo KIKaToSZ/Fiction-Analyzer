@@ -570,6 +570,9 @@
         handleKey: f.handleKey,
         isDirectory: !!f.isDirectory,
         isMigrated: !!f.isMigrated,
+        // v8.1 修：保留 isEphemeral——这样 json 跨设备复制时，下拉框能正确显示
+        // 「（本次会话）」标签，loadFromJsonFile 也能据此把当前 json 置顶
+        isEphemeral: !!f.isEphemeral,
       })),
       currentFileName: state.currentFileName,
       xlsxFileName: state.xlsxFileName,
@@ -1734,16 +1737,10 @@
       state.directoryHandleKey = data.directoryHandleKey || null;
       // v9：恢复 autoSavePromptDismissed
       state._autoSavePromptDismissed = data.autoSavePromptDismissed || {};
-      // 把拖入的 json 加入 recentFiles（isEphemeral=true），让「数据源」下拉框能选中它
-      upsertRecentFile({
-        name: file.name,
-        mtime: file.lastModified || 0,
-        size: file.size || 0,
-        handleKey: null,
-        isDirectory: false,
-        isEphemeral: true,
-      });
-      // v8：恢复 recentFiles（保留 isEphemeral / isMigrated 等标志）
+      // v8：先恢复 recentFiles（保留 isEphemeral / isMigrated 等标志）。
+      // 必须在 upsertRecentFile 之前——否则后面会被整体覆盖。
+      // 跨设备 / 旧版本导出的 json 里 recentFiles 不一定包含 file.name，
+      // 这里先把数据恢复，再用 upsertRecentFile 把当前 json 置顶。
       if (Array.isArray(data.recentFiles)) {
         state.recentFiles = data.recentFiles.map((f) => ({
           name: f.name,
@@ -1755,7 +1752,22 @@
           isMigrated: !!f.isMigrated,
           isEphemeral: !!f.isEphemeral,
         }));
+      } else {
+        state.recentFiles = [];
       }
+      // v8.1 把拖入的 json 加进 recentFiles（isEphemeral=true），让下拉框能选中它
+      upsertRecentFile({
+        name: file.name,
+        mtime: file.lastModified || 0,
+        size: file.size || 0,
+        handleKey: null,
+        isDirectory: false,
+        isEphemeral: true,
+      });
+      // v8.1 修：之前是 upsertRecentFile → state.recentFiles = data.recentFiles.map(...)
+      // 顺序反了，导致跨设备 / 旧版本导出的 json 拖入后，state.recentFiles
+      // 被 data.recentFiles 整体覆盖，刚 upsert 的 file.name 丢失——
+      // 下拉框里看不到文件名（currentFileName 指到不存在的 option）。
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
       state.ui = { sort: "asc", layout: { ...(state.ui.layout || {}) }, ...(data.ui || {}) };
       if (data.ui && data.ui.layout) state.ui.layout = data.ui.layout;
