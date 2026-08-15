@@ -12,46 +12,48 @@
       <!-- ===================== 顶部工具栏（全宽） ===================== -->
       <header class="app-topbar">
         <div class="topbar-row">
-          <div class="file-row">
-            <select id="file-select" class="file-select" title="切换文件" aria-label="切换文件">
-              <option value="">— 暂无文件 —</option>
-            </select>
-            <button id="file-pick" class="icon-btn" title="从本地选择一个 .xlsx 或 .json 文件">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="12" y1="18" x2="12" y2="12" />
-                <line x1="9" y1="15" x2="15" y2="15" />
-              </svg>
-            </button>
-            <button id="file-pick-dir" class="icon-btn" title="从本地选择一个文件夹（列出所有 .xlsx）">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-            </button>
-            <button id="file-remove" class="icon-btn" title="从列表中移除当前文件（不删除磁盘文件）" hidden>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
+          <div class="topbar-left">
+            <div class="file-row">
+              <select id="file-select" class="file-select" title="切换文件" aria-label="切换文件">
+                <option value="">— 暂无文件 —</option>
+              </select>
+              <button id="file-pick" class="icon-btn" title="从本地选择一个 .xlsx 或 .json 文件">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="12" y1="18" x2="12" y2="12" />
+                  <line x1="9" y1="15" x2="15" y2="15" />
+                </svg>
+              </button>
+              <button id="file-pick-dir" class="icon-btn" title="从本地选择一个文件夹（列出所有 .xlsx）">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+              </button>
+              <button id="file-remove" class="icon-btn" title="从列表中移除当前文件（不删除磁盘文件）" hidden>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
 
-          <div class="topbar-actions">
-            <button id="btn-undo" class="tool-btn" title="撤销 (Ctrl+Z)" disabled>
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                <path d="M3 7v6h6" />
-                <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
-              </svg>
-              <span>撤销</span>
-            </button>
-            <button id="btn-redo" class="tool-btn" title="重做 (Ctrl+Shift+Z)" disabled>
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                <path d="M21 7v6h-6" />
-                <path d="M3 17a9 9 0 0 1 15-6.7L21 13" />
-              </svg>
-              <span>重做</span>
-            </button>
+            <div class="topbar-actions">
+              <button id="btn-undo" class="tool-btn" title="撤销 (Ctrl+Z)" disabled>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                  <path d="M3 7v6h6" />
+                  <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+                </svg>
+                <span>撤销</span>
+              </button>
+              <button id="btn-redo" class="tool-btn" title="重做 (Ctrl+Shift+Z)" disabled>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                  <path d="M21 7v6h-6" />
+                  <path d="M3 17a9 9 0 0 1 15-6.7L21 13" />
+                </svg>
+                <span>重做</span>
+              </button>
+            </div>
           </div>
 
           <div class="topbar-search">
@@ -166,13 +168,6 @@
                 </svg>
                 <span>新增章节</span>
               </button>
-              <button id="btn-save" class="tool-btn tool-btn-icon" title="保存当前章节 (Ctrl+S)" aria-label="保存当前章节">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                  <polyline points="17 21 17 13 7 13 7 21" />
-                  <polyline points="7 3 7 8 15 8" />
-                </svg>
-              </button>
               <button id="btn-import" class="tool-btn" title="从 xlsx 文件导入条目">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -217,7 +212,6 @@
                       <input id="ch-title" type="text" placeholder="给本章起个名字" />
                     </div>
                     <div class="meta-actions">
-                      <button id="btn-save" class="primary-btn">保存</button>
                       <button id="btn-delete" class="danger-btn">删除</button>
                     </div>
                   </div>
