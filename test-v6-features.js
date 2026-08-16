@@ -1101,6 +1101,127 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
 
   console.log("  v11 修复:", (t12_1a && t12_1b && t12_2a && t12_2b && t12_2c && callAfterEnable && callAfterLoad && callAfterBind && t12_4 && t12_5a && t12_5b && fsOrder && t12_6) ? "PASS" : "FAIL");
   if (!(t12_1a && t12_1b && t12_2a && t12_2b && t12_2c && callAfterEnable && callAfterLoad && callAfterBind && t12_4 && t12_5a && t12_5b && fsOrder && t12_6)) allPass = false;
+
+  // ============================================================
+  // 测试 13：v12（章节号只读 + 导入自动提取数字 + 伏笔字段扩展）
+  // ============================================================
+  console.log("\n测试 13：v12（章节号只读 + 导入自动提取数字 + 伏笔字段扩展）");
+
+  // 13.1 SCHEMA_VERSION = 10
+  const t13_1 = /const SCHEMA_VERSION = 10;/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 10: ${t13_1 ? "✓" : "✗"}`);
+  if (!t13_1) allPass = false;
+
+  // 13.2 章节号 input 是 readonly + 带 .readonly-field class + tooltip
+  const t13_2a = /id="ch-no"[^>]*readonly/.test(SRC);
+  const t13_2b = /id="ch-no"[^>]*class="readonly-field"/.test(SRC);
+  const t13_2c = /id="ch-no"[^>]*title="章节号不可编辑/.test(SRC);
+  // 验证去掉了 placeholder（既然不可编辑就不需要提示）
+  const chNoInput = SRC.match(/<input id="ch-no"[^>]*\/>/)[0];
+  const t13_2d = !/placeholder=/.test(chNoInput);
+  console.log(`  章节号 input 有 readonly 属性: ${t13_2a ? "✓" : "✗"}`);
+  console.log(`  章节号 input 有 .readonly-field class: ${t13_2b ? "✓" : "✗"}`);
+  console.log(`  章节号 input 有 title tooltip: ${t13_2c ? "✓" : "✗"}`);
+  console.log(`  章节号 input 去掉了 placeholder: ${t13_2d ? "✓" : "✗"}`);
+  if (!(t13_2a && t13_2b && t13_2c && t13_2d)) allPass = false;
+
+  // 13.3 CSS 里有 .readonly-field 样式
+  const css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf-8");
+  const t13_3a = /\.meta-field input\.readonly-field\s*\{/.test(css);
+  const t13_3b = /cursor:\s*not-allowed/.test(css);
+  const t13_3c = /border-style:\s*dashed/.test(css);
+  console.log(`  CSS 有 .meta-field input.readonly-field 规则: ${t13_3a ? "✓" : "✗"}`);
+  console.log(`  CSS 含 cursor:not-allowed: ${t13_3b ? "✓" : "✗"}`);
+  console.log(`  CSS 含 border-style:dashed: ${t13_3c ? "✓" : "✗"}`);
+  if (!(t13_3a && t13_3b && t13_3c)) allPass = false;
+
+  // 13.4 xlsx 导入 parseRowsForPage 走 parseChapterNo 提取数字
+  const parseBlock = SRC.slice(
+    SRC.indexOf("function parseRowsForPage"),
+    SRC.indexOf("function parseXlsxAllSheets")
+  );
+  const t13_4a = /parseChapterNo\(trimmed\)/.test(parseBlock);
+  const t13_4b = /parsed\.hasNum && Number\.isFinite\(parsed\.num\)/.test(parseBlock);
+  const t13_4c = /data\.no = parsed\.num/.test(parseBlock);
+  const t13_4d = /data\.no = trimmed/.test(parseBlock); // 纯汉字回退保留原字符串
+  console.log(`  parseRowsForPage 调用 parseChapterNo: ${t13_4a ? "✓" : "✗"}`);
+  console.log(`  parseRowsForPage 检查 parsed.hasNum && isFinite: ${t13_4b ? "✓" : "✗"}`);
+  console.log(`  parseRowsForPage 提取数字赋值 data.no = parsed.num: ${t13_4c ? "✓" : "✗"}`);
+  console.log(`  parseRowsForPage 纯汉字保留原字符串: ${t13_4d ? "✓" : "✗"}`);
+  if (!(t13_4a && t13_4b && t13_4c && t13_4d)) allPass = false;
+
+  // 13.5 文本导入 parseImportText 走 parseChapterNo
+  const txtBlock = SRC.slice(
+    SRC.indexOf("function parseImportText"),
+    SRC.indexOf("function refreshImportPreview")
+  );
+  const t13_5a = /parseChapterNo\(noStr\)/.test(txtBlock);
+  const t13_5b = /!noParsed\.hasNum \|\| !Number\.isFinite\(noParsed\.num\)/.test(txtBlock);
+  const t13_5c = /o\.no = noParsed\.num/.test(txtBlock);
+  const t13_5d = /章节号无法解析为数字/.test(txtBlock);
+  console.log(`  parseImportText 调用 parseChapterNo: ${t13_5a ? "✓" : "✗"}`);
+  console.log(`  parseImportText 检查 hasNum && isFinite: ${t13_5b ? "✓" : "✗"}`);
+  console.log(`  parseImportText 赋值 o.no = noParsed.num: ${t13_5c ? "✓" : "✗"}`);
+  console.log(`  parseImportText 错误提示更新: ${t13_5d ? "✓" : "✗"}`);
+  if (!(t13_5a && t13_5b && t13_5c && t13_5d)) allPass = false;
+
+  // 13.6 伏笔字段扩展：name / setup / status / notes 都加上了新关键词
+  // 切片：从 foreshadowing 字段开始，到下一个 page（人物/大纲/...）的字段开始前
+  // 当前 PAGES 里 foreshadowing 之后是 chapter，所以用 "chapter: {" 作终止
+  // ——比 "emptyStateHtml()" 精确，避免切到 chapter 的 emptyStateHtml
+  const fsStart = SRC.indexOf("foreshadowing: {");
+  const fsEnd = SRC.indexOf("\n    },\n\n    chapter:", fsStart);
+  const fsFields = SRC.slice(fsStart, fsEnd > 0 ? fsEnd : fsStart + 5000);
+  const t13_6a = /name:[^\]]*伏笔名称/.test(fsFields);
+  const t13_6b = /setup:[^\]]*提及章节/.test(fsFields);
+  const t13_6c = /status:[^\]]*回收状态/.test(fsFields);
+  const t13_6d = /notes:[^\]]*原文描述/.test(fsFields);
+  // 原有关键词保留
+  const t13_6e = /name:[^\]]*"名称"/.test(fsFields);
+  const t13_6f = /setup:[^\]]*"铺设章节"/.test(fsFields);
+  const t13_6g = /status:[^\]]*"状态"/.test(fsFields);
+  const t13_6h = /notes:[^\]]*"备注"/.test(fsFields);
+  // no 字段已含"序号"
+  const t13_6i = /no:[^\]]*"序号"/.test(fsFields);
+  console.log(`  name 加了「伏笔名称」: ${t13_6a ? "✓" : "✗"}`);
+  console.log(`  setup 加了「提及章节」: ${t13_6b ? "✓" : "✗"}`);
+  console.log(`  status 加了「回收状态」: ${t13_6c ? "✓" : "✗"}`);
+  console.log(`  notes 加了「原文描述」: ${t13_6d ? "✓" : "✗"}`);
+  console.log(`  原有 name「名称」保留: ${t13_6e ? "✓" : "✗"}`);
+  console.log(`  原有 setup「铺设章节」保留: ${t13_6f ? "✓" : "✗"}`);
+  console.log(`  原有 status「状态」保留: ${t13_6g ? "✓" : "✗"}`);
+  console.log(`  原有 notes「备注」保留: ${t13_6h ? "✓" : "✗"}`);
+  console.log(`  原有 no「序号」保留: ${t13_6i ? "✓" : "✗"}`);
+  if (!(t13_6a && t13_6b && t13_6c && t13_6d && t13_6e && t13_6f && t13_6g && t13_6h && t13_6i)) allPass = false;
+
+  // 13.7 行为验证：parseChapterNo 真实输出（用 vm 跑过的 ctx 取函数）
+  // ctx 里 app.js 已经执行过，parseChapterNo 在闭包外层定义。用 SRC 自己解析再 eval
+  const evalSrc = SRC + "\n;parseChapterNo;";
+  // 改成在 sandbox 里执行拿函数
+  const cn = vm.runInContext(evalSrc, ctx);
+  const cases = [
+    { input: "12", expected: 12 },
+    { input: "第12章", expected: 12 },
+    { input: "第一章", expected: 1 },
+    { input: "第二十章", expected: 20 },
+    { input: "Chapter 5", expected: 5 },
+    { input: "卷一 第三章", expected: 3 },  // 阿拉伯数字 3 优先于中文"一"
+    { input: "序章", expected: null }, // 纯汉字无数字 → num=Infinity
+    { input: "楔子", expected: null },
+    { input: "", expected: null },
+  ];
+  let t13_7 = true;
+  for (const c of cases) {
+    const r = cn(c.input);
+    const actual = Number.isFinite(r.num) ? r.num : null;
+    const ok = actual === c.expected;
+    if (!ok) t13_7 = false;
+    console.log(`    parseChapterNo("${c.input}") → ${actual} (期望 ${c.expected}) ${ok ? "✓" : "✗"}`);
+  }
+  if (!t13_7) allPass = false;
+
+  console.log("  v12 修复:", (t13_1 && t13_2a && t13_2b && t13_2c && t13_2d && t13_3a && t13_3b && t13_3c && t13_4a && t13_4b && t13_4c && t13_4d && t13_5a && t13_5b && t13_5c && t13_5d && t13_6a && t13_6b && t13_6c && t13_6d && t13_6e && t13_6f && t13_6g && t13_6h && t13_6i && t13_7) ? "PASS" : "FAIL");
+  if (!(t13_1 && t13_2a && t13_2b && t13_2c && t13_2d && t13_3a && t13_3b && t13_3c && t13_4a && t13_4b && t13_4c && t13_4d && t13_5a && t13_5b && t13_5c && t13_5d && t13_6a && t13_6b && t13_6c && t13_6d && t13_6e && t13_6f && t13_6g && t13_6h && t13_6i && t13_7)) allPass = false;
 }
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

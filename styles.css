@@ -993,6 +993,20 @@ body.is-resizing .resizer * {
   font-weight: 500;
 }
 
+/* 只读字段：章节号等系统生成的值，视觉上区别于可编辑字段 */
+.meta-field input.readonly-field {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--muted);
+  cursor: not-allowed;
+  border-style: dashed;
+  font-weight: 500;
+}
+
+.meta-field input.readonly-field:focus {
+  outline: none;
+  box-shadow: none;
+}
+
 .meta-actions {
   display: flex;
   gap: 6px;

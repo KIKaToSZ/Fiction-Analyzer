@@ -10,7 +10,7 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 9;
+  const SCHEMA_VERSION = 10;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
   // 持久化 directory handle 的 key 前缀（完整 key = "dir:" + currentFileName）
@@ -134,12 +134,13 @@
       },
       fields: {
         no: ["序号", "编号", "no", "number", "id", "序", "伏笔号"],
-        name: ["名称", "伏笔名", "伏笔", "name", "title", "线索", "名字"],
+        name: ["名称", "伏笔名", "伏笔名称", "伏笔", "name", "title", "线索", "名字"],
         setup: [
           "铺设章节",
           "铺设",
           "埋设",
           "埋设章节",
+          "提及章节",
           "setup",
           "setup_chapter",
           "埋点",
@@ -157,8 +158,8 @@
           "回收章",
           "结束章节",
         ],
-        status: ["状态", "status", "state", "进度", "完成度"],
-        notes: ["备注", "说明", "notes", "description", "详情", "内容"],
+        status: ["回收状态", "状态", "status", "state", "进度", "完成度"],
+        notes: ["原文描述", "备注", "说明", "notes", "description", "详情", "内容"],
       },
       defaults() {
         return {
@@ -1030,17 +1031,20 @@
         }
       }
       if (!hasAny) continue;
-      // no 字段：保留原始值（数字 / 字符串），让 sortKey 决定如何排序
+      // no 字段：能提取出数字就提（如"第12章"→12），纯汉字无数字保留原字符串（"序章"/"楔子"）
       if (columns.no >= 0) {
-        // 数字字符串 → 转 number；其他 → 保留字符串原始值
         const trimmed = String(data.no || "").trim();
-        if (trimmed && /^-?\d+(\.\d+)?$/.test(trimmed)) {
-          data.no = Number(trimmed);
-        } else if (!trimmed) {
+        if (!trimmed) {
           data.no = 0;
         } else {
-          // 字符串形式（"第12章"/"序章"/"Chapter 5"），保留原值，sortKey 负责解析
-          data.no = trimmed;
+          const parsed = parseChapterNo(trimmed);
+          if (parsed.hasNum && Number.isFinite(parsed.num)) {
+            // 提取出数字（"12"/"第12章"/"Chapter 5"/"第一章" 全部归一为 number）
+            data.no = parsed.num;
+          } else {
+            // 纯汉字无数字（"序章"/"楔子"/"番外"）→ 保留原字符串，sortKey 负责按 str 排序
+            data.no = trimmed;
+          }
         }
       } else {
         data.no = 0;
@@ -1362,7 +1366,7 @@
       <div class="editor-meta">
         <div class="meta-field">
           <label>章节号</label>
-          <input id="ch-no" type="text" inputmode="numeric" placeholder="如：12 / 第12章 / 序章" value="${escapeHtml(String(it.no ?? ""))}" />
+          <input id="ch-no" type="text" class="readonly-field" readonly value="${escapeHtml(String(it.no ?? ""))}" title="章节号不可编辑，由导入数据决定" />
         </div>
         <div class="meta-field meta-title">
           <label>章节名称</label>
@@ -2782,13 +2786,19 @@
         out.push(o);
         continue;
       }
-      const no = Number(parts[0]);
-      if (!Number.isFinite(no)) {
-        o._error = `章节号不是有效数字："${parts[0]}"`;
+      const noStr = String(parts[0] || "").trim();
+      if (!noStr) {
+        o._error = `章节号为空`;
         out.push(o);
         continue;
       }
-      o.no = no;
+      const noParsed = parseChapterNo(noStr);
+      if (!noParsed.hasNum || !Number.isFinite(noParsed.num)) {
+        o._error = `章节号无法解析为数字："${noStr}"`;
+        out.push(o);
+        continue;
+      }
+      o.no = noParsed.num;
       o.title = parts[1] || "";
       o.content = parts.slice(2).join(" ").trim();
       out.push(o);
