@@ -1509,9 +1509,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   // ============================================================
   console.log("\n测试 15：v14（伏笔管理页双表拆分 + 4 列头 + 履历列表 + 跳转高亮）");
 
-  // 15.1 schema 升到 11（v14 时代）；v15 改后 schema 升到 12
-  const t15_1a = /const SCHEMA_VERSION\s*=\s*1[12];/.test(SRC);
-  console.log(`  SCHEMA_VERSION = 11/12: ${t15_1a ? "✓" : "✗"}`);
+  // 15.1 schema 升到 11（v14 时代）；v15 改后 schema 升到 12；v19 升到 13
+  const t15_1a = /const SCHEMA_VERSION\s*=\s*1[123];/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 11/12/13: ${t15_1a ? "✓" : "✗"}`);
   if (!t15_1a) allPass = false;
 
   // 15.12 之前需要 CSS 文本(用局部变量,顶层没有 CSS 变量)
@@ -1666,9 +1666,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   // ============================================================
   console.log("\n测试 16：v15（伏笔主表精简为 3 字段 - 伏笔编号/伏笔名称/状态）");
 
-  // 16.1 SCHEMA_VERSION = 12
-  const t16_1a = /const SCHEMA_VERSION\s*=\s*12;/.test(SRC);
-  console.log(`  SCHEMA_VERSION = 12: ${t16_1a ? "✓" : "✗"}`);
+  // 16.1 SCHEMA_VERSION = 12/13（v15 是 12，v19 升到 13）
+  const t16_1a = /const SCHEMA_VERSION\s*=\s*(12|13);/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 12/13: ${t16_1a ? "✓" : "✗"}`);
   if (!t16_1a) allPass = false;
 
   // 16.2 PAGES.foreshadowing.fields 只含 3 个键：fsNo / name / status
@@ -2230,6 +2230,313 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     t19_10a && t19_10b && t19_10c && t19_10d;
   console.log("  v18 改动:", t19All ? "PASS" : "FAIL");
   if (!t19All) allPass = false;
+
+  // ============================================================
+  // 测试 20：v19 改动（伏笔编号格式一致 + 财物/故事脉络/角色详情 3 个新页面）
+  // ============================================================
+  console.log("\n测试 20：v19（伏笔编号格式一致 + 3 个新页面）");
+
+  // 20.1 detectFsNoFormat / formatFsNoByFormat 函数存在
+  const t20_1a = /function detectFsNoFormat\(items\)/.test(SRC);
+  const t20_1b = /function formatFsNoByFormat\(num, fmt\)/.test(SRC);
+  console.log(`  detectFsNoFormat 函数存在: ${t20_1a ? "✓" : "✗"}`);
+  console.log(`  formatFsNoByFormat 函数存在: ${t20_1b ? "✓" : "✗"}`);
+  if (!(t20_1a && t20_1b)) allPass = false;
+
+  // 20.2 addNewItem 用 detectFsNoFormat + formatFsNoByFormat
+  const t20_2a = /detectFsNoFormat\(sheetList\)/.test(SRC);
+  const t20_2b = /formatFsNoByFormat\(nextNum, fmt\)/.test(SRC);
+  console.log(`  addNewItem 用 detectFsNoFormat: ${t20_2a ? "✓" : "✗"}`);
+  console.log(`  addNewItem 用 formatFsNoByFormat: ${t20_2b ? "✓" : "✗"}`);
+  if (!(t20_2a && t20_2b)) allPass = false;
+
+  // 20.3 detectFsNoFormat 行为（独立验证逻辑）
+  // 从 SRC 里 eval 出来这块 helper（隔离作用域）
+  const helperSrc = SRC.match(/function detectFsNoFormat[\s\S]*?\n  \}\n/);
+  const fmtSrc = SRC.match(/function formatFsNoByFormat[\s\S]*?\n  \}\n/);
+  if (helperSrc && fmtSrc) {
+    const t20_3_cases = [];
+    // 模拟 evaluate（沙箱里没有 vm，提取函数体后用 new Function 跑）
+    const detect = new Function(`${helperSrc[0]}\nreturn detectFsNoFormat;`)();
+    const fmtize = new Function(`${fmtSrc[0]}\nreturn formatFsNoByFormat;`)();
+    // case 1: 纯数字 "1" "2" "3" → prefix="" pad=1
+    const c1 = detect([{fsNo:"1"},{fsNo:"2"},{fsNo:"3"}]);
+    t20_3_cases.push(c1 && c1.prefix === "" && c1.padWidth === 1);
+    // case 2: FS-001 FS-002 FS-003 → prefix="FS-" pad=3
+    const c2 = detect([{fsNo:"FS-001"},{fsNo:"FS-002"},{fsNo:"FS-003"}]);
+    t20_3_cases.push(c2 && c2.prefix === "FS-" && c2.padWidth === 3);
+    // case 3: F1 F2 F3 → prefix="F" pad=1
+    const c3 = detect([{fsNo:"F1"},{fsNo:"F2"},{fsNo:"F3"}]);
+    t20_3_cases.push(c3 && c3.prefix === "F" && c3.padWidth === 1);
+    // case 4: 1 个样本 → null
+    const c4 = detect([{fsNo:"FS-001"}]);
+    t20_3_cases.push(c4 === null);
+    // case 5: 混合（多数 FS-001，少数 1）→ prefix="FS-" pad=3
+    const c5 = detect([{fsNo:"FS-001"},{fsNo:"FS-002"},{fsNo:"1"}]);
+    t20_3_cases.push(c5 && c5.prefix === "FS-" && c5.padWidth === 3);
+    // case 6: 都是 "序章" → 0 个匹配正则的样本 → null
+    const c6 = detect([{fsNo:"序章"},{fsNo:"楔子"}]);
+    t20_3_cases.push(c6 === null);
+    // case 7: 空数组 → null
+    const c7 = detect([]);
+    t20_3_cases.push(c7 === null);
+    // case 8: 边界——"1" "10" "100" → 都不共享相同 pad → null
+    const c8 = detect([{fsNo:"1"},{fsNo:"10"},{fsNo:"100"}]);
+    t20_3_cases.push(c8 === null);
+    // formatFsNoByFormat 应用
+    const t20_3_fmt1 = fmtize(2, {prefix:"", padWidth:1}) === "2";
+    const t20_3_fmt2 = fmtize(4, {prefix:"FS-", padWidth:3}) === "FS-004";
+    const t20_3_fmt3 = fmtize(10, {prefix:"F", padWidth:1}) === "F10";
+    const t20_3_fmt4 = fmtize(5, null) === "5";
+    const t20_3_fmt5 = fmtize(100, {prefix:"FS-", padWidth:3}) === "FS-100";
+    console.log(`  纯数字 "1,2,3" → prefix="", pad=1: ${t20_3_cases[0] ? "✓" : "✗"}`);
+    console.log(`  FS-001/002/003 → prefix="FS-", pad=3: ${t20_3_cases[1] ? "✓" : "✗"}`);
+    console.log(`  F1/F2/F3 → prefix="F", pad=1: ${t20_3_cases[2] ? "✓" : "✗"}`);
+    console.log(`  1 个样本 → null: ${t20_3_cases[3] ? "✓" : "✗"}`);
+    console.log(`  多数 FS-00X 少数纯数字 → 走 FS-: ${t20_3_cases[4] ? "✓" : "✗"}`);
+    console.log(`  全是"序章" → null: ${t20_3_cases[5] ? "✓" : "✗"}`);
+    console.log(`  空数组 → null: ${t20_3_cases[6] ? "✓" : "✗"}`);
+    console.log(`  数字宽度不统一 → null: ${t20_3_cases[7] ? "✓" : "✗"}`);
+    console.log(`  formatFsNoByFormat(2, {prefix:"", pad:1}) === "2": ${t20_3_fmt1 ? "✓" : "✗"}`);
+    console.log(`  formatFsNoByFormat(4, {prefix:"FS-", pad:3}) === "FS-004": ${t20_3_fmt2 ? "✓" : "✗"}`);
+    console.log(`  formatFsNoByFormat(10, {prefix:"F", pad:1}) === "F10": ${t20_3_fmt3 ? "✓" : "✗"}`);
+    console.log(`  formatFsNoByFormat(5, null) === "5": ${t20_3_fmt4 ? "✓" : "✗"}`);
+    console.log(`  formatFsNoByFormat(100, {prefix:"FS-", pad:3}) === "FS-100" (无截断): ${t20_3_fmt5 ? "✓" : "✗"}`);
+    if (!t20_3_cases.every(Boolean) || !(t20_3_fmt1 && t20_3_fmt2 && t20_3_fmt3 && t20_3_fmt4 && t20_3_fmt5)) allPass = false;
+  } else {
+    console.log("  ⚠️ detectFsNoFormat/formatFsNoByFormat 提取失败，跳过行为测试");
+    allPass = false;
+  }
+
+  // 20.4 SCHEMA_VERSION = 13
+  const t20_4a = /const SCHEMA_VERSION\s*=\s*13;/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 13: ${t20_4a ? "✓" : "✗"}`);
+  if (!t20_4a) allPass = false;
+
+  // 20.5 PAGES 注册表有 5 个页面
+  const t20_5a = /^\s*chapter:\s*\{/m.test(SRC);
+  const t20_5b = /^\s*foreshadowing:\s*\{/m.test(SRC);
+  const t20_5c = /^\s*goods:\s*\{/m.test(SRC);
+  const t20_5d = /^\s*storyline:\s*\{/m.test(SRC);
+  const t20_5e = /^\s*character:\s*\{/m.test(SRC);
+  console.log(`  PAGES.chapter: ${t20_5a ? "✓" : "✗"}`);
+  console.log(`  PAGES.foreshadowing: ${t20_5b ? "✓" : "✗"}`);
+  console.log(`  PAGES.goods: ${t20_5c ? "✓" : "✗"}`);
+  console.log(`  PAGES.storyline: ${t20_5d ? "✓" : "✗"}`);
+  console.log(`  PAGES.character: ${t20_5e ? "✓" : "✗"}`);
+  if (!(t20_5a && t20_5b && t20_5c && t20_5d && t20_5e)) allPass = false;
+
+  // 20.6 PAGES.goods 字段：name / category / quantity / sourceCh / note
+  const goodsBlock = (() => {
+    const start = SRC.indexOf("goods: {");
+    const end = SRC.indexOf("storyline: {");
+    return start > 0 && end > start ? SRC.slice(start, end) : "";
+  })();
+  const t20_6a = /fields:\s*\{[\s\S]*?name:\s*\[/.test(goodsBlock);
+  const t20_6b = /fields:\s*\{[\s\S]*?category:\s*\[/.test(goodsBlock);
+  const t20_6c = /fields:\s*\{[\s\S]*?quantity:\s*\[/.test(goodsBlock);
+  const t20_6d = /fields:\s*\{[\s\S]*?sourceCh:\s*\[/.test(goodsBlock);
+  const t20_6e = /fields:\s*\{[\s\S]*?note:\s*\[/.test(goodsBlock);
+  console.log(`  PAGES.goods.fields.name: ${t20_6a ? "✓" : "✗"}`);
+  console.log(`  PAGES.goods.fields.category: ${t20_6b ? "✓" : "✗"}`);
+  console.log(`  PAGES.goods.fields.quantity: ${t20_6c ? "✓" : "✗"}`);
+  console.log(`  PAGES.goods.fields.sourceCh: ${t20_6d ? "✓" : "✗"}`);
+  console.log(`  PAGES.goods.fields.note: ${t20_6e ? "✓" : "✗"}`);
+  if (!(t20_6a && t20_6b && t20_6c && t20_6d && t20_6e)) allPass = false;
+
+  // 20.7 PAGES.character 字段：name / role / description / firstCh
+  const charBlock = (() => {
+    const start = SRC.indexOf("character: {");
+    return start > 0 ? SRC.slice(start) : "";
+  })();
+  const t20_7a = /fields:\s*\{[\s\S]*?name:\s*\[/.test(charBlock);
+  const t20_7b = /fields:\s*\{[\s\S]*?role:\s*\[/.test(charBlock);
+  const t20_7c = /fields:\s*\{[\s\S]*?description:\s*\[/.test(charBlock);
+  const t20_7d = /fields:\s*\{[\s\S]*?firstCh:\s*\[/.test(charBlock);
+  console.log(`  PAGES.character.fields.name: ${t20_7a ? "✓" : "✗"}`);
+  console.log(`  PAGES.character.fields.role: ${t20_7b ? "✓" : "✗"}`);
+  console.log(`  PAGES.character.fields.description: ${t20_7c ? "✓" : "✗"}`);
+  console.log(`  PAGES.character.fields.firstCh: ${t20_7d ? "✓" : "✗"}`);
+  if (!(t20_7a && t20_7b && t20_7c && t20_7d)) allPass = false;
+
+  // 20.8 PAGES.storyline 有 kind: "dashboard"
+  const t20_8a = /storyline:\s*\{[\s\S]{0,300}?kind:\s*"dashboard"/.test(SRC);
+  console.log(`  PAGES.storyline kind: "dashboard": ${t20_8a ? "✓" : "✗"}`);
+  if (!t20_8a) allPass = false;
+
+  // 20.9 state.pages 包含 5 个页面
+  const t20_9a = /state\s*=\s*\{[\s\S]{0,800}?pages:\s*\{[\s\S]*?chapter:\s*makePageState\(\)/.test(SRC);
+  const t20_9b = /pages:\s*\{[\s\S]*?foreshadowing:\s*makePageState\(\)/.test(SRC);
+  const t20_9c = /pages:\s*\{[\s\S]*?goods:\s*makePageState\(\)/.test(SRC);
+  const t20_9d = /pages:\s*\{[\s\S]*?storyline:\s*makePageState\(\)/.test(SRC);
+  const t20_9e = /pages:\s*\{[\s\S]*?character:\s*makePageState\(\)/.test(SRC);
+  console.log(`  state.pages.chapter: ${t20_9a ? "✓" : "✗"}`);
+  console.log(`  state.pages.foreshadowing: ${t20_9b ? "✓" : "✗"}`);
+  console.log(`  state.pages.goods: ${t20_9c ? "✓" : "✗"}`);
+  console.log(`  state.pages.storyline: ${t20_9d ? "✓" : "✗"}`);
+  console.log(`  state.pages.character: ${t20_9e ? "✓" : "✗"}`);
+  if (!(t20_9a && t20_9b && t20_9c && t20_9d && t20_9e)) allPass = false;
+
+  // 20.10 snapshotState / applySnapshot 处理新页面
+  const t20_10a = /snapshotState[\s\S]*?pages:\s*\{[\s\S]*?goods:/.test(SRC);
+  const t20_10b = /snapshotState[\s\S]*?pages:\s*\{[\s\S]*?storyline:/.test(SRC);
+  const t20_10c = /snapshotState[\s\S]*?pages:\s*\{[\s\S]*?character:/.test(SRC);
+  const t20_10d = /applySnapshot[\s\S]*?goods:\s*\{/.test(SRC);
+  const t20_10e = /applySnapshot[\s\S]*?storyline:\s*\{/.test(SRC);
+  const t20_10f = /applySnapshot[\s\S]*?character:\s*\{/.test(SRC);
+  console.log(`  snapshotState 含 goods: ${t20_10a ? "✓" : "✗"}`);
+  console.log(`  snapshotState 含 storyline: ${t20_10b ? "✓" : "✗"}`);
+  console.log(`  snapshotState 含 character: ${t20_10c ? "✓" : "✗"}`);
+  console.log(`  applySnapshot 含 goods: ${t20_10d ? "✓" : "✗"}`);
+  console.log(`  applySnapshot 含 storyline: ${t20_10e ? "✓" : "✗"}`);
+  console.log(`  applySnapshot 含 character: ${t20_10f ? "✓" : "✗"}`);
+  if (!(t20_10a && t20_10b && t20_10c && t20_10d && t20_10e && t20_10f)) allPass = false;
+
+  // 20.11 load() 迁移补 3 个 page state（schema 12 → 13）
+  const t20_11a = /for\s*\(\s*const\s+pid\s+of\s*\[\s*"goods"\s*,\s*"storyline"\s*,\s*"character"\s*\][\s\S]*?state\.pages\[pid\]\s*=\s*makePageState\(\)/.test(SRC);
+  const t20_11b = /state\.schema\s*=\s*13/.test(SRC);
+  console.log(`  load() 给 3 个新 page 补 state: ${t20_11a ? "✓" : "✗"}`);
+  console.log(`  load() 把 schema 升到 13: ${t20_11b ? "✓" : "✗"}`);
+  if (!(t20_11a && t20_11b)) allPass = false;
+
+  // 20.12 renderCurrentPage 通用分发（按 view 显隐 + 按 page 调对应 render）
+  const rcpStart = SRC.indexOf("function renderCurrentPage");
+  const rcpEnd = rcpStart > 0 ? SRC.indexOf("function renderAll", rcpStart) : -1;
+  const rcpBlock = rcpStart > 0 && rcpEnd > rcpStart ? SRC.slice(rcpStart, rcpEnd) : "";
+  const t20_12a = /data-page-view="\$\{pid\}"/.test(rcpBlock) || /for\s*\(const pid of views\)/.test(rcpBlock);
+  const t20_12b = /state\.currentPage\s*===\s*"goods"/.test(rcpBlock);
+  const t20_12c = /state\.currentPage\s*===\s*"storyline"/.test(rcpBlock);
+  const t20_12d = /state\.currentPage\s*===\s*"character"/.test(rcpBlock);
+  const t20_12e = /renderGoodsList\(\)/.test(rcpBlock);
+  const t20_12f = /renderStorylineDashboard\(\)/.test(rcpBlock);
+  const t20_12g = /renderCharacterList\(\)/.test(rcpBlock);
+  console.log(`  renderCurrentPage 通用循环 page-view 显隐: ${t20_12a ? "✓" : "✗"}`);
+  console.log(`  renderCurrentPage 路由到 goods: ${t20_12b ? "✓" : "✗"}`);
+  console.log(`  renderCurrentPage 路由到 storyline: ${t20_12c ? "✓" : "✗"}`);
+  console.log(`  renderCurrentPage 路由到 character: ${t20_12d ? "✓" : "✗"}`);
+  console.log(`  renderCurrentPage 调 renderGoodsList: ${t20_12e ? "✓" : "✗"}`);
+  console.log(`  renderCurrentPage 调 renderStorylineDashboard: ${t20_12f ? "✓" : "✗"}`);
+  console.log(`  renderCurrentPage 调 renderCharacterList: ${t20_12g ? "✓" : "✗"}`);
+  if (!(t20_12a && t20_12b && t20_12c && t20_12d && t20_12e && t20_12f && t20_12g)) allPass = false;
+
+  // 20.13 3 个新页面的 render 函数存在
+  const t20_13a = /function renderGoodsList\(\)/.test(SRC);
+  const t20_13b = /function renderGoodsEditor\(\)/.test(SRC);
+  const t20_13c = /function renderStorylineDashboard\(\)/.test(SRC);
+  const t20_13d = /function renderCharacterList\(\)/.test(SRC);
+  const t20_13e = /function renderCharacterEditor\(\)/.test(SRC);
+  console.log(`  renderGoodsList 函数: ${t20_13a ? "✓" : "✗"}`);
+  console.log(`  renderGoodsEditor 函数: ${t20_13b ? "✓" : "✗"}`);
+  console.log(`  renderStorylineDashboard 函数: ${t20_13c ? "✓" : "✗"}`);
+  console.log(`  renderCharacterList 函数: ${t20_13d ? "✓" : "✗"}`);
+  console.log(`  renderCharacterEditor 函数: ${t20_13e ? "✓" : "✗"}`);
+  if (!(t20_13a && t20_13b && t20_13c && t20_13d && t20_13e)) allPass = false;
+
+  // 20.14 index.html 含 5 个 page-view
+  const t20_14a = (html.match(/data-page-view="/g) || []).length === 5;
+  const t20_14b = /data-page-view="goods"/.test(html);
+  const t20_14c = /data-page-view="storyline"/.test(html);
+  const t20_14d = /data-page-view="character"/.test(html);
+  const t20_14e = /id="goods-list"/.test(html);
+  const t20_14f = /id="goods-editor"/.test(html);
+  const t20_14g = /id="goods-editor-empty"/.test(html);
+  const t20_14h = /id="storyline-dashboard"/.test(html);
+  const t20_14i = /id="character-list"/.test(html);
+  const t20_14j = /id="character-editor"/.test(html);
+  const t20_14k = /id="character-editor-empty"/.test(html);
+  const t20_14l = /id="btn-new-gd"/.test(html);
+  const t20_14m = /id="btn-new-ch2"/.test(html);
+  console.log(`  index.html 有 5 个 page-view: ${t20_14a ? "✓" : "✗"}`);
+  console.log(`  data-page-view="goods": ${t20_14b ? "✓" : "✗"}`);
+  console.log(`  data-page-view="storyline": ${t20_14c ? "✓" : "✗"}`);
+  console.log(`  data-page-view="character": ${t20_14d ? "✓" : "✗"}`);
+  console.log(`  #goods-list: ${t20_14e ? "✓" : "✗"}`);
+  console.log(`  #goods-editor: ${t20_14f ? "✓" : "✗"}`);
+  console.log(`  #goods-editor-empty: ${t20_14g ? "✓" : "✗"}`);
+  console.log(`  #storyline-dashboard: ${t20_14h ? "✓" : "✗"}`);
+  console.log(`  #character-list: ${t20_14i ? "✓" : "✗"}`);
+  console.log(`  #character-editor: ${t20_14j ? "✓" : "✗"}`);
+  console.log(`  #character-editor-empty: ${t20_14k ? "✓" : "✗"}`);
+  console.log(`  #btn-new-gd: ${t20_14l ? "✓" : "✗"}`);
+  console.log(`  #btn-new-ch2: ${t20_14m ? "✓" : "✗"}`);
+  if (!(t20_14a && t20_14b && t20_14c && t20_14d && t20_14e && t20_14f && t20_14g && t20_14h && t20_14i && t20_14j && t20_14k && t20_14l && t20_14m)) allPass = false;
+
+  // 20.15 bindListEvents 处理 gd-delete / ch2-delete
+  const bindListStart = SRC.indexOf("function bindListEvents");
+  const bindListEnd = bindListStart > 0 ? SRC.indexOf("function bindEditorButtons", bindListStart) : -1;
+  const bindListBlock20 = bindListStart > 0 && bindListEnd > bindListStart ? SRC.slice(bindListStart, bindListEnd) : "";
+  const t20_15a = /\$\("#goods-list"\)/.test(bindListBlock20);
+  const t20_15b = /\$\("#character-list"\)/.test(bindListBlock20);
+  const t20_15c = /e\.target\.closest\("\.gd-delete"\)/.test(bindListBlock20);
+  const t20_15d = /e\.target\.closest\("\.ch2-delete"\)/.test(bindListBlock20);
+  const t20_15e = /gd-item, .fs-item, .gd-item, .ch2-item/.test(bindListBlock20) || /\.ch-item, \.fs-item, \.gd-item, \.ch2-item/.test(bindListBlock20);
+  console.log(`  bindListEvents 绑 #goods-list: ${t20_15a ? "✓" : "✗"}`);
+  console.log(`  bindListEvents 绑 #character-list: ${t20_15b ? "✓" : "✗"}`);
+  console.log(`  bindListEvents 处理 .gd-delete: ${t20_15c ? "✓" : "✗"}`);
+  console.log(`  bindListEvents 处理 .ch2-delete: ${t20_15d ? "✓" : "✗"}`);
+  console.log(`  bindListEvents 选择器含 .gd-item / .ch2-item: ${t20_15e ? "✓" : "✗"}`);
+  if (!(t20_15a && t20_15b && t20_15c && t20_15d && t20_15e)) allPass = false;
+
+  // 20.16 bindEditorButtons 绑新增按钮
+  const bindEdStart = SRC.indexOf("function bindEditorButtons");
+  const bindEdEnd = bindEdStart > 0 ? SRC.indexOf("function", bindEdStart + 30) : -1;
+  const bindEdBlock = bindEdStart > 0 && bindEdEnd > bindEdStart ? SRC.slice(bindEdStart, bindEdEnd) : "";
+  const t20_16a = /\$\("#btn-new-gd"\)\?\.addEventListener\("click",\s*addNewItem\)/.test(bindEdBlock);
+  const t20_16b = /\$\("#btn-new-ch2"\)\?\.addEventListener\("click",\s*addNewItem\)/.test(bindEdBlock);
+  console.log(`  bindEditorButtons 绑 #btn-new-gd: ${t20_16a ? "✓" : "✗"}`);
+  console.log(`  bindEditorButtons 绑 #btn-new-ch2: ${t20_16b ? "✓" : "✗"}`);
+  if (!(t20_16a && t20_16b)) allPass = false;
+
+  // 20.17 CSS 包含 v19 新样式
+  const t20_17a = /\.gd-list/.test(_css);
+  const t20_17b = /\.gd-item/.test(_css);
+  const t20_17c = /\.gd-delete/.test(_css);
+  const t20_17d = /\.gd-cat-lingshi/.test(_css);
+  const t20_17e = /\.goods-summary/.test(_css);
+  const t20_17f = /\.storyline-dashboard/.test(_css);
+  const t20_17g = /\.storyline-head/.test(_css);
+  const t20_17h = /\.storyline-stat/.test(_css);
+  const t20_17i = /\.storyline-timeline/.test(_css);
+  const t20_17j = /\.storyline-row/.test(_css);
+  const t20_17k = /\.ch2-list/.test(_css);
+  const t20_17l = /\.ch2-item/.test(_css);
+  const t20_17m = /\.ch2-delete/.test(_css);
+  const t20_17n = /\.ch2-role-main/.test(_css);
+  console.log(`  CSS .gd-list: ${t20_17a ? "✓" : "✗"}`);
+  console.log(`  CSS .gd-item: ${t20_17b ? "✓" : "✗"}`);
+  console.log(`  CSS .gd-delete: ${t20_17c ? "✓" : "✗"}`);
+  console.log(`  CSS .gd-cat-lingshi: ${t20_17d ? "✓" : "✗"}`);
+  console.log(`  CSS .goods-summary: ${t20_17e ? "✓" : "✗"}`);
+  console.log(`  CSS .storyline-dashboard: ${t20_17f ? "✓" : "✗"}`);
+  console.log(`  CSS .storyline-head: ${t20_17g ? "✓" : "✗"}`);
+  console.log(`  CSS .storyline-stat: ${t20_17h ? "✓" : "✗"}`);
+  console.log(`  CSS .storyline-timeline: ${t20_17i ? "✓" : "✗"}`);
+  console.log(`  CSS .storyline-row: ${t20_17j ? "✓" : "✗"}`);
+  console.log(`  CSS .ch2-list: ${t20_17k ? "✓" : "✗"}`);
+  console.log(`  CSS .ch2-item: ${t20_17l ? "✓" : "✗"}`);
+  console.log(`  CSS .ch2-delete: ${t20_17m ? "✓" : "✗"}`);
+  console.log(`  CSS .ch2-role-main: ${t20_17n ? "✓" : "✗"}`);
+  if (!(t20_17a && t20_17b && t20_17c && t20_17d && t20_17e && t20_17f && t20_17g && t20_17h && t20_17i && t20_17j && t20_17k && t20_17l && t20_17m && t20_17n)) allPass = false;
+
+  const t20All =
+    t20_1a && t20_1b &&
+    t20_2a && t20_2b &&
+    t20_4a &&
+    t20_5a && t20_5b && t20_5c && t20_5d && t20_5e &&
+    t20_6a && t20_6b && t20_6c && t20_6d && t20_6e &&
+    t20_7a && t20_7b && t20_7c && t20_7d &&
+    t20_8a &&
+    t20_9a && t20_9b && t20_9c && t20_9d && t20_9e &&
+    t20_10a && t20_10b && t20_10c && t20_10d && t20_10e && t20_10f &&
+    t20_11a && t20_11b &&
+    t20_12a && t20_12b && t20_12c && t20_12d && t20_12e && t20_12f && t20_12g &&
+    t20_13a && t20_13b && t20_13c && t20_13d && t20_13e &&
+    t20_14a && t20_14b && t20_14c && t20_14d && t20_14e && t20_14f && t20_14g && t20_14h && t20_14i && t20_14j && t20_14k && t20_14l && t20_14m &&
+    t20_15a && t20_15b && t20_15c && t20_15d && t20_15e &&
+    t20_16a && t20_16b &&
+    t20_17a && t20_17b && t20_17c && t20_17d && t20_17e && t20_17f && t20_17g && t20_17h && t20_17i && t20_17j && t20_17k && t20_17l && t20_17m && t20_17n;
+  console.log("  v19 改动:", t20All ? "PASS" : "FAIL");
+  if (!t20All) allPass = false;
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);

@@ -10,7 +10,7 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 12;
+  const SCHEMA_VERSION = 13;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
   // 持久化 directory handle 的 key 前缀（完整 key = "dir:" + currentFileName）
@@ -230,6 +230,141 @@
           </div>`;
       },
     },
+
+    // v19：财物详情页
+    //  - 物品 / 灵石的台账（手动维护：名称 / 类别 / 数量 / 来源章节 / 备注）
+    //  - 灵石条目可在「数量」填入正负数表示收支
+    //  - 不与任何 sheet 自动归类（matchName / matchHeaders 都返回 false）——纯用户录入
+    goods: {
+      id: "goods",
+      kind: "list",
+      label: "财物详情",
+      icon: "💰",
+      matchName() { return false; },
+      matchHeaders() { return false; },
+      fields: {
+        name: ["物品名称", "名称", "物品"],
+        category: ["类别", "类型", "分类"],
+        quantity: ["数量", "灵石数", "余额"],
+        sourceCh: ["来源章节", "出处", "获取章节"],
+        note: ["备注", "说明", "来历"],
+      },
+      defaults() {
+        return { name: "", category: "灵石", quantity: 0, sourceCh: "", note: "" };
+      },
+      makeItem(data, sheet) {
+        return {
+          id: uid("gd"),
+          name: data.name || "",
+          category: data.category || "灵石",
+          quantity: typeof data.quantity === "number" ? data.quantity : (parseFloat(data.quantity) || 0),
+          sourceCh: String(data.sourceCh ?? "").trim(),
+          note: data.note || "",
+          sheet,
+        };
+      },
+      sortKey(item) {
+        // 按类别排序：灵石置顶、然后按名称字典序
+        const cat = String(item.category || "");
+        if (/灵石/i.test(cat)) return { num: 0, str: cat + "_" + (item.name || "") };
+        return { num: 1, str: cat + "_" + (item.name || "") };
+      },
+      newItemLabel: "新增物品",
+      newItemToast(sheet, name) {
+        return name ? `已新增「${name}」` : "已新增物品";
+      },
+      emptyStateHtml() {
+        return `
+          <div class="empty-state-inner">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M9 12h6M12 9v6" />
+            </svg>
+            <p>从左侧选一条物品查看，或新增一条</p>
+            <p class="hint">灵石余额填正负数即可表示收支；类别填"灵石"会自动置顶</p>
+          </div>`;
+      },
+    },
+
+    // v19：故事脉络页
+    //  - dashboard 类型（没有 items，渲染时聚合章节数据）
+    //  - 展示：小说内时间 / 实际章节数 / 每章字数 / [可选：角色提及占位]
+    storyline: {
+      id: "storyline",
+      kind: "dashboard",
+      label: "故事脉络",
+      icon: "📜",
+      matchName() { return false; },
+      matchHeaders() { return false; },
+      fields: {},
+      defaults() { return {}; },
+      makeItem() { return null; },
+      sortKey() { return { num: 0, str: "" }; },
+      newItemLabel: "故事脉络",
+      emptyStateHtml() {
+        return `
+          <div class="empty-state-inner">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2">
+              <path d="M3 12h4l3 -8l4 16l3 -8h4" />
+            </svg>
+            <p>故事脉络</p>
+            <p class="hint">导入章节内容后，此处展示故事时间线、总章节数、每章概要等聚合视图</p>
+          </div>`;
+      },
+    },
+
+    // v19：角色详情页
+    //  - 角色台账（手动维护：名称 / 身份 / 描述 / 首次出场章节）
+    //  - 描述可填角色在文章中的相关描述 + 剧情走向
+    character: {
+      id: "character",
+      kind: "list",
+      label: "角色详情",
+      icon: "👤",
+      matchName() { return false; },
+      matchHeaders() { return false; },
+      fields: {
+        name: ["角色名", "姓名", "人物", "名字"],
+        role: ["身份", "角色", "职位", "定位"],
+        description: ["描述", "人物描述", "剧情", "相关描述"],
+        firstCh: ["首次出场", "出场章节", "首章"],
+      },
+      defaults() {
+        return { name: "", role: "", description: "", firstCh: "" };
+      },
+      makeItem(data, sheet) {
+        return {
+          id: uid("ch2"),
+          name: data.name || "",
+          role: data.role || "",
+          description: data.description || "",
+          firstCh: String(data.firstCh ?? "").trim(),
+          sheet,
+        };
+      },
+      sortKey(item) {
+        // 主角置顶，其余按首次出场章节号升序
+        const role = String(item.role || "");
+        const isMain = /主角|主人公|男主|女主/i.test(role);
+        const chNo = parseChapterNo(item.firstCh).num;
+        return { num: isMain ? 0 : 1, chNo, str: item.name || "" };
+      },
+      newItemLabel: "新增角色",
+      newItemToast(sheet, name) {
+        return name ? `已新增角色「${name}」` : "已新增角色";
+      },
+      emptyStateHtml() {
+        return `
+          <div class="empty-state-inner">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 21c0 -4 4 -7 8 -7s8 3 8 7" />
+            </svg>
+            <p>从左侧选一个角色查看，或新增一个</p>
+            <p class="hint">身份含"主角"会自动置顶；描述可写角色在小说中的相关描述 + 剧情走向</p>
+          </div>`;
+      },
+    },
   };
 
   // v14：把 fsNo（伏笔编号）解析为可排序的 key
@@ -248,6 +383,49 @@
     if (p.hasNum && Number.isFinite(p.num)) return p.num;
     if (typeof no === "number" && Number.isFinite(no)) return no;
     return 0;
+  }
+
+  // v19：检测现有伏笔编号的"格式模板"
+  //  - 拿当前 sheet（或全量）的 fsNo 样本，看哪种 "前缀 + 数字宽度" 出现最多
+  //  - 出现 2 次及以上就视为已建立格式；否则返回 null（沿用纯数字）
+  //  - 例子：
+  //      ["1", "2", "3"]              → {prefix: "",     padWidth: 1}
+  //      ["FS-001", "FS-002", "FS-3"] → {prefix: "FS-",  padWidth: 3}  （少数服从多数）
+  //      ["F1", "F2", "F10"]          → {prefix: "F",    padWidth: 1}
+  //      ["序章", "1", "2"]           → null                 （样本不统一）
+  function detectFsNoFormat(items) {
+    const samples = (items || [])
+      .map((it) => String(it && it.fsNo != null ? it.fsNo : "").trim())
+      .filter(Boolean);
+    if (samples.length < 2) return null; // 不到 2 个样本，不足以定格式
+    const re = /^(.*?)(\d+)$/;
+    let best = null;
+    for (const s of samples) {
+      const m = s.match(re);
+      if (!m) continue;
+      const prefix = m[1];
+      const num = m[2];
+      const pad = num.length;
+      // 数这个 prefix+pad 在样本里出现多少次
+      let count = 0;
+      for (const o of samples) {
+        const om = o.match(re);
+        if (om && om[1] === prefix && om[2].length === pad) count++;
+      }
+      if (!best || count > best.count) {
+        best = { prefix, padWidth: pad, count };
+      }
+    }
+    if (!best || best.count < 2) return null;
+    return { prefix: best.prefix, padWidth: best.padWidth };
+  }
+
+  // v19：按格式模板格式化新伏笔编号
+  //  - fmt 为 null 时直接返回纯数字字符串
+  function formatFsNoByFormat(num, fmt) {
+    if (!fmt) return String(num);
+    const numStr = String(num).padStart(fmt.padWidth, "0");
+    return fmt.prefix + numStr;
   }
   const PAGE_IDS = Object.keys(PAGES);
   const DEFAULT_PAGE = "chapter";
@@ -382,6 +560,12 @@
     pages: {
       chapter: makePageState(),
       foreshadowing: makePageState(),
+      // v19：新增 3 个页面
+      //   - goods / character 是 list 类型（有自己的 items）
+      //   - storyline 是 dashboard 类型（聚合章节数据，无 items）
+      goods: makePageState(),
+      storyline: makePageState(),
+      character: makePageState(),
     },
     sheetsRaw: [], // [{name, rows2d, columns, rowCount, ok, page}]
     recentFiles: [],
@@ -428,6 +612,25 @@
           currentItemId: state.pages.foreshadowing.currentItemId,
           records: JSON.parse(JSON.stringify(state.pages.foreshadowing.records || [])),
         },
+        // v19：新增 3 个页面的快照（goods/character 有 items，storyline 无）
+        goods: {
+          sheets: JSON.parse(JSON.stringify(state.pages.goods.sheets || [])),
+          currentSheet: state.pages.goods.currentSheet,
+          items: JSON.parse(JSON.stringify(state.pages.goods.items || [])),
+          currentItemId: state.pages.goods.currentItemId,
+        },
+        storyline: {
+          sheets: JSON.parse(JSON.stringify(state.pages.storyline.sheets || [])),
+          currentSheet: state.pages.storyline.currentSheet,
+          items: JSON.parse(JSON.stringify(state.pages.storyline.items || [])),
+          currentItemId: state.pages.storyline.currentItemId,
+        },
+        character: {
+          sheets: JSON.parse(JSON.stringify(state.pages.character.sheets || [])),
+          currentSheet: state.pages.character.currentSheet,
+          items: JSON.parse(JSON.stringify(state.pages.character.items || [])),
+          currentItemId: state.pages.character.currentItemId,
+        },
       },
       sheetsRaw: JSON.parse(JSON.stringify(state.sheetsRaw || [])),
       currentPage: state.currentPage,
@@ -439,11 +642,24 @@
     state.pages = {
       chapter: {
         ...makePageState(),
-        ...snap.pages.chapter,
+        ...(snap.pages.chapter || {}),
       },
       foreshadowing: {
         ...makePageState(),
-        ...snap.pages.foreshadowing,
+        ...(snap.pages.foreshadowing || {}),
+      },
+      // v19：新增 3 个页面（snap 中可能不存在——v18 之前的数据；用 makePageState 兜底）
+      goods: {
+        ...makePageState(),
+        ...(snap.pages.goods || {}),
+      },
+      storyline: {
+        ...makePageState(),
+        ...(snap.pages.storyline || {}),
+      },
+      character: {
+        ...makePageState(),
+        ...(snap.pages.character || {}),
       },
     };
     state.sheetsRaw = snap.sheetsRaw || [];
@@ -815,6 +1031,15 @@
         }
         state.schema = 12;
       }
+      // v19：新增 3 个页面（goods / storyline / character）——schema 12 → 13
+      //  - 给 v12 之前的数据补上这 3 个 page state 的空结构
+      //  - 老数据升级时这些 page 一定是空的（用户没填过），不影响
+      for (const pid of ["goods", "storyline", "character"]) {
+        if (!state.pages[pid]) {
+          state.pages[pid] = makePageState();
+        }
+      }
+      state.schema = 13;
       if (Array.isArray(data.sheetsRaw)) {
         state.sheetsRaw = data.sheetsRaw;
       }
@@ -1035,6 +1260,42 @@
   function curItem() {
     const p = curPage();
     return p.items.find((it) => it.id === p.currentItemId) || null;
+  }
+  // v19：检查伏笔编辑器（主表字段 + 履历）相对当前 item 的 state 是否有未保存的修改
+  //  - 主表字段（fsNo / name / status）：DOM input 的 .value vs it.fsNo/it.name/it.status
+  //  - 履历（setup / notes）：每行 .fs-record-row 的 input/textarea .value vs 匹配的 record
+  //  - 用途：toggle 按钮切回查看态时、以及切伏笔时，决定是否调 saveCurrentItem()
+  //    （避免无变化时也调 save → pushHistory 产生无意义 undo 节点）
+  //  - 只在伏笔页有主表+履历；章节页不会调它
+  function isFsEditorDirty() {
+    if (state.currentPage !== "foreshadowing") return false;
+    const it = curItem();
+    if (!it) return false;
+    // 主表字段
+    const fsNoEl = document.getElementById("fs-fsno");
+    const nameEl = document.getElementById("fs-name");
+    const statusEl = document.getElementById("fs-status");
+    if (fsNoEl && String(fsNoEl.value ?? "").trim() !== String(it.fsNo ?? "").trim()) return true;
+    if (nameEl && String(nameEl.value ?? "").trim() !== String(it.name ?? "").trim()) return true;
+    if (statusEl && String(statusEl.value ?? "") !== String(it.status ?? "")) return true;
+    // 履历（编辑态下才有 input/textarea，但查看态 DOM 结构不同——只看存在的字段）
+    const list = document.getElementById("fs-records-list");
+    if (list) {
+      const rows = list.querySelectorAll(".fs-record-row");
+      for (const row of rows) {
+        const recId = row.dataset && row.dataset.recordId;
+        if (!recId) continue;
+        const rec = (state.pages.foreshadowing.records || []).find(
+          (r) => r.id === recId
+        );
+        if (!rec) continue;
+        const setupEl = row.querySelector('input[data-field="setup"]');
+        const notesEl = row.querySelector('textarea[data-field="notes"]');
+        if (setupEl && String(setupEl.value ?? "") !== String(rec.setup ?? "")) return true;
+        if (notesEl && String(notesEl.value ?? "") !== String(rec.notes ?? "")) return true;
+      }
+    }
+    return false;
   }
   function curSheet() {
     return curPage().currentSheet;
@@ -1727,7 +1988,8 @@
           <select id="fs-status" ${disabledAttr}>${opts}</select>
         </div>
         <div class="meta-actions meta-actions-last">
-          <button id="btn-fs-save" class="primary-btn" ${isEditing ? "" : "hidden"}>保存</button>
+          <!-- v19：移除"保存"按钮——编辑态下点 "完成编辑"（btn-fs-toggle）会自动检查 dirty 并落盘+入栈；
+                 切伏笔时也会自动 dirty 检测 + 退出编辑态；不需要显式保存按钮 -->
           <!-- v17：编辑按钮旁的"删除"按钮移除——删除统一在左侧列表的 .fs-delete 叉号触发，避免重复入口 -->
         </div>
       </div>
@@ -1755,6 +2017,411 @@
     // v10.1：editor.innerHTML 重写后 #fs-file-path 是新元素，
     // 必须补一次 updateFilePathDisplay()，否则保存/切伏笔后路径消失
     updateFilePathDisplay();
+  }
+
+  /* ============================================================
+     v19：新增 3 个页面的渲染函数
+       - 财物详情 (goods)：list 类型，2 列布局
+       - 故事脉络 (storyline)：dashboard 类型，单列时间线
+       - 角色详情 (character)：list 类型，2 列布局
+     ============================================================ */
+
+  // —— 通用 list 渲染辅助（goods / character 共用） ——
+  // 根据 sortKey 比较函数排序
+  function getSortedGoodsItems() {
+    const p = state.pages.goods;
+    const def = PAGES.goods;
+    const arr = p.items.slice();
+    arr.sort((a, b) => {
+      const ka = def.sortKey(a);
+      const kb = def.sortKey(b);
+      // goods 的 sortKey 已经是 {num, str} 复合 key，走 compareChapterNo
+      const cmp = compareChapterNo(ka, kb);
+      return cmp;
+    });
+    return arr;
+  }
+  function getSortedCharacterItems() {
+    const p = state.pages.character;
+    const def = PAGES.character;
+    const arr = p.items.slice();
+    arr.sort((a, b) => {
+      // character 的 sortKey 是 {num, chNo, str}，先按 num（主角/非主角），再按 chNo，再按名字
+      const ka = def.sortKey(a);
+      const kb = def.sortKey(b);
+      if (ka.num !== kb.num) return ka.num - kb.num;
+      const cc = compareChapterNo(
+        { num: ka.chNo, str: String(ka.chNo) },
+        { num: kb.chNo, str: String(kb.chNo) }
+      );
+      if (cc !== 0) return cc;
+      return (ka.str || "").localeCompare(kb.str || "", "zh-CN");
+    });
+    return arr;
+  }
+
+  // —— 财物详情 ——
+  function renderGoodsList() {
+    const list = $("#goods-list");
+    if (!list) return;
+    const p = state.pages.goods;
+    const items = getSortedGoodsItems();
+    // 类别汇总（用于列表底部小计）
+    const totals = {};
+    for (const it of items) {
+      const cat = String(it.category || "未分类").trim() || "未分类";
+      totals[cat] = (totals[cat] || 0) + (Number(it.quantity) || 0);
+    }
+    const summary = Object.keys(totals).length > 0
+      ? Object.entries(totals)
+          .map(([cat, n]) => `<span class="goods-summary-pill">${escapeHtml(cat)}：<b>${n >= 0 ? "+" : ""}${n}</b></span>`)
+          .join("")
+      : `<span class="muted">尚无数据</span>`;
+    list.innerHTML = items.length === 0
+      ? ""
+      : items
+          .map((it) => {
+            const active = it.id === p.currentItemId ? "active" : "";
+            const qty = Number(it.quantity) || 0;
+            const qtyClass = qty > 0 ? "goods-qty-pos" : qty < 0 ? "goods-qty-neg" : "";
+            const isLingshi = /灵石/i.test(String(it.category || ""));
+            return `
+            <li class="gd-item ${active}" data-id="${escapeHtml(it.id)}">
+              <span class="gd-cat ${isLingshi ? "gd-cat-lingshi" : ""}">${escapeHtml(it.category || "未分类")}</span>
+              <span class="gd-name">${escapeHtml(it.name || "（无名称）")}</span>
+              <span class="gd-qty ${qtyClass}">${qty >= 0 ? "+" : ""}${qty}</span>
+              <button class="gd-delete" data-id="${escapeHtml(it.id)}" title="删除该物品" aria-label="删除该物品" type="button">×</button>
+            </li>`;
+          })
+          .join("");
+    // 列表底部小计
+    const sumEl = $("#goods-summary");
+    if (sumEl) sumEl.innerHTML = summary;
+    const count = $("#goods-count");
+    if (count) count.textContent = `${items.length} 项`;
+  }
+
+  function renderGoodsEditor() {
+    const it = curItem();
+    const empty = $("#goods-editor-empty");
+    const editor = $("#goods-editor");
+    if (!empty || !editor) return;
+    if (!it) {
+      empty.hidden = false;
+      editor.hidden = true;
+      empty.innerHTML = PAGES.goods.emptyStateHtml();
+      return;
+    }
+    empty.hidden = true;
+    editor.hidden = false;
+    const qty = Number(it.quantity) || 0;
+    editor.innerHTML = `
+      <div class="editor-meta">
+        <div class="meta-field">
+          <label>物品名称</label>
+          <input id="gd-name" type="text" value="${escapeHtml(it.name || "")}" placeholder="如：九幽玄铁、寒霜剑" />
+        </div>
+        <div class="meta-field">
+          <label>类别</label>
+          <input id="gd-category" type="text" value="${escapeHtml(it.category || "")}" placeholder="如：灵石 / 武器 / 丹药" list="gd-cat-suggestions" />
+          <datalist id="gd-cat-suggestions">
+            <option value="灵石"></option>
+            <option value="武器"></option>
+            <option value="丹药"></option>
+            <option value="法器"></option>
+            <option value="功法"></option>
+            <option value="符箓"></option>
+            <option value="材料"></option>
+          </datalist>
+        </div>
+        <div class="meta-field">
+          <label>数量 <span class="muted hint">（正负数表示收支）</span></label>
+          <input id="gd-quantity" type="number" step="any" value="${qty}" />
+        </div>
+        <div class="meta-field">
+          <label>来源章节</label>
+          <input id="gd-sourceCh" type="text" value="${escapeHtml(it.sourceCh || "")}" placeholder="如：第3章" />
+        </div>
+        <div class="meta-actions">
+          <button id="gd-save" class="primary-btn">保存</button>
+          <button id="gd-delete" class="danger-btn">删除</button>
+        </div>
+      </div>
+      <div class="editor-body">
+        <label class="body-label">备注 / 来历</label>
+        <textarea id="gd-note" placeholder="物品的来历、用途、相关情节…">${escapeHtml(it.note || "")}</textarea>
+        <div class="body-stats">
+          <div class="stats-left">
+            <span id="gd-word-count" class="muted">0 字</span>
+            <span id="gd-save-status" class="muted"></span>
+          </div>
+          <span id="gd-file-path" class="muted file-path" title=""></span>
+        </div>
+      </div>`;
+    bindGoodsEditorEvents();
+    updateFilePathDisplay();
+  }
+
+  function bindGoodsEditorEvents() {
+    const it = curItem();
+    if (!it) return;
+    const wire = (id, prop, transform) => {
+      const el = $("#" + id);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        let v = el.value;
+        if (transform) v = transform(v);
+        it[prop] = v;
+        // 即时更新列表显示
+        if (prop === "name" || prop === "category" || prop === "quantity") {
+          renderGoodsList();
+        }
+        if (id === "gd-note") {
+          const wc = $("#gd-word-count");
+          if (wc) wc.textContent = `${charCount(it.note)} 字`;
+        }
+        // 自动保存
+        save();
+      });
+    };
+    wire("gd-name", "name");
+    wire("gd-category", "category");
+    wire("gd-quantity", "quantity", (v) => parseFloat(v) || 0);
+    wire("gd-sourceCh", "sourceCh");
+    wire("gd-note", "note");
+
+    // 初始字数
+    const wc = $("#gd-word-count");
+    if (wc) wc.textContent = `${charCount(it.note)} 字`;
+
+    // 保存按钮
+    const saveBtn = $("#gd-save");
+    if (saveBtn) {
+      saveBtn.addEventListener("click", () => {
+        save();
+        pushHistory();
+        saveAsJson();
+        toast("已保存");
+      });
+    }
+    const delBtn = $("#gd-delete");
+    if (delBtn) {
+      delBtn.addEventListener("click", () => {
+        if (confirm(`确定要删除「${it.name || "该物品"}」吗？`)) {
+          deleteCurrentItem();
+        }
+      });
+    }
+  }
+
+  // —— 故事脉络 (dashboard) ——
+  function renderStorylineDashboard() {
+    const wrap = $("#storyline-dashboard");
+    if (!wrap) return;
+    const chItems = state.pages.chapter.items;
+    const fsItems = state.pages.foreshadowing.items;
+    const fsRecords = state.pages.foreshadowing.records || [];
+    const chCount = chItems.length;
+    const totalChars = chItems.reduce((sum, it) => sum + charCount(it.content || ""), 0);
+    const unresolvedFs = fsItems.filter((it) => (it.status || FS_STATUS_DEFAULT) === "未回收").length;
+    const partialFs = fsItems.filter((it) => (it.status || FS_STATUS_DEFAULT) === "部分回收").length;
+    const resolvedFs = fsItems.filter((it) => (it.status || FS_STATUS_DEFAULT) === "已回收").length;
+
+    // 头部指标卡
+    const head = `
+      <div class="storyline-head">
+        <div class="storyline-stat">
+          <div class="storyline-stat-num">${chCount}</div>
+          <div class="storyline-stat-label">实际章节</div>
+        </div>
+        <div class="storyline-stat">
+          <div class="storyline-stat-num">${totalChars.toLocaleString()}</div>
+          <div class="storyline-stat-label">总字数</div>
+        </div>
+        <div class="storyline-stat">
+          <div class="storyline-stat-num">${fsItems.length}</div>
+          <div class="storyline-stat-label">伏笔总数</div>
+        </div>
+        <div class="storyline-stat storyline-stat-fs">
+          <div class="storyline-stat-num">${unresolvedFs} / ${partialFs} / ${resolvedFs}</div>
+          <div class="storyline-stat-label">未回收 / 部分 / 已回收</div>
+        </div>
+      </div>`;
+
+    // 章节时间线（按章节号排序）
+    const sortedCh = chItems.slice().sort((a, b) => {
+      const ka = PAGES.chapter.sortKey(a);
+      const kb = PAGES.chapter.sortKey(b);
+      return compareChapterNo(ka, kb);
+    });
+
+    const timeline = sortedCh.length === 0
+      ? `<div class="storyline-empty muted">还没有章节。先到「章节」页录入内容后，此处会显示时间线。</div>`
+      : sortedCh.map((it) => {
+          const wc = charCount(it.content || "");
+          // 该章节相关的伏笔履历
+          const chNo = parseChapterNo(it.no).num;
+          const relatedRecords = fsRecords.filter((r) => {
+            if (!r.setup) return false;
+            const rNo = parseChapterNo(r.setup).num;
+            return Number.isFinite(rNo) && Number.isFinite(chNo) && rNo === chNo;
+          });
+          const relatedNames = relatedRecords
+            .map((r) => fsItems.find((x) => String(x.fsNo || "").trim() === String(r.fsNo || "").trim()))
+            .filter(Boolean);
+          return `
+          <div class="storyline-row" data-ch-id="${escapeHtml(it.id)}">
+            <div class="storyline-row-no">${escapeHtml(String(it.no))}</div>
+            <div class="storyline-row-body">
+              <div class="storyline-row-title">${escapeHtml(it.title || "（无标题）")}</div>
+              <div class="storyline-row-meta muted">${wc.toLocaleString()} 字</div>
+              ${relatedNames.length > 0
+                ? `<div class="storyline-row-fs">${relatedNames.map((n) => `<span class="storyline-fs-tag">#${escapeHtml(n.fsNo || "")} ${escapeHtml(n.name || "")}</span>`).join("")}</div>`
+                : ""}
+            </div>
+          </div>`;
+        }).join("");
+
+    wrap.innerHTML = head + `
+      <div class="storyline-section-title">📖 章节时间线</div>
+      <div class="storyline-timeline">${timeline}</div>`;
+
+    // 绑定点击时间线跳转到章节
+    $$(".storyline-row", wrap).forEach((row) => {
+      row.addEventListener("click", () => {
+        const chId = row.dataset.chId;
+        if (!chId) return;
+        state.currentPage = "chapter";
+        state.pages.chapter.currentItemId = chId;
+        save();
+        renderAll();
+      });
+    });
+  }
+
+  // —— 角色详情 ——
+  function renderCharacterList() {
+    const list = $("#character-list");
+    if (!list) return;
+    const p = state.pages.character;
+    const items = getSortedCharacterItems();
+    list.innerHTML = items.length === 0
+      ? ""
+      : items
+          .map((it) => {
+            const active = it.id === p.currentItemId ? "active" : "";
+            const isMain = /主角|主人公|男主|女主/i.test(String(it.role || ""));
+            return `
+            <li class="ch2-item ${active}" data-id="${escapeHtml(it.id)}">
+              <span class="ch2-name">${escapeHtml(it.name || "（无名）")}</span>
+              <span class="ch2-role ${isMain ? "ch2-role-main" : ""}">${escapeHtml(it.role || "—")}</span>
+              <span class="ch2-first muted">${escapeHtml(it.firstCh || "")}</span>
+              <button class="ch2-delete" data-id="${escapeHtml(it.id)}" title="删除该角色" aria-label="删除该角色" type="button">×</button>
+            </li>`;
+          })
+          .join("");
+    const count = $("#character-count");
+    if (count) count.textContent = `${items.length} 个`;
+  }
+
+  function renderCharacterEditor() {
+    const it = curItem();
+    const empty = $("#character-editor-empty");
+    const editor = $("#character-editor");
+    if (!empty || !editor) return;
+    if (!it) {
+      empty.hidden = false;
+      editor.hidden = true;
+      empty.innerHTML = PAGES.character.emptyStateHtml();
+      return;
+    }
+    empty.hidden = true;
+    editor.hidden = false;
+    editor.innerHTML = `
+      <div class="editor-meta">
+        <div class="meta-field">
+          <label>角色名</label>
+          <input id="ch2-name" type="text" value="${escapeHtml(it.name || "")}" placeholder="角色的名字" />
+        </div>
+        <div class="meta-field">
+          <label>身份</label>
+          <input id="ch2-role" type="text" value="${escapeHtml(it.role || "")}" placeholder="如：主角 / 反派 / 师父" list="ch2-role-suggestions" />
+          <datalist id="ch2-role-suggestions">
+            <option value="主角"></option>
+            <option value="女主"></option>
+            <option value="反派"></option>
+            <option value="师父"></option>
+            <option value="同门"></option>
+            <option value="路人"></option>
+          </datalist>
+        </div>
+        <div class="meta-field">
+          <label>首次出场</label>
+          <input id="ch2-firstCh" type="text" value="${escapeHtml(it.firstCh || "")}" placeholder="如：第3章" />
+        </div>
+        <div class="meta-actions">
+          <button id="ch2-save" class="primary-btn">保存</button>
+          <button id="ch2-delete" class="danger-btn">删除</button>
+        </div>
+      </div>
+      <div class="editor-body">
+        <label class="body-label">描述 / 剧情走向</label>
+        <textarea id="ch2-description" placeholder="角色在文章中的相关描述、剧情走向、关键事件…">${escapeHtml(it.description || "")}</textarea>
+        <div class="body-stats">
+          <div class="stats-left">
+            <span id="ch2-word-count" class="muted">0 字</span>
+            <span id="ch2-save-status" class="muted"></span>
+          </div>
+          <span id="ch2-file-path" class="muted file-path" title=""></span>
+        </div>
+      </div>`;
+    bindCharacterEditorEvents();
+    updateFilePathDisplay();
+  }
+
+  function bindCharacterEditorEvents() {
+    const it = curItem();
+    if (!it) return;
+    const wire = (id, prop) => {
+      const el = $("#" + id);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        it[prop] = el.value;
+        if (prop === "name" || prop === "role" || prop === "firstCh") {
+          renderCharacterList();
+        }
+        if (id === "ch2-description") {
+          const wc = $("#ch2-word-count");
+          if (wc) wc.textContent = `${charCount(it.description)} 字`;
+        }
+        save();
+      });
+    };
+    wire("ch2-name", "name");
+    wire("ch2-role", "role");
+    wire("ch2-firstCh", "firstCh");
+    wire("ch2-description", "description");
+
+    const wc = $("#ch2-word-count");
+    if (wc) wc.textContent = `${charCount(it.description)} 字`;
+
+    const saveBtn = $("#ch2-save");
+    if (saveBtn) {
+      saveBtn.addEventListener("click", () => {
+        save();
+        pushHistory();
+        saveAsJson();
+        toast("已保存");
+      });
+    }
+    const delBtn = $("#ch2-delete");
+    if (delBtn) {
+      delBtn.addEventListener("click", () => {
+        if (confirm(`确定要删除角色「${it.name || "该角色"}」吗？`)) {
+          deleteCurrentItem();
+        }
+      });
+    }
   }
 
   // v14：获取当前伏笔的所有履历（按"提及章节"排序）
@@ -1879,18 +2546,22 @@
       el?.addEventListener("input", syncMeta);
       el?.addEventListener("change", syncMeta);
     });
-    // v14：编辑/查看态切换
+    // v19：编辑/查看态切换
+    //  - 切回查看态时：先检查内容是否真的变了（isFsEditorDirty），
+    //    有变化才调 saveCurrentItem() 落盘 + 入 undo 栈；
+    //    无变化时直接切回查看态，避免无意义 undo 节点
+    //  - 切到编辑态时：不需要保存（只把按钮文字/状态从查看态改为编辑态）
     $("#btn-fs-toggle")?.addEventListener("click", () => {
-      // 切回查看态时如果有未保存的输入，自动写回
       if (state.ui.fsEditing) {
-        saveCurrentItem();
+        if (isFsEditorDirty()) {
+          saveCurrentItem();
+        }
       }
       state.ui.fsEditing = !state.ui.fsEditing;
       save();
       renderFsEditor();
       // 重新挂事件（renderFsEditor 会重新生成 DOM）
       // 注：renderFsEditor 内部已经调用了 bindFsEditorEvents
-      // 但保存按钮的逻辑在事件委托里（bindEditorButtons），无需重绑
     });
     // v18：履历排序（按提及章节正/倒序）
     $("#btn-fs-record-sort")?.addEventListener("click", () => {
@@ -2167,8 +2838,12 @@
 
   function renderNewItemButton() {
     // 文案统一由 curPageDef().newItemLabel 提供；
-    // 由于 #btn-new 只在 chapter 视图、#btn-new-fs 只在 foreshadowing 视图，
-    // 这里两者都更新一次（每个按钮只在自己视图显示），不影响。
+    // 5 个新增按钮各自只在对应视图显示，这里都更新一次。
+    // - #btn-new：章节
+    // - #btn-new-fs：伏笔
+    // - #btn-new-gd：财物详情
+    // - #btn-new-ch2：角色详情
+    // - 故事脉络（storyline）没有新增按钮（dashboard 类型）
     const def = curPageDef();
     const label = def.newItemLabel || "新增";
     const setLabel = (btn) => {
@@ -2179,6 +2854,8 @@
     };
     setLabel($("#btn-new"));
     setLabel($("#btn-new-fs"));
+    setLabel($("#btn-new-gd"));
+    setLabel($("#btn-new-ch2"));
   }
 
   function renderGlobal() {
@@ -2188,20 +2865,28 @@
   }
 
   function renderCurrentPage() {
-    // 控制 page-view 显隐
-    const pageChapter = $('[data-page-view="chapter"]');
-    const pageFs = $('[data-page-view="foreshadowing"]');
+    // v19：通用 page-view 显隐控制 + 按 kind 分发渲染
+    //   - 5 个 page-view 各自 hidden 控制；只把当前页设为可见
+    const views = ["chapter", "foreshadowing", "goods", "storyline", "character"];
+    for (const pid of views) {
+      const el = $(`[data-page-view="${pid}"]`);
+      if (el) el.hidden = pid !== state.currentPage;
+    }
     if (state.currentPage === "chapter") {
-      if (pageChapter) pageChapter.hidden = false;
-      if (pageFs) pageFs.hidden = true;
       renderSheetTabs();
       renderChapterList();
       renderChapterEditor();
     } else if (state.currentPage === "foreshadowing") {
-      if (pageChapter) pageChapter.hidden = true;
-      if (pageFs) pageFs.hidden = false;
       renderFsList();
       renderFsEditor();
+    } else if (state.currentPage === "goods") {
+      renderGoodsList();
+      renderGoodsEditor();
+    } else if (state.currentPage === "storyline") {
+      renderStorylineDashboard();
+    } else if (state.currentPage === "character") {
+      renderCharacterList();
+      renderCharacterEditor();
     }
     renderNewItemButton();
   }
@@ -3089,21 +3774,25 @@
     if (state.currentPage === "chapter") {
       data.no = nextNoInCurrentSheet();
     } else if (state.currentPage === "foreshadowing") {
-      // v14：伏笔编号 fsNo 自动生成（取当前 sheet 内最大编号 +1，转字符串）
-      const maxFsNo = (() => {
-        const list = targetSheet
-          ? p.items.filter((it) => it.sheet === targetSheet)
-          : p.items;
-        let max = 0;
-        for (const it of list) {
-          const k = parseFsNoKey(it.fsNo);
-          if (Number.isFinite(k.num) && k.num > max) max = k.num;
-        }
-        return max + 1;
-      })();
-      data.no = maxFsNo;
-      data.fsNo = String(maxFsNo);
+      // v19：伏笔编号 fsNo 自动生成——
+      //   1) 取当前 sheet 内最大编号 +1（数字部分）
+      //   2) 检测现有数据的"格式模板"（前缀 + 数字宽度），
+      //      多数样本一致 → 新条目沿用同一格式（如 FS-001 → FS-004）
+      //      样本不足或不统一 → 沿用纯数字
+      const sheetList = targetSheet
+        ? p.items.filter((it) => it.sheet === targetSheet)
+        : p.items;
+      let max = 0;
+      for (const it of sheetList) {
+        const k = parseFsNoKey(it.fsNo);
+        if (Number.isFinite(k.num) && k.num > max) max = k.num;
+      }
+      const nextNum = max + 1;
+      const fmt = detectFsNoFormat(sheetList);
+      data.fsNo = formatFsNoByFormat(nextNum, fmt);
     }
+    // v19：goods / character 直接用 defaults()，不需要额外编号
+    // （剧情脉络 storyline 是 dashboard 类型，没有 items，addNewItem 不应被调用）
     const it = def.makeItem(data, targetSheet);
     p.items.push(it);
     p.currentItemId = it.id;
@@ -3117,13 +3806,21 @@
           ? "#ch-title"
           : state.currentPage === "foreshadowing"
             ? "#fs-name"
-            : null;
+            : state.currentPage === "goods"
+              ? "#gd-name"
+              : state.currentPage === "character"
+                ? "#ch2-name"
+                : null;
       if (focusSel) {
         const el = $(focusSel);
         if (el) el.focus();
       }
     }, 50);
-    const displayKey = state.currentPage === "foreshadowing" ? (data.fsNo || data.no) : data.no;
+    // v19：goods 用 name、character 用 name 作为 toast 显示
+    let displayKey = data.no;
+    if (state.currentPage === "foreshadowing") displayKey = data.fsNo || data.no;
+    else if (state.currentPage === "goods") displayKey = data.name;
+    else if (state.currentPage === "character") displayKey = data.name;
     toast(def.newItemToast(targetSheet, displayKey));
   }
 
@@ -4236,9 +4933,13 @@
   }
 
   function bindListEvents() {
-    // 事件委托 - 两个列表共用
+    // 事件委托 - 所有 list 视图共用
+    // 列表项 class：.ch-item / .fs-item / .gd-item / .ch2-item
+    // 删除按钮：.ch-delete / .fs-delete / .gd-delete / .ch2-delete
     const chapterList = $("#chapter-list");
     const fsList = $("#fs-list");
+    const goodsList = $("#goods-list");
+    const characterList = $("#character-list");
     const onClick = (e) => {
       // 章节列表的"删除"叉号优先处理，阻止冒泡（避免触发选中）
       if (e.target.closest(".ch-delete")) {
@@ -4260,15 +4961,43 @@
         deleteCurrentItem();
         return;
       }
-      const item = e.target.closest(".ch-item, .fs-item");
+      // v19：财物详情列表的"删除"叉号
+      if (e.target.closest(".gd-delete")) {
+        e.stopPropagation();
+        const id = e.target.closest(".gd-delete").dataset.id;
+        if (!id) return;
+        curPage().currentItemId = id;
+        deleteCurrentItem();
+        return;
+      }
+      // v19：角色详情列表的"删除"叉号
+      if (e.target.closest(".ch2-delete")) {
+        e.stopPropagation();
+        const id = e.target.closest(".ch2-delete").dataset.id;
+        if (!id) return;
+        curPage().currentItemId = id;
+        deleteCurrentItem();
+        return;
+      }
+      const item = e.target.closest(".ch-item, .fs-item, .gd-item, .ch2-item");
       if (!item) return;
       // 切到同一条则不做事（避免无谓的 history 抖动）
       if (curPage().currentItemId === item.dataset.id) return;
       // v7：切章节前先保存当前编辑器的输入到 item（防止未保存内容丢失）
       // v17：伏笔页只在编辑态（fsEditing）才需要保存；查看态切伏笔无意义也不该写入
-      // （编辑态可能改过 fsNo/name/status/履历；查看态只读，DOM 本身无未存改动）
-      if (state.currentPage === "chapter" || (state.currentPage === "foreshadowing" && state.ui.fsEditing)) {
+      // v19：伏笔页切伏笔——只有 dirty 才 saveCurrentItem() 落盘 + 入 undo 栈；
+      //      无论是否 dirty 都退出编辑态（fsEditing=false），避免带着 edit 态进新伏笔
+      // v19：goods / character 切条目时也走 saveCurrentItem() 落盘
+      if (state.currentPage === "chapter" || state.currentPage === "goods" || state.currentPage === "character") {
         try { saveCurrentItem(); } catch (_) {}
+      } else if (state.currentPage === "foreshadowing" && state.ui.fsEditing) {
+        try {
+          if (isFsEditorDirty()) {
+            saveCurrentItem();
+          }
+        } catch (_) {}
+        // 切走必退出编辑态（无论是否 dirty；无变化也直接退出再切换）
+        state.ui.fsEditing = false;
       }
       curPage().currentItemId = item.dataset.id;
       save();
@@ -4276,17 +5005,24 @@
     };
     if (chapterList) chapterList.addEventListener("click", onClick);
     if (fsList) fsList.addEventListener("click", onClick);
+    if (goodsList) goodsList.addEventListener("click", onClick);
+    if (characterList) characterList.addEventListener("click", onClick);
   }
 
   function bindEditorButtons() {
     // 章节页：新增 / 导入 / 排序
     $("#btn-new")?.addEventListener("click", addNewItem);
     $("#btn-new-fs")?.addEventListener("click", addNewItem);
+    // v19：goods / character 各自的新增按钮（共用 addNewItem）
+    $("#btn-new-gd")?.addEventListener("click", addNewItem);
+    $("#btn-new-ch2")?.addEventListener("click", addNewItem);
+    // 故事脉络（storyline）没有新增按钮——dashboard 类型
     // 编辑器按钮是动态生成的，用事件委托
     document.addEventListener("click", (e) => {
       const t = e.target;
       if (!t) return;
-      const isSave = t.id === "btn-save" || t.id === "btn-fs-save";
+      // v19：#btn-fs-save 已被移除（编辑态下点"完成编辑"自动 dirty 检查 + 落盘；切伏笔也自动 dirty + 退出编辑态）
+      const isSave = t.id === "btn-save";
       // v17：#btn-fs-delete 已被移除（删除统一在左侧 .fs-delete 叉号）
       const isDelete = t.id === "btn-delete";
       if (isSave && curItem()) {

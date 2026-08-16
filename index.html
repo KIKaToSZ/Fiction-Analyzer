@@ -269,14 +269,7 @@
                 </svg>
                 <span>导入</span>
               </button>
-              <!-- v18：伏笔列表状态筛选（全部 / 未回收 / 部分回收 / 已回收） -->
-              <div id="seg-fs-status" class="seg seg-fs-status" role="group" aria-label="按状态筛选">
-                <button class="seg-btn active" data-fs-status="all" title="显示全部">全部</button>
-                <button class="seg-btn" data-fs-status="未回收" title="只显示未回收的伏笔">未回收</button>
-                <button class="seg-btn" data-fs-status="部分回收" title="只显示部分回收的伏笔">部分回收</button>
-                <button class="seg-btn" data-fs-status="已回收" title="只显示已回收的伏笔">已回收</button>
-              </div>
-              <!-- v18：伏笔列表排序（按伏笔编号正/倒序） -->
+              <!-- v19：导入按钮留在 page-toolbar，排序/计数也保留 -->
               <button id="btn-fs-sort" class="tool-btn" title="切换正/倒序（按伏笔编号）">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <polyline points="6 9 12 15 18 9" />
@@ -288,6 +281,15 @@
             </div>
             <div class="two-cols">
               <aside class="col col-list">
+                <!-- v19：状态筛选放到列表最上方（与新增/导入并列 → 移到此处独占一行）
+                     - 4 档分段按钮（全部 / 未回收 / 部分回收 / 已回收）
+                     - 默认"全部"被选中 -->
+                <div id="seg-fs-status" class="seg seg-fs-status" role="group" aria-label="按状态筛选">
+                  <button class="seg-btn active" data-fs-status="all" title="显示全部">全部</button>
+                  <button class="seg-btn" data-fs-status="未回收" title="只显示未回收的伏笔">未回收</button>
+                  <button class="seg-btn" data-fs-status="部分回收" title="只显示部分回收的伏笔">部分回收</button>
+                  <button class="seg-btn" data-fs-status="已回收" title="只显示已回收的伏笔">已回收</button>
+                </div>
                 <ul id="fs-list" class="fs-list"></ul>
               </aside>
               <div class="resizer resizer-col-list" data-resizer="two-list" title="拖动调整伏笔列表宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
@@ -345,6 +347,90 @@
               </main>
             </div>
           </section>
+
+          <!-- ===================== 财物详情页（v19） ===================== -->
+          <section class="page-view" data-page-view="goods" hidden>
+            <div class="page-toolbar">
+              <button id="btn-new-gd" class="tool-btn" title="新增物品">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>新增物品</span>
+              </button>
+              <span class="page-toolbar-spacer"></span>
+              <span id="goods-count" class="muted page-toolbar-meta">0 项</span>
+            </div>
+            <div class="two-cols">
+              <aside class="col col-list">
+                <ul id="goods-list" class="gd-list"></ul>
+                <div id="goods-summary" class="goods-summary"></div>
+              </aside>
+              <div class="resizer resizer-col-list" data-resizer="two-list" title="拖动调整物品列表宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
+                <span class="resizer-reset-hint">双击重置</span>
+              </div>
+              <main class="col col-editor">
+                <div id="goods-editor-empty" class="empty-state">
+                  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M9 12h6M12 9v6" />
+                  </svg>
+                  <p>从左侧选一条物品查看，或新增一条</p>
+                  <p class="hint">灵石余额填正负数即可表示收支；类别填"灵石"会自动置顶</p>
+                </div>
+                <article id="goods-editor" class="editor" hidden>
+                  <!-- 由 renderGoodsEditor 动态生成 -->
+                </article>
+              </main>
+            </div>
+          </section>
+
+          <!-- ===================== 故事脉络页（v19，dashboard） ===================== -->
+          <section class="page-view" data-page-view="storyline" hidden>
+            <div class="page-toolbar">
+              <span class="muted page-toolbar-meta">聚合视图 · 不需要单独录入</span>
+              <span class="page-toolbar-spacer"></span>
+            </div>
+            <div id="storyline-dashboard" class="storyline-dashboard">
+              <!-- 由 renderStorylineDashboard 动态生成 -->
+            </div>
+          </section>
+
+          <!-- ===================== 角色详情页（v19） ===================== -->
+          <section class="page-view" data-page-view="character" hidden>
+            <div class="page-toolbar">
+              <button id="btn-new-ch2" class="tool-btn" title="新增角色">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>新增角色</span>
+              </button>
+              <span class="page-toolbar-spacer"></span>
+              <span id="character-count" class="muted page-toolbar-meta">0 个</span>
+            </div>
+            <div class="two-cols">
+              <aside class="col col-list">
+                <ul id="character-list" class="ch2-list"></ul>
+              </aside>
+              <div class="resizer resizer-col-list" data-resizer="two-list" title="拖动调整角色列表宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
+                <span class="resizer-reset-hint">双击重置</span>
+              </div>
+              <main class="col col-editor">
+                <div id="character-editor-empty" class="empty-state">
+                  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+                    <circle cx="12" cy="8" r="4" />
+                    <path d="M4 21c0 -4 4 -7 8 -7s8 3 8 7" />
+                  </svg>
+                  <p>从左侧选一个角色查看，或新增一个</p>
+                  <p class="hint">身份含"主角"会自动置顶；描述可写角色在小说中的相关描述 + 剧情走向</p>
+                </div>
+                <article id="character-editor" class="editor" hidden>
+                  <!-- 由 renderCharacterEditor 动态生成 -->
+                </article>
+              </main>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -373,6 +459,8 @@
             <p class="muted hint">
               选择一个本地 <code>.xlsx</code> 或 <code>.json</code> 文件。xlsx 按 sheet 名的特征自动归类到对应页面（章节 / 伏笔管理 / 后续扩展），可以手动指定；json 是数组格式的章节或伏笔数据，每项是一个对象、keys 作为列名。文本粘贴（Tab / 逗号 / 多空格 / JSON 数组）作为兜底，默认导入到「章节」页。
             </p>
+            <!-- v19：粘贴文本移到拖入之前 + 默认展开 + 横向填充满 -->
+            <textarea id="import-text" rows="6" class="import-text-wide" placeholder="章节号	章节名	文章内容&#10;1	寒江初雪	……"></textarea>
             <div id="import-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入文件">
               <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -383,14 +471,6 @@
               <div class="import-drop-hint">支持 .xlsx / .xlsm / .json 格式（json 为数组格式），单文件</div>
               <input id="file-xlsx" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
             </div>
-            <div id="import-file-info" class="import-file-info" hidden>
-              <span class="import-file-name"></span>
-              <button class="link-btn" id="btn-import-clear" type="button">清除</button>
-            </div>
-            <details class="import-advanced">
-              <summary>或粘贴文本（Tab / 逗号 / 多空格分隔）</summary>
-              <textarea id="import-text" rows="6" placeholder="章节号	章节名	文章内容&#10;1	寒江初雪	……"></textarea>
-            </details>
             <div id="import-sheet-wrap" class="form-row form-row-sheets" hidden>
               <label class="check">
                 <span>来源 sheet：</span>
@@ -428,6 +508,8 @@
                 <span class="import-section-card-title">📋 伏笔数据表</span>
                 <span class="muted hint">伏笔编号 / 伏笔名称 / 状态</span>
               </header>
+              <!-- v19：粘贴文本移到拖入之前 + 默认展开 + 横向填充满 -->
+              <textarea id="import-fs-main-text" rows="4" class="import-text-wide" placeholder="伏笔编号	伏笔名称	状态&#10;1	寒江初雪	活跃&#10;2	暗夜妖刀	已回收"></textarea>
               <div id="import-fs-main-drop" class="import-drop" tabindex="0" role="button" aria-label="拖入或选择伏笔数据表文件">
                 <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -442,10 +524,6 @@
                 <span class="import-file-name"></span>
                 <button class="link-btn" data-clear-section="fs-main" type="button">清除</button>
               </div>
-              <details class="import-advanced">
-                <summary>或粘贴文本（Tab / 逗号 / 多空格）</summary>
-                <textarea id="import-fs-main-text" rows="4" placeholder="伏笔编号	伏笔名称	状态&#10;1	寒江初雪	活跃&#10;2	暗夜妖刀	已回收"></textarea>
-              </details>
               <div id="import-fs-main-sheet-wrap" class="form-row form-row-sheets" hidden>
                 <label class="check">
                   <span>来源 sheet：</span>
@@ -468,6 +546,8 @@
                 <span class="import-section-card-title">📜 伏笔履历表</span>
                 <span class="muted hint">序号 / 伏笔编号 / 提及章节 / 原文描述</span>
               </header>
+              <!-- v19：粘贴文本移到拖入之前 + 默认展开 + 横向填充满 -->
+              <textarea id="import-fs-record-text" rows="4" class="import-text-wide" placeholder="伏笔编号	提及章节	原文描述&#10;1	第3章	寒江独钓者，遗下一枚旧玉佩&#10;1	第7章	玉佩现世，主角发现背面刻有「雪」字"></textarea>
               <div id="import-fs-record-drop" class="import-drop" tabindex="0" role="button" aria-label="拖入或选择伏笔履历表文件">
                 <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -482,10 +562,6 @@
                 <span class="import-file-name"></span>
                 <button class="link-btn" data-clear-section="fs-record" type="button">清除</button>
               </div>
-              <details class="import-advanced">
-                <summary>或粘贴文本（Tab / 逗号 / 多空格）</summary>
-                <textarea id="import-fs-record-text" rows="4" placeholder="伏笔编号	提及章节	原文描述&#10;1	第3章	寒江独钓者，遗下一枚旧玉佩&#10;1	第7章	玉佩现世，主角发现背面刻有「雪」字"></textarea>
-              </details>
               <div id="import-fs-record-sheet-wrap" class="form-row form-row-sheets" hidden>
                 <label class="check">
                   <span>来源 sheet：</span>
