@@ -34,7 +34,15 @@
   };
 
   // 伏笔状态颜色 / 文案
-  const FS_STATUS_OPTIONS = ["活跃", "已回收", "已废弃"];
+  // v17：状态选项改为「未回收 / 部分回收 / 已回收」三档
+  const FS_STATUS_OPTIONS = ["未回收", "部分回收", "已回收"];
+  // 旧值 → 新值迁移（活跃→未回收、已废弃→部分回收、已回收→已回收）
+  const FS_STATUS_MIGRATION = {
+    "活跃": "未回收",
+    "已废弃": "部分回收",
+    "已回收": "已回收",
+  };
+  const FS_STATUS_DEFAULT = "未回收";
 
   /* ============================================================
      页面注册表 - 每个页面是独立的「数据 + UI + 识别」单元
@@ -153,7 +161,7 @@
         return {
           fsNo: "",
           name: "",
-          status: "活跃",
+          status: FS_STATUS_DEFAULT,
         };
       },
       recordDefaults() {
@@ -169,7 +177,8 @@
           id: uid("fs"),
           fsNo: String(data.fsNo ?? data.no ?? "").trim(),
           name: data.name || "",
-          status: data.status || "活跃",
+          // v17：旧状态值（活跃/已废弃/已回收）→ 新值（未回收/部分回收/已回收）
+          status: FS_STATUS_MIGRATION[data.status] || data.status || FS_STATUS_DEFAULT,
           sheet,
         };
       },
@@ -580,7 +589,7 @@
           // 序号 it.no 由列表自动管理,这里只同步核心字段
           it.fsNo = String($("#fs-fsno")?.value ?? it.fsNo ?? "").trim();
           it.name = String($("#fs-name")?.value ?? it.name ?? "").trim();
-          it.status = $("#fs-status")?.value || it.status || "活跃";
+          it.status = $("#fs-status")?.value || it.status || FS_STATUS_DEFAULT;
           // 履历从编辑器 DOM 抓 (records[] 由 record-row 渲染)
           try {
             const rows = document.querySelectorAll("#fs-records-list .fs-record-row");
@@ -766,7 +775,7 @@
               no: parseFsNoToKey(old.no),
               fsNo: fsNoRaw,
               name: old.name || "",
-              status: old.status || "活跃",
+              status: FS_STATUS_MIGRATION[old.status] || old.status || FS_STATUS_DEFAULT,
               sheet: old.sheet,
             };
             migratedItems.push(newItem);
@@ -1574,13 +1583,14 @@
     list.className = "fs-list";
     list.innerHTML = items
       .map((it, idx) => {
-        const status = it.status || "活跃";
+        const status = it.status || FS_STATUS_DEFAULT;
+        // v17：状态 class 映射（未回收 / 部分回收 / 已回收）
         const cls =
           status === "已回收"
             ? "fs-status-resolved"
-            : status === "已废弃"
-              ? "fs-status-abandoned"
-              : "fs-status-active";
+            : status === "部分回收"
+              ? "fs-status-partial"
+              : "fs-status-unresolved";
         // v15：列表项横向 3 列 [伏笔编号 / 伏笔名称 / 状态]
         // 序号 = 当前 sheet 内按 fsNo 排序后的 1-based 索引（渲染层算，不存数据）
         const displayNo = idx + 1;
@@ -1679,7 +1689,7 @@
         <div class="meta-actions">
           <button id="btn-fs-toggle" class="secondary-btn" title="${isEditing ? "切到查看态（履历原文可点击跳转）" : "切到编辑态（可改伏笔字段、新增/编辑履历）"}">${isEditing ? "✓ 完成编辑" : "✎ 编辑"}</button>
           <button id="btn-fs-save" class="primary-btn" ${isEditing ? "" : "hidden"}>保存</button>
-          <button id="btn-fs-delete" class="danger-btn">删除</button>
+          <!-- v17：编辑按钮旁的"删除"按钮移除——删除统一在左侧列表的 .fs-delete 叉号触发，避免重复入口 -->
         </div>
       </div>
       <div class="editor-body editor-body-fs ${mainClass}">
@@ -1733,25 +1743,31 @@
     const isEditing = !!state.ui.fsEditing;
     if (records.length === 0) return "";
     return records
-      .map((r, idx) => {
-        const no = idx + 1;
+      .map((r) => {
         if (isEditing) {
+          // v17：履历行简化为「提及章节 + 原文描述(填满) + 叉号」
+          // 序号列去掉（按章节排序后位置=序号）、伏笔编号列去掉（=父级，无意义）
           return `
             <div class="fs-record-row" data-record-id="${escapeHtml(r.id)}">
-              <span class="fs-rec-col-no">${no}</span>
-              <span class="fs-rec-col-fsno muted">${escapeHtml(r.fsNo || "—")}</span>
-              <input class="fs-rec-col-setup" type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="如：第3章 / Chapter 5" />
-              <textarea class="fs-rec-col-notes" data-field="notes" rows="1" placeholder="原文描述…">${escapeHtml(r.notes || "")}</textarea>
-              <button class="fs-rec-delete link-btn danger-link" data-record-id="${escapeHtml(r.id)}" title="删除该履历">×</button>
+              <div class="fs-rec-col-setup">
+                <span class="muted small-label">提及章节</span>
+                <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="如：第3章 / Chapter 5" />
+              </div>
+              <div class="fs-rec-col-notes">
+                <span class="muted small-label">原文描述</span>
+                <textarea data-field="notes" rows="2" placeholder="原文描述…">${escapeHtml(r.notes || "")}</textarea>
+              </div>
+              <button class="fs-rec-delete" data-record-id="${escapeHtml(r.id)}" title="删除该履历" aria-label="删除该履历" type="button">×</button>
             </div>`;
         } else {
           // 查看态：原文描述 clickable
           return `
             <div class="fs-record-row readonly" data-record-id="${escapeHtml(r.id)}">
-              <span class="fs-rec-col-no">${no}</span>
-              <span class="fs-rec-col-fsno muted">${escapeHtml(r.fsNo || "—")}</span>
-              <span class="fs-rec-col-setup">${escapeHtml(r.setup || "—")}</span>
-              <button class="fs-rec-col-notes fs-rec-notes-link" data-record-id="${escapeHtml(r.id)}" title="点击跳转到该章节">${escapeHtml(r.notes || "（无描述）")}</button>
+              <div class="fs-rec-col-setup">
+                <span class="muted small-label">提及章节</span>
+                <span class="fs-rec-setup-text">${escapeHtml(r.setup || "—")}</span>
+              </div>
+              <button class="fs-rec-notes-link" data-record-id="${escapeHtml(r.id)}" title="点击跳转到该章节">${escapeHtml(r.notes || "（无描述）")}</button>
             </div>`;
         }
       })
@@ -1801,10 +1817,10 @@
         if (fsnoCell) fsnoCell.textContent = it.fsNo || "—";
         if (nameCell) nameCell.textContent = it.name || "（无名）";
         if (statusCell) {
-          statusCell.textContent = it.status || "活跃";
+          statusCell.textContent = it.status || FS_STATUS_DEFAULT;
           statusCell.className = "fs-cell fs-col-status " + (
             it.status === "已回收" ? "fs-status-resolved" :
-            it.status === "已废弃" ? "fs-status-abandoned" : "fs-status-active"
+            it.status === "部分回收" ? "fs-status-partial" : "fs-status-unresolved"
           );
         }
       }
@@ -2968,7 +2984,7 @@
       // v14：主表字段（fsNo/name/status）
       it.fsNo = String($("#fs-fsno")?.value ?? it.fsNo ?? "").trim();
       it.name = String($("#fs-name")?.value ?? it.name ?? "").trim();
-      it.status = $("#fs-status")?.value || it.status || "活跃";
+      it.status = $("#fs-status")?.value || it.status || FS_STATUS_DEFAULT;
       // 履历编辑在 input 事件里已经实时写回 records，这里不再处理
     }
     save();
@@ -4194,7 +4210,11 @@
       // 切到同一条则不做事（避免无谓的 history 抖动）
       if (curPage().currentItemId === item.dataset.id) return;
       // v7：切章节前先保存当前编辑器的输入到 item（防止未保存内容丢失）
-      try { saveCurrentItem(); } catch (_) {}
+      // v17：伏笔页只在编辑态（fsEditing）才需要保存；查看态切伏笔无意义也不该写入
+      // （编辑态可能改过 fsNo/name/status/履历；查看态只读，DOM 本身无未存改动）
+      if (state.currentPage === "chapter" || (state.currentPage === "foreshadowing" && state.ui.fsEditing)) {
+        try { saveCurrentItem(); } catch (_) {}
+      }
       curPage().currentItemId = item.dataset.id;
       save();
       renderCurrentPage();
@@ -4212,7 +4232,8 @@
       const t = e.target;
       if (!t) return;
       const isSave = t.id === "btn-save" || t.id === "btn-fs-save";
-      const isDelete = t.id === "btn-delete" || t.id === "btn-fs-delete";
+      // v17：#btn-fs-delete 已被移除（删除统一在左侧 .fs-delete 叉号）
+      const isDelete = t.id === "btn-delete";
       if (isSave && curItem()) {
         const ok = saveCurrentItem();
         if (ok) {

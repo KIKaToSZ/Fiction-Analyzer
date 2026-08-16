@@ -1699,10 +1699,11 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
       ? fsBlock.slice(fsDefaultsStart, fsRecordDefaultsStart)
       : "";
   const t16_3a = /fsNo:\s*"",?\s*name:\s*""/.test(fsDefaultsBlock);
-  const t16_3b = /status:\s*"活跃"/.test(fsDefaultsBlock);
+  // v17：defaults() status 走 FS_STATUS_DEFAULT 常量（"未回收"）
+  const t16_3b = /status:\s*FS_STATUS_DEFAULT/.test(fsDefaultsBlock);
   const t16_3c = !/no:\s*0/.test(fsDefaultsBlock);
   console.log(`  defaults() 含 fsNo/name 字段: ${t16_3a ? "✓" : "✗"}`);
-  console.log(`  defaults() 含 status 字段: ${t16_3b ? "✓" : "✗"}`);
+  console.log(`  defaults() status 走 FS_STATUS_DEFAULT: ${t16_3b ? "✓" : "✗"}`);
   console.log(`  defaults() 不含 no 字段: ${t16_3c ? "✓" : "✗"}`);
   if (!(t16_3a && t16_3b && t16_3c)) allPass = false;
 
@@ -1717,13 +1718,14 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   const t16_4a = /id:\s*uid\(/.test(makeItemBlock);
   const t16_4b = /fsNo:\s*String\(data\.fsNo/.test(makeItemBlock);
   const t16_4c = /name:\s*data\.name/.test(makeItemBlock);
-  const t16_4d = /status:\s*data\.status/.test(makeItemBlock);
+  // v17：makeItem status 走 FS_STATUS_MIGRATION 兜底迁移（活跃→未回收、已废弃→部分回收）
+  const t16_4d = /FS_STATUS_MIGRATION\[data\.status\]/.test(makeItemBlock);
   // makeItem 不应再有 no: 字段
   const t16_4e = !/^\s*no:\s*parseFsNoToKey/m.test(makeItemBlock);
   console.log(`  makeItem 含 id: ${t16_4a ? "✓" : "✗"}`);
   console.log(`  makeItem 含 fsNo: ${t16_4b ? "✓" : "✗"}`);
   console.log(`  makeItem 含 name: ${t16_4c ? "✓" : "✗"}`);
-  console.log(`  makeItem 含 status: ${t16_4d ? "✓" : "✗"}`);
+  console.log(`  makeItem status 走 FS_STATUS_MIGRATION: ${t16_4d ? "✓" : "✗"}`);
   console.log(`  makeItem 已去掉 no: ${t16_4e ? "✓" : "✗"}`);
   if (!(t16_4a && t16_4b && t16_4c && t16_4d && t16_4e)) allPass = false;
 
@@ -1920,6 +1922,145 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     t17_7a && t17_7b;
   console.log("  v16 改动:", t17All ? "PASS" : "FAIL");
   if (!t17All) allPass = false;
+
+  // ============================================================
+  // 测试 18：v17 改动（伏笔 UI 6 个微调）
+  // ============================================================
+  console.log("\n测试 18：v17（伏笔状态/记录/交互 6 个微调）");
+
+  // 18.1 状态选项：FS_STATUS_OPTIONS 改为 [未回收, 部分回收, 已回收]
+  const t18_1a = /FS_STATUS_OPTIONS\s*=\s*\[\s*"未回收"\s*,\s*"部分回收"\s*,\s*"已回收"\s*\]/.test(SRC);
+  const t18_1b = !/FS_STATUS_OPTIONS\s*=\s*\[\s*"活跃"/.test(SRC);
+  const t18_1c = /FS_STATUS_DEFAULT\s*=\s*"未回收"/.test(SRC);
+  console.log(`  FS_STATUS_OPTIONS 是新三档: ${t18_1a ? "✓" : "✗"}`);
+  console.log(`  旧「活跃」选项已移除: ${t18_1b ? "✓" : "✗"}`);
+  console.log(`  FS_STATUS_DEFAULT = "未回收": ${t18_1c ? "✓" : "✗"}`);
+  if (!(t18_1a && t18_1b && t18_1c)) allPass = false;
+
+  // 18.2 旧值迁移：FS_STATUS_MIGRATION 映射 活跃/已废弃/已回收 → 新值
+  const t18_2a = /FS_STATUS_MIGRATION\s*=\s*\{[\s\S]{0,200}"活跃"\s*:\s*"未回收"/.test(SRC);
+  const t18_2b = /FS_STATUS_MIGRATION\s*=\s*\{[\s\S]{0,200}"已废弃"\s*:\s*"部分回收"/.test(SRC);
+  const t18_2c = /FS_STATUS_MIGRATION\s*=\s*\{[\s\S]{0,200}"已回收"\s*:\s*"已回收"/.test(SRC);
+  console.log(`  迁移: 活跃→未回收: ${t18_2a ? "✓" : "✗"}`);
+  console.log(`  迁移: 已废弃→部分回收: ${t18_2b ? "✓" : "✗"}`);
+  console.log(`  迁移: 已回收→已回收: ${t18_2c ? "✓" : "✗"}`);
+  if (!(t18_2a && t18_2b && t18_2c)) allPass = false;
+
+  // 18.3 状态 class 映射（新三档 class 名）
+  // renderFsList 部分
+  const fsListNew = SRC.slice(
+    SRC.indexOf("function renderFsList"),
+    SRC.indexOf("function renderChapterEditor")
+  );
+  const t18_3a = /未回收[\s\S]{0,200}fs-status-unresolved/.test(fsListNew);
+  const t18_3b = /部分回收[\s\S]{0,200}fs-status-partial/.test(fsListNew);
+  const t18_3c = /已回收[\s\S]{0,200}fs-status-resolved/.test(fsListNew);
+  const t18_3d = !/已废弃[\s\S]{0,200}fs-status-abandoned/.test(fsListNew);
+  console.log(`  renderFsList: 未回收 → fs-status-unresolved: ${t18_3a ? "✓" : "✗"}`);
+  console.log(`  renderFsList: 部分回收 → fs-status-partial: ${t18_3b ? "✓" : "✗"}`);
+  console.log(`  renderFsList: 已回收 → fs-status-resolved: ${t18_3c ? "✓" : "✗"}`);
+  console.log(`  renderFsList 移除旧映射: ${t18_3d ? "✓" : "✗"}`);
+  if (!(t18_3a && t18_3b && t18_3c && t18_3d)) allPass = false;
+
+  // 18.4 状态 fallback：所有旧 || "活跃" 都改为 FS_STATUS_DEFAULT
+  // 应该没有 "活跃" 字符串残留（FS_STATUS_MIGRATION 内除外）
+  const migrationBlock = SRC.match(/FS_STATUS_MIGRATION\s*=\s*\{[\s\S]{0,200}\}/);
+  const migrationStr = migrationBlock ? migrationBlock[0] : "";
+  const srcWithoutMigration = SRC.replace(migrationStr, "");
+  const t18_4a = !/"\s*活跃\s*"/.test(srcWithoutMigration);
+  const t18_4b = /it\.status\s*=\s*\$\("#fs-status"\)\?\.value\s*\|\|\s*it\.status\s*\|\|\s*FS_STATUS_DEFAULT/.test(srcWithoutMigration);
+  const t18_4c = /const\s+status\s*=\s*it\.status\s*\|\|\s*FS_STATUS_DEFAULT/.test(srcWithoutMigration);
+  const t18_4d = /statusCell\.textContent\s*=\s*it\.status\s*\|\|\s*FS_STATUS_DEFAULT/.test(srcWithoutMigration);
+  console.log(`  旧「"活跃"」字面量已清理: ${t18_4a ? "✓" : "✗"}`);
+  console.log(`  saveCurrentItem 走 FS_STATUS_DEFAULT: ${t18_4b ? "✓" : "✗"}`);
+  console.log(`  renderFsList 走 FS_STATUS_DEFAULT: ${t18_4c ? "✓" : "✗"}`);
+  console.log(`  bindFsEditorEvents 走 FS_STATUS_DEFAULT: ${t18_4d ? "✓" : "✗"}`);
+  if (!(t18_4a && t18_4b && t18_4c && t18_4d)) allPass = false;
+
+  // 18.5 列表删除按钮靠右：.fs-col-name 加 flex: 1
+  const css18 = fs.readFileSync(path.join(__dirname, "styles.css"), "utf-8");
+  const t18_5a = /\.fs-col-name\s*\{[\s\S]{0,80}flex:\s*1/.test(css18);
+  console.log(`  CSS .fs-col-name 含 flex: 1 (推动删除按钮靠右): ${t18_5a ? "✓" : "✗"}`);
+  if (!t18_5a) allPass = false;
+
+  // 18.6 履历渲染简化：去序号 + 去伏笔编号
+  const recRowsStart = SRC.indexOf("function renderFsRecordRows");
+  const recRowsEnd = SRC.indexOf("function bindChapterEditorEvents");
+  const recRowsBlock = recRowsStart > 0 && recRowsEnd > recRowsStart
+    ? SRC.slice(recRowsStart, recRowsEnd)
+    : "";
+  // 编辑态：行内含 setup + notes(1fr) + delete，**不含** fs-rec-col-no / fs-rec-col-fsno
+  const t18_6a = /data-field="setup"/.test(recRowsBlock);
+  const t18_6b = /data-field="notes"/.test(recRowsBlock);
+  const t18_6c = /class="fs-rec-delete"/.test(recRowsBlock);
+  const t18_6d = !/class="fs-rec-col-no"/.test(recRowsBlock);
+  const t18_6e = !/class="fs-rec-col-fsno"/.test(recRowsBlock);
+  // 查看态：行内只含 setup div + notes link（无 序号/伏笔编号）
+  const t18_6f = /class="fs-rec-notes-link"/.test(recRowsBlock);
+  console.log(`  履历行含 setup 字段: ${t18_6a ? "✓" : "✗"}`);
+  console.log(`  履历行含 notes 字段: ${t18_6b ? "✓" : "✗"}`);
+  console.log(`  履历行含 delete 叉号: ${t18_6c ? "✓" : "✗"}`);
+  console.log(`  履历行已去 序号 列: ${t18_6d ? "✓" : "✗"}`);
+  console.log(`  履历行已去 伏笔编号 列: ${t18_6e ? "✓" : "✗"}`);
+  console.log(`  履历行含 fs-rec-notes-link (查看态跳转): ${t18_6f ? "✓" : "✗"}`);
+  if (!(t18_6a && t18_6b && t18_6c && t18_6d && t18_6e && t18_6f)) allPass = false;
+
+  // 18.7 履历 grid 改为 minmax(setup) + 1fr(notes) + auto(delete)
+  const t18_7a = /\.fs-record-row\s*\{[\s\S]{0,300}minmax\(\s*120px\s*,\s*200px\s*\)\s+1fr\s+auto/.test(css18);
+  console.log(`  .fs-record-row grid: setup 固定 + notes 1fr 填满: ${t18_7a ? "✓" : "✗"}`);
+  if (!t18_7a) allPass = false;
+
+  // 18.8 不编辑态切伏笔不调 saveCurrentItem
+  const bindListBlock18 = SRC.slice(
+    SRC.indexOf("function bindListEvents"),
+    SRC.indexOf("function bindEditorButtons")
+  );
+  // 应该看到对 fsEditing 的判断 + 只在编辑态或章节页才 save
+  const t18_8a = /state\.ui\.fsEditing/.test(bindListBlock18);
+  const t18_8b = /state\.currentPage\s*===\s*"foreshadowing"\s*&&\s*state\.ui\.fsEditing/.test(bindListBlock18);
+  console.log(`  onClick 读 fsEditing 状态: ${t18_8a ? "✓" : "✗"}`);
+  console.log(`  onClick 切伏笔时检查 fsEditing 才调 save: ${t18_8b ? "✓" : "✗"}`);
+  if (!(t18_8a && t18_8b)) allPass = false;
+
+  // 18.9 编辑器上的 btn-fs-delete 已移除
+  const fsEditorStart = SRC.indexOf("function renderFsEditor");
+  const fsEditorEnd = SRC.indexOf("function getFsRecordsByFsNo");
+  const fsEditorBlock18 = fsEditorStart > 0 && fsEditorEnd > fsEditorStart
+    ? SRC.slice(fsEditorStart, fsEditorEnd)
+    : "";
+  const t18_9a = !/id="btn-fs-delete"/.test(fsEditorBlock18);
+  // bindEditorButtons 也不应再处理 #btn-fs-delete
+  const bindEditorBlock18 = SRC.slice(
+    SRC.indexOf("function bindEditorButtons"),
+    SRC.indexOf("function bindListEvents")
+  );
+  const t18_9b = !/btn-fs-delete/.test(bindEditorBlock18);
+  console.log(`  renderFsEditor 已移除 #btn-fs-delete: ${t18_9a ? "✓" : "✗"}`);
+  console.log(`  bindEditorButtons 不再处理 #btn-fs-delete: ${t18_9b ? "✓" : "✗"}`);
+  if (!(t18_9a && t18_9b)) allPass = false;
+
+  // 18.10 状态色 CSS：unresolved / partial / resolved 三档
+  const t18_10a = /\.fs-status-unresolved/.test(css18);
+  const t18_10b = /\.fs-status-partial/.test(css18);
+  const t18_10c = /\.fs-status-resolved/.test(css18);
+  console.log(`  CSS .fs-status-unresolved (未回收): ${t18_10a ? "✓" : "✗"}`);
+  console.log(`  CSS .fs-status-partial (部分回收): ${t18_10b ? "✓" : "✗"}`);
+  console.log(`  CSS .fs-status-resolved (已回收): ${t18_10c ? "✓" : "✗"}`);
+  if (!(t18_10a && t18_10b && t18_10c)) allPass = false;
+
+  const t18All =
+    t18_1a && t18_1b && t18_1c &&
+    t18_2a && t18_2b && t18_2c &&
+    t18_3a && t18_3b && t18_3c && t18_3d &&
+    t18_4a && t18_4b && t18_4c && t18_4d &&
+    t18_5a &&
+    t18_6a && t18_6b && t18_6c && t18_6d && t18_6e && t18_6f &&
+    t18_7a &&
+    t18_8a && t18_8b &&
+    t18_9a && t18_9b &&
+    t18_10a && t18_10b && t18_10c;
+  console.log("  v17 改动:", t18All ? "PASS" : "FAIL");
+  if (!t18All) allPass = false;
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);

@@ -2170,7 +2170,10 @@ input[type="range"]::-moz-range-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* v17：伏笔名称列 flex:1，撑开空间，把状态/删除按钮推到右侧 */
 .fs-col-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2193,10 +2196,20 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
-/* 状态色 - 与旧版本一致 */
+/* v17：状态色 - 未回收 / 部分回收 / 已回收 三档
+   - 未回收：绿（活跃色）
+   - 部分回收：琥珀/橙（半完成色）
+   - 已回收：蓝（完成色）
+   - 旧 .fs-status-active 保留为 alias，避免历史数据渲染时丢色
+   - 旧 .fs-status-abandoned 保留为 alias（用户切回旧值时仍可显示） */
+.fs-status-unresolved,
 .fs-status-active {
   color: #2c5d3a;
   background: rgba(106, 158, 92, 0.22);
+}
+.fs-status-partial {
+  color: #8a5a1f;
+  background: rgba(214, 158, 79, 0.22);
 }
 .fs-status-resolved {
   color: #2c4a6d;
@@ -2206,9 +2219,77 @@ input[type="range"]::-moz-range-thumb {
   color: #6b3848;
   background: rgba(181, 122, 138, 0.22);
 }
+[data-accent="slate"] .fs-status-unresolved,
 [data-accent="slate"] .fs-status-active {
   color: #3a4655;
   background: rgba(92, 107, 122, 0.22);
+}
+
+
+/* v17：履历行字段更紧凑 */
+.fs-record-row .fs-rec-col-setup,
+.fs-record-row .fs-rec-col-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0; /* 允许 grid 1fr 子项正确收缩 */
+}
+.fs-record-row .fs-rec-col-setup {
+  font-size: 13px;
+  color: var(--text, #2c2418);
+  padding-top: 4px;
+  word-break: break-word;
+}
+/* 编辑态 textarea / view 态链接 - 横向填满 */
+.fs-record-row .fs-rec-col-notes {
+  width: 100%;
+}
+.fs-record-row .fs-rec-notes,
+.fs-record-row .fs-rec-notes-link {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.fs-record-row .fs-rec-notes-link {
+  min-height: 40px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* v17：编辑态尾部的叉号按钮 */
+.fs-rec-delete {
+  align-self: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted, #8a7a66);
+  font-size: 16px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+}
+.fs-record-row:hover .fs-rec-delete,
+.fs-rec-delete:focus-visible {
+  opacity: 1;
+}
+.fs-rec-delete:hover {
+  color: #c0392b;
+  background: rgba(192, 57, 43, 0.12);
+}
+
+
+/* v17：履历字段上方的小标签 */
+.fs-record-row .small-label {
+  font-size: 11px;
+  color: var(--muted, #8a7a66);
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 /* 伏笔编辑器 - 履历区块 */
@@ -2238,10 +2319,13 @@ input[type="range"]::-moz-range-thumb {
   flex-direction: column;
   gap: 8px;
 }
+/* v17：履历行简化为「提及章节 | 原文描述(填满) | 叉号」
+   - 序号/伏笔编号列已去掉（按章节排序后序号=位置，伏笔编号=父级，无意义）
+   - 原文描述 1fr 横向填充满，编辑态尾部加一个叉号 */
 .fs-record-row {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 8px;
+  grid-template-columns: minmax(120px, 200px) 1fr auto;
+  gap: 10px;
   padding: 8px;
   background: var(--card-bg, rgba(255, 255, 255, 0.4));
   border: 1px solid var(--border, #e2d6c4);
