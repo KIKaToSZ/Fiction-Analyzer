@@ -1107,9 +1107,10 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   // ============================================================
   console.log("\n测试 13：v12（章节号只读 + 导入自动提取数字 + 伏笔字段扩展）");
 
-  // 13.1 SCHEMA_VERSION = 10
-  const t13_1 = /const SCHEMA_VERSION = 10;/.test(SRC);
-  console.log(`  SCHEMA_VERSION = 10: ${t13_1 ? "✓" : "✗"}`);
+  // 13.1 SCHEMA_VERSION：v12 时代是 10，v14 升到 11，v15 升到 12
+  //       v12 修复仍生效，断言 ≥10 即可
+  const t13_1 = /const SCHEMA_VERSION\s*=\s*1[0-9];/.test(SRC);
+  console.log(`  SCHEMA_VERSION >= 10: ${t13_1 ? "✓" : "✗"}`);
   if (!t13_1) allPass = false;
 
   // 13.2 章节号 input 是 readonly + 带 .readonly-field class + tooltip
@@ -1150,48 +1151,57 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  parseRowsForPage 纯汉字保留原字符串: ${t13_4d ? "✓" : "✗"}`);
   if (!(t13_4a && t13_4b && t13_4c && t13_4d)) allPass = false;
 
-  // 13.5 文本导入 parseImportText 走 parseChapterNo
+  // 13.5 文本导入 v14 改为 parseImportTextFor 分 section
+  //       章节 section 仍走 parseChapterNo 提取数字
   const txtBlock = SRC.slice(
-    SRC.indexOf("function parseImportText"),
-    SRC.indexOf("function refreshImportPreview")
+    SRC.indexOf("function parseImportTextFor"),
+    SRC.indexOf("function parseImportTextFor", SRC.indexOf("function parseImportTextFor") + 30) > 0
+      ? SRC.indexOf("function parseImportTextFor", SRC.indexOf("function parseImportTextFor") + 30)
+      : SRC.length
   );
+  // 切到第一个 parseImportTextFor 函数结束位置（简单取下一个 function）
   const t13_5a = /parseChapterNo\(noStr\)/.test(txtBlock);
   const t13_5b = /!noParsed\.hasNum \|\| !Number\.isFinite\(noParsed\.num\)/.test(txtBlock);
-  const t13_5c = /o\.no = noParsed\.num/.test(txtBlock);
+  const t13_5c = /o\.no\s*=\s*noParsed\.num/.test(txtBlock) || /\.no\s*=\s*noParsed\.num/.test(txtBlock);
   const t13_5d = /章节号无法解析为数字/.test(txtBlock);
-  console.log(`  parseImportText 调用 parseChapterNo: ${t13_5a ? "✓" : "✗"}`);
-  console.log(`  parseImportText 检查 hasNum && isFinite: ${t13_5b ? "✓" : "✗"}`);
-  console.log(`  parseImportText 赋值 o.no = noParsed.num: ${t13_5c ? "✓" : "✗"}`);
-  console.log(`  parseImportText 错误提示更新: ${t13_5d ? "✓" : "✗"}`);
+  console.log(`  parseImportTextFor 调用 parseChapterNo: ${t13_5a ? "✓" : "✗"}`);
+  console.log(`  parseImportTextFor 检查 hasNum && isFinite: ${t13_5b ? "✓" : "✗"}`);
+  console.log(`  parseImportTextFor 赋值 o.no = noParsed.num: ${t13_5c ? "✓" : "✗"}`);
+  console.log(`  parseImportTextFor 错误提示更新: ${t13_5d ? "✓" : "✗"}`);
   if (!(t13_5a && t13_5b && t13_5c && t13_5d)) allPass = false;
 
-  // 13.6 伏笔字段扩展：name / setup / status / notes 都加上了新关键词
-  // 切片：从 foreshadowing 字段开始，到下一个 page（人物/大纲/...）的字段开始前
-  // 当前 PAGES 里 foreshadowing 之后是 chapter，所以用 "chapter: {" 作终止
-  // ——比 "emptyStateHtml()" 精确，避免切到 chapter 的 emptyStateHtml
+  // 13.6 伏笔字段扩展：v14 拆成主表 fields + 履历表 recordFields
+  //       关键词"伏笔名称"在主表，关键词"提及章节"+"原文描述"在 recordFields，"回收状态"在主表
+  //       v14 保留"铺设章节"/"备注"作为 recordFields 兼容词（用户旧 xlsx 仍能导入）
   const fsStart = SRC.indexOf("foreshadowing: {");
   const fsEnd = SRC.indexOf("\n    },\n\n    chapter:", fsStart);
   const fsFields = SRC.slice(fsStart, fsEnd > 0 ? fsEnd : fsStart + 5000);
-  const t13_6a = /name:[^\]]*伏笔名称/.test(fsFields);
-  const t13_6b = /setup:[^\]]*提及章节/.test(fsFields);
-  const t13_6c = /status:[^\]]*回收状态/.test(fsFields);
-  const t13_6d = /notes:[^\]]*原文描述/.test(fsFields);
-  // v13：v12 扩展的同义词已全部移除（伏笔字段精简为 5 个）
-  const t13_6e = !/name:[^\]]*"名称"/.test(fsFields);
-  const t13_6f = !/setup:[^\]]*"铺设章节"/.test(fsFields);
-  const t13_6g = !/status:[^\]]*"状态"/.test(fsFields);
-  const t13_6h = !/notes:[^\]]*"备注"/.test(fsFields);
-  // no 字段仍含"序号"
-  const t13_6i = /no:[^\]]*"序号"/.test(fsFields);
+  // 主表 fields 块：fields: { ... recordFields: { ... } } 的中间
+  const fsMainFields = (() => {
+    const a = fsFields.indexOf("fields:");
+    const b = fsFields.indexOf("recordFields:");
+    return fsFields.slice(a, b > 0 ? b : fsFields.length);
+  })();
+  const t13_6a = /name:[^\]]*伏笔名称/.test(fsMainFields);
+  const t13_6b = /recordFields:[^}]*setup:[^\]]*提及章节/s.test(fsFields) || /setup:[^\]]*提及章节/.test(fsFields);
+  const t13_6c = /status:[^\]]*回收状态/.test(fsMainFields);
+  const t13_6d = /recordFields:[^}]*notes:[^\]]*原文描述/s.test(fsFields) || /notes:[^\]]*原文描述/.test(fsFields);
+  // v14：主表 fields 里不应再有旧 v12 关键词（name"名称" / setup / payoff / notes"备注"）
+  const t13_6e = !/name:[^\]]*"名称"/.test(fsMainFields);
+  const t13_6f = !/setup:\s*\[/.test(fsMainFields);
+  const t13_6g = /status:[^\]]*"状态"/.test(fsMainFields); // v14 保留"状态"作为 status 候选
+  const t13_6h = !/notes:\s*\[/.test(fsMainFields);
+  // v15：主表 no 字段已移除（只剩 fsNo/name/status 三字段）
+  const t13_6i = !/^\s*no:\s*\[/m.test(fsMainFields);
   console.log(`  name 加了「伏笔名称」: ${t13_6a ? "✓" : "✗"}`);
-  console.log(`  setup 加了「提及章节」: ${t13_6b ? "✓" : "✗"}`);
+  console.log(`  setup 加了「提及章节」(recordFields): ${t13_6b ? "✓" : "✗"}`);
   console.log(`  status 加了「回收状态」: ${t13_6c ? "✓" : "✗"}`);
-  console.log(`  notes 加了「原文描述」: ${t13_6d ? "✓" : "✗"}`);
+  console.log(`  notes 加了「原文描述」(recordFields): ${t13_6d ? "✓" : "✗"}`);
   console.log(`  旧 name「名称」已移除: ${t13_6e ? "✓" : "✗"}`);
-  console.log(`  旧 setup「铺设章节」已移除: ${t13_6f ? "✓" : "✗"}`);
-  console.log(`  旧 status「状态」已移除: ${t13_6g ? "✓" : "✗"}`);
-  console.log(`  旧 notes「备注」已移除: ${t13_6h ? "✓" : "✗"}`);
-  console.log(`  no「序号」保留: ${t13_6i ? "✓" : "✗"}`);
+  console.log(`  旧 setup 字段已不在主表: ${t13_6f ? "✓" : "✗"}`);
+  console.log(`  status 关键词含「状态」兼容: ${t13_6g ? "✓" : "✗"}`);
+  console.log(`  旧 notes 字段已不在主表: ${t13_6h ? "✓" : "✗"}`);
+  console.log(`  主表 no 字段已移除（v15）: ${t13_6i ? "✓" : "✗"}`);
   if (!(t13_6a && t13_6b && t13_6c && t13_6d && t13_6e && t13_6f && t13_6g && t13_6h && t13_6i)) allPass = false;
 
   // 13.7 行为验证：parseChapterNo 真实输出（用 vm 跑过的 ctx 取函数）
@@ -1228,32 +1238,38 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   // ============================================================
   console.log("\n测试 14：v13（import 支持 .json + 伏笔字段精简）");
 
-  // 14.1 伏笔 fields 只剩 5 个指定关键词 + payoff 为空
-  const fsFieldsV14 = (() => {
+  // 14.1 v14: PAGES.foreshadowing 主表 fields 4 个 (no/fsNo/name/status)
+  //       + 履历表 recordFields 4 个 (no/fsNo/setup/notes)
+  const fsBlock = (() => {
     const start = SRC.indexOf("foreshadowing: {");
     const end = SRC.indexOf("\n    },\n\n    chapter:", start);
     return SRC.slice(start, end > 0 ? end : start + 5000);
   })();
-  const t14_1a = /no:\s*\[\s*"序号"\s*\]/.test(fsFieldsV14);
-  const t14_1b = /name:\s*\[\s*"伏笔名称"\s*\]/.test(fsFieldsV14);
-  const t14_1c = /setup:\s*\[\s*"提及章节"\s*\]/.test(fsFieldsV14);
-  const t14_1d = /payoff:\s*\[\s*\]/.test(fsFieldsV14);
-  const t14_1e = /status:\s*\[\s*"回收状态"\s*\]/.test(fsFieldsV14);
-  const t14_1f = /notes:\s*\[\s*"原文描述"\s*\]/.test(fsFieldsV14);
+  // 切片:主表 fields 块 = fields: { ... recordFields: { ... } } 的中间
+  const fieldsBlockStart = fsBlock.indexOf("fields:");
+  const recordFieldsStart = fsBlock.indexOf("recordFields:");
+  const mainFields = fsBlock.slice(fieldsBlockStart, recordFieldsStart > 0 ? recordFieldsStart : fsBlock.length);
+  const recordFieldsBlock = fsBlock.slice(recordFieldsStart > 0 ? recordFieldsStart : 0);
+  // 主表 fields 关键词（v15：3 字段 fsNo/name/status，无 no）
+  const t14_1a = !/^\s*no:\s*\[\s*"序号"/m.test(mainFields); // v15 主表已无 no 字段
+  const t14_1b = /fsNo:\s*\[\s*"伏笔编号"\s*\]/.test(mainFields);
+  const t14_1c = /name:\s*\[\s*"伏笔名称"\s*\]/.test(mainFields);
+  const t14_1d = /status:\s*\[\s*"状态"/.test(mainFields);
+  // 履历表 recordFields 关键词
+  const t14_1e = /setup:\s*\[\s*"提及章节"/.test(recordFieldsBlock);
+  const t14_1f = /notes:\s*\[\s*"原文描述"/.test(recordFieldsBlock);
+  // 旧字段（status "状态" / setup "铺设章节" / notes "备注"）不应再出现在主表 fields 里
   const noOldSynonyms =
-    !/no:[^\]]*"编号"/.test(fsFieldsV14) &&
-    !/name:[^\]]*"名称"/.test(fsFieldsV14) &&
-    !/setup:[^\]]*"铺设章节"/.test(fsFieldsV14) &&
-    !/payoff:[^\]]*"回收章节"/.test(fsFieldsV14) &&
-    !/status:[^\]]*"状态"/.test(fsFieldsV14) &&
-    !/notes:[^\]]*"备注"/.test(fsFieldsV14);
-  console.log(`  no: ["序号"] 单关键词: ${t14_1a ? "✓" : "✗"}`);
-  console.log(`  name: ["伏笔名称"] 单关键词: ${t14_1b ? "✓" : "✗"}`);
-  console.log(`  setup: ["提及章节"] 单关键词: ${t14_1c ? "✓" : "✗"}`);
-  console.log(`  payoff: [] 空: ${t14_1d ? "✓" : "✗"}`);
-  console.log(`  status: ["回收状态"] 单关键词: ${t14_1e ? "✓" : "✗"}`);
-  console.log(`  notes: ["原文描述"] 单关键词: ${t14_1f ? "✓" : "✗"}`);
-  console.log(`  旧同义词全部移除: ${noOldSynonyms ? "✓" : "✗"}`);
+    !/setup:\s*\[/.test(mainFields) &&
+    !/notes:\s*\[/.test(mainFields) &&
+    !/payoff:\s*\[/.test(mainFields);
+  console.log(`  主表无 no 字段（v15 移除）: ${t14_1a ? "✓" : "✗"}`);
+  console.log(`  主表 fields.fsNo ["伏笔编号"]: ${t14_1b ? "✓" : "✗"}`);
+  console.log(`  主表 fields.name ["伏笔名称"]: ${t14_1c ? "✓" : "✗"}`);
+  console.log(`  主表 fields.status ["状态"...]: ${t14_1d ? "✓" : "✗"}`);
+  console.log(`  履历表 recordFields.setup ["提及章节"...]: ${t14_1e ? "✓" : "✗"}`);
+  console.log(`  履历表 recordFields.notes ["原文描述"...]: ${t14_1f ? "✓" : "✗"}`);
+  console.log(`  主表无 setup/notes/payoff: ${noOldSynonyms ? "✓" : "✗"}`);
   if (!(t14_1a && t14_1b && t14_1c && t14_1d && t14_1e && t14_1f && noOldSynonyms)) allPass = false;
 
   // 14.2 新增 parseJsonArrayForPage / tryParseJsonText 函数
@@ -1272,16 +1288,15 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  提取 afterImportParsed 公共逻辑: ${t14_3c ? "✓" : "✗"}`);
   if (!(t14_3a && t14_3b && t14_3c)) allPass = false;
 
-  // 14.4 parseImportText 调 tryParseJsonText
-  const txtBlock14 = SRC.slice(
-    SRC.indexOf("function parseImportText"),
-    SRC.indexOf("function refreshImportPreview")
-  );
-  const t14_4a = /tryParseJsonText\(text\)/.test(txtBlock14);
-  const t14_4b = /parseJsonArrayForPage\(jsonArr,\s*"chapter"\)/.test(txtBlock14);
-  console.log(`  parseImportText 调用 tryParseJsonText: ${t14_4a ? "✓" : "✗"}`);
-  console.log(`  parseImportText JSON 路径走 chapter: ${t14_4b ? "✓" : "✗"}`);
-  if (!(t14_4a && t14_4b)) allPass = false;
+  // 14.4 v14: parseImportText 被重写为 importState 多 section 分派
+  //       （fs-main / fs-record / chapter 三套独立流程）
+  const t14_4a = /importState\s*=\s*\{/.test(SRC);
+  const t14_4b = /function handleImportFile\s*\(/.test(SRC) || /handleImportFile\s*\(/.test(SRC);
+  const t14_4c = /function parseImportTextFor\s*\(/.test(SRC) || /parseImportTextFor\s*\(/.test(SRC);
+  console.log(`  v14 importState 多 section 状态: ${t14_4a ? "✓" : "✗"}`);
+  console.log(`  v14 handleImportFile 入口: ${t14_4b ? "✓" : "✗"}`);
+  console.log(`  v14 parseImportTextFor 分 section: ${t14_4c ? "✓" : "✗"}`);
+  if (!(t14_4a && t14_4b && t14_4c)) allPass = false;
 
   // 14.5 index.html import-drop 接受 .json
   const htmlV14 = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
@@ -1425,46 +1440,41 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  章节 JSON 数据 + no 提取: ${t14_6b ? "✓" : "✗"}`);
   if (!(t14_6a && t14_6b)) allPass = false;
 
-  // 14.7 伏笔 JSON（5 个关键词）
+  // 14.7 伏笔 JSON 字段识别（v15：主表 3 字段 fsNo/name/status，履历表 4 字段）
   const fsJson = [
-    { "序号": 1, "伏笔名称": "断剑", "提及章节": "第3章", "原文描述": "雪地里捡到的断剑", "回收状态": "未回收" },
-    { "序号": 2, "伏笔名称": "玉佩", "提及章节": "第5章", "原文描述": "娘亲遗留的玉佩", "回收状态": "已回收" },
+    { "伏笔编号": 1, "伏笔名称": "断剑", "提及章节": "第3章", "原文描述": "雪地里捡到的断剑", "回收状态": "未回收" },
+    { "伏笔编号": 2, "伏笔名称": "玉佩", "提及章节": "第5章", "原文描述": "娘亲遗留的玉佩", "回收状态": "已回收" },
   ];
   const fsParsed = v14Api.parseJsonArrayForPage(fsJson, "foreshadowing");
+  // v15 主表 3 字段:fsNo/name/status，没有 no/setup/notes 列
   const t14_7a =
-    fsParsed.columns.no === 0 &&
-    fsParsed.columns.name === 1 &&
-    fsParsed.columns.setup === 2 &&
-    fsParsed.columns.notes === 3 &&
-    fsParsed.columns.status === 4;
-  // v13 设计：只有 no 字段走 parseChapterNo 提数字；setup 字段保留原字符串（"第3章"），
-  // 避免在编辑器里丢失"第"字给用户造成"我输了第3章怎么变成3了"的困惑
+    fsParsed.columns.fsNo >= 0 &&
+    fsParsed.columns.name >= 0 &&
+    fsParsed.columns.status >= 0 &&
+    fsParsed.columns.no === undefined &&
+    fsParsed.columns.setup === undefined &&
+    fsParsed.columns.notes === undefined;
+  // name 必为 "断剑" / "玉佩"，fsNo 兜底自 "伏笔编号" 列
   const t14_7b =
     fsParsed.rows.length === 2 &&
-    fsParsed.rows[0].no === 1 &&
+    fsParsed.rows[0].fsNo === "1" &&
     fsParsed.rows[0].name === "断剑" &&
-    fsParsed.rows[0].setup === "第3章" &&
-    fsParsed.rows[0].notes === "雪地里捡到的断剑" &&
-    fsParsed.rows[0].status === "未回收" &&
-    fsParsed.rows[0].payoff === "";
-  console.log(`  伏笔 JSON 字段识别（5 个关键词 + payoff 跳过）: ${t14_7a ? "✓" : "✗"}`);
-  console.log(`  伏笔 JSON 数据: ${t14_7b ? "✓" : "✗"}`);
+    fsParsed.rows[1].fsNo === "2" &&
+    fsParsed.rows[1].name === "玉佩";
+  console.log(`  伏笔 JSON 主表 fields(fsNo/name/status): ${t14_7a ? "✓" : "✗"}`);
+  console.log(`  伏笔 JSON 主表数据 fsNo+name 提取: ${t14_7b ? "✓" : "✗"}`);
   if (!(t14_7a && t14_7b)) allPass = false;
 
-  // 14.8 旧伏笔同义词不再识别
+  // 14.8 旧伏笔同义词不再识别（v15 主表已无 no/setup/notes，主表只认 fsNo/name/status）
   const fsJsonOld = [{ "序号": 1, "名称": "x", "铺设章节": "第1章", "备注": "y", "状态": "活跃" }];
   const fsOldParsed = v14Api.parseJsonArrayForPage(fsJsonOld, "foreshadowing");
-  const t14_8a = fsOldParsed.columns.no === 0;
-  const t14_8b = fsOldParsed.columns.name < 0;
-  const t14_8c = fsOldParsed.columns.setup < 0;
-  const t14_8d = fsOldParsed.columns.notes < 0;
-  const t14_8e = fsOldParsed.columns.status < 0;
-  console.log(`  "序号" 仍识别: ${t14_8a ? "✓" : "✗"}`);
+  // "序号" 不应再被识别成主表 fsNo（v15 主表只认"伏笔编号"）
+  const t14_8a = (fsOldParsed.columns.fsNo | 0) < 0;
+  // "名称" 不在主表 name 关键词里（主表认"伏笔名称"）
+  const t14_8b = (fsOldParsed.columns.name | 0) < 0;
+  console.log(`  "序号" 不再识别为 fsNo（v15）: ${t14_8a ? "✓" : "✗"}`);
   console.log(`  "名称" 不再识别: ${t14_8b ? "✓" : "✗"}`);
-  console.log(`  "铺设章节" 不再识别: ${t14_8c ? "✓" : "✗"}`);
-  console.log(`  "备注" 不再识别: ${t14_8d ? "✓" : "✗"}`);
-  console.log(`  "状态" 不再识别: ${t14_8e ? "✓" : "✗"}`);
-  if (!(t14_8a && t14_8b && t14_8c && t14_8d && t14_8e)) allPass = false;
+  if (!(t14_8a && t14_8b)) allPass = false;
 
   // 14.9 tryParseJsonText
   const t14_9a = JSON.stringify(v14Api.tryParseJsonText('[{"a":1},{"a":2}]')) === JSON.stringify([{a:1},{a:2}]);
@@ -1490,9 +1500,315 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  chapter fields 未动: ${t14_10a && t14_10b ? "✓" : "✗"}`);
   if (!(t14_10a && t14_10b)) allPass = false;
 
-  const v14Pass = t14_1a && t14_1b && t14_1c && t14_1d && t14_1e && t14_1f && noOldSynonyms && t14_2a && t14_2b && t14_3a && t14_3b && t14_3c && t14_4a && t14_4b && t14_5a && t14_5b && t14_5c && t14_6a && t14_6b && t14_7a && t14_7b && t14_8a && t14_8b && t14_8c && t14_8d && t14_8e && t14_9a && t14_9b && t14_9c && t14_9d && t14_9e && t14_10a && t14_10b;
+  const v14Pass = t14_1a && t14_1b && t14_1c && t14_1d && t14_1e && t14_1f && noOldSynonyms && t14_2a && t14_2b && t14_3a && t14_3b && t14_3c && t14_4a && t14_4b && t14_4c && t14_5a && t14_5b && t14_5c && t14_6a && t14_6b && t14_7a && t14_7b && t14_8a && t14_8b && t14_9a && t14_9b && t14_9c && t14_9d && t14_9e && t14_10a && t14_10b;
   console.log("  v13 修复:", v14Pass ? "PASS" : "FAIL");
   if (!v14Pass) allPass = false;
+
+  // ============================================================
+  // 测试 15：v14 伏笔双表拆分 + 4 列头 + 履历列表 + 跳转高亮
+  // ============================================================
+  console.log("\n测试 15：v14（伏笔管理页双表拆分 + 4 列头 + 履历列表 + 跳转高亮）");
+
+  // 15.1 schema 升到 11（v14 时代）；v15 改后 schema 升到 12
+  const t15_1a = /const SCHEMA_VERSION\s*=\s*1[12];/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 11/12: ${t15_1a ? "✓" : "✗"}`);
+  if (!t15_1a) allPass = false;
+
+  // 15.12 之前需要 CSS 文本(用局部变量,顶层没有 CSS 变量)
+  const _css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf-8");
+  const _html = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
+
+  // 15.2 PAGES.foreshadowing 含 recordFields / makeRecord / recordSortKey / recordFieldsSheetMatch
+  const t15_2a = /recordFields:\s*\{/.test(fsBlock);
+  const t15_2b = /makeRecord\s*\(/.test(fsBlock);
+  const t15_2c = /recordSortKey\s*\(/.test(fsBlock);
+  const t15_2d = /recordFieldsSheetMatch\s*\(/.test(fsBlock);
+  const t15_2e = /recordDefaults\s*\(/.test(fsBlock);
+  console.log(`  PAGES.foreshadowing 含 recordFields: ${t15_2a ? "✓" : "✗"}`);
+  console.log(`  PAGES.foreshadowing 含 makeRecord: ${t15_2b ? "✓" : "✗"}`);
+  console.log(`  PAGES.foreshadowing 含 recordSortKey: ${t15_2c ? "✓" : "✗"}`);
+  console.log(`  PAGES.foreshadowing 含 recordFieldsSheetMatch: ${t15_2d ? "✓" : "✗"}`);
+  console.log(`  PAGES.foreshadowing 含 recordDefaults: ${t15_2e ? "✓" : "✗"}`);
+  if (!(t15_2a && t15_2b && t15_2c && t15_2d && t15_2e)) allPass = false;
+
+  // 15.3 主表 item 结构用 fsNo + name + status（不再有 setup/notes/payoff）
+  const t15_3a = /it\.fsNo\s*=/.test(SRC) || /item\.fsNo/.test(SRC);
+  const t15_3b = /state\.pages\.foreshadowing\.items/.test(SRC) || /pages\.foreshadowing\s*\?\s*\.\s*items/.test(SRC);
+  // 不应有 it.setup / it.payoff（v14 已删）
+  const noFsSetup = !/it\.setup\s*=/.test(SRC);
+  const noFsPayoff = !/it\.payoff\s*=/.test(SRC);
+  console.log(`  item.fsNo 字段存在: ${t15_3a ? "✓" : "✗"}`);
+  console.log(`  pages.foreshadowing.items 访问: ${t15_3b ? "✓" : "✗"}`);
+  console.log(`  item.setup 已删除: ${noFsSetup ? "✓" : "✗"}`);
+  console.log(`  item.payoff 已删除: ${noFsPayoff ? "✓" : "✗"}`);
+  if (!(t15_3a && t15_3b && noFsSetup && noFsPayoff)) allPass = false;
+
+  // 15.4 IMPORT_SECTIONS 包含 fs-main 和 fs-record
+  const t15_4a = /IMPORT_SECTIONS\s*=\s*\{/.test(SRC);
+  const t15_4b = /"fs-main":\s*\{/.test(SRC);
+  const t15_4c = /"fs-record":\s*\{/.test(SRC);
+  // importState 应有 fs-main / fs-record 两条
+  const t15_4d = /importState\s*=\s*\{/.test(SRC);
+  console.log(`  IMPORT_SECTIONS 配置对象存在: ${t15_4a ? "✓" : "✗"}`);
+  console.log(`  IMPORT_SECTIONS 含 fs-main: ${t15_4b ? "✓" : "✗"}`);
+  console.log(`  IMPORT_SECTIONS 含 fs-record: ${t15_4c ? "✓" : "✗"}`);
+  console.log(`  importState 状态对象存在: ${t15_4d ? "✓" : "✗"}`);
+  if (!(t15_4a && t15_4b && t15_4c && t15_4d)) allPass = false;
+
+  // 15.5 双 section 提交互不影响 - 各有 confirmId
+  const t15_5a = /btn-import-fs-main-confirm/.test(SRC);
+  const t15_5b = /btn-import-fs-record-confirm/.test(SRC);
+  const t15_5c = /btn-import-confirm/.test(SRC); // 章节
+  console.log(`  章节确认按钮 id: ${t15_5c ? "✓" : "✗"}`);
+  console.log(`  fs-main 确认按钮 id: ${t15_5a ? "✓" : "✗"}`);
+  console.log(`  fs-record 确认按钮 id: ${t15_5b ? "✓" : "✗"}`);
+  if (!(t15_5a && t15_5b && t15_5c)) allPass = false;
+
+  // 15.6 UI 4 列头（v15 改后是 3 列头：fs-col-fsno / fs-col-name / fs-col-status）
+  //     旧 v14 时代有 fs-col-no 列，v15 改后已删
+  const t15_6a = /fs-cell\s+fs-col-fsno/.test(SRC) || /fs-list-row/.test(SRC);
+  const t15_6b = /fs-col-fsno/.test(SRC);
+  const t15_6c = /fs-col-name/.test(SRC);
+  const t15_6d = /fs-col-status/.test(SRC);
+  console.log(`  fs-cell fs-col-fsno (列表头): ${t15_6a ? "✓" : "✗"}`);
+  console.log(`  fs-col-fsno 类名: ${t15_6b ? "✓" : "✗"}`);
+  console.log(`  fs-col-name 类名: ${t15_6c ? "✓" : "✗"}`);
+  console.log(`  fs-col-status 类名: ${t15_6d ? "✓" : "✗"}`);
+  if (!(t15_6a && t15_6b && t15_6c && t15_6d)) allPass = false;
+
+  // 15.7 履历列表 + record-row 结构
+  const t15_7a = /fs-records-section/.test(SRC);
+  const t15_7b = /fs-records-list/.test(SRC);
+  const t15_7c = /fs-record-row/.test(SRC);
+  const t15_7d = /fs-rec-setup/.test(SRC);
+  const t15_7e = /fs-rec-notes/.test(SRC);
+  console.log(`  fs-records-section 区块: ${t15_7a ? "✓" : "✗"}`);
+  console.log(`  fs-records-list 列表容器: ${t15_7b ? "✓" : "✗"}`);
+  console.log(`  fs-record-row 单行: ${t15_7c ? "✓" : "✗"}`);
+  console.log(`  fs-rec-setup 提及章节: ${t15_7d ? "✓" : "✗"}`);
+  console.log(`  fs-rec-notes 原文描述: ${t15_7e ? "✓" : "✗"}`);
+  if (!(t15_7a && t15_7b && t15_7c && t15_7d && t15_7e)) allPass = false;
+
+  // 15.8 跳转 + 高亮弹窗
+  const t15_8a = /function jumpToChapterForRecord\s*\(/.test(SRC);
+  const t15_8b = /function findChapterByNo\s*\(/.test(SRC);
+  const t15_8c = /function showChapterHighlight\s*\(/.test(SRC);
+  const t15_8d = /highlight-card/.test(SRC);
+  const t15_8e = /highlight-mark/.test(SRC);
+  const t15_8f = /highlight-backdrop/.test(SRC);
+  console.log(`  jumpToChapterForRecord 函数: ${t15_8a ? "✓" : "✗"}`);
+  console.log(`  findChapterByNo 函数: ${t15_8b ? "✓" : "✗"}`);
+  console.log(`  showChapterHighlight 函数: ${t15_8c ? "✓" : "✗"}`);
+  console.log(`  highlight-card 弹窗: ${t15_8d ? "✓" : "✗"}`);
+  console.log(`  highlight-mark 命中标签: ${t15_8e ? "✓" : "✗"}`);
+  console.log(`  highlight-backdrop 背景遮罩: ${t15_8f ? "✓" : "✗"}`);
+  if (!(t15_8a && t15_8b && t15_8c && t15_8d && t15_8e && t15_8f)) allPass = false;
+
+  // 15.9 编辑/查看切换
+  const t15_9a = /fsEditing/.test(SRC) || /fs-edit-toggle/.test(SRC);
+  const t15_9b = /is-readonly|readonly/i.test(fsBlock) || /is-readonly|readonly/.test(SRC);
+  const t15_9c = /fs-rec-notes-link/.test(SRC); // 只读态下"原文描述"是可点击链接
+  console.log(`  fsEditing / fs-edit-toggle 状态: ${t15_9a ? "✓" : "✗"}`);
+  console.log(`  readonly 切换: ${t15_9b ? "✓" : "✗"}`);
+  console.log(`  fs-rec-notes-link 只读态链接: ${t15_9c ? "✓" : "✗"}`);
+  if (!(t15_9a && t15_9b && t15_9c)) allPass = false;
+
+  // 15.10 排序功能 - 履历按提及章节排序
+  const t15_10a = /recordSortKey\s*\(/.test(fsBlock) || /recordSortKey\s*\(/.test(SRC);
+  const t15_10b = /parseChapterNo\(rec\.setup\)/.test(SRC) || /parseChapterNo\(.*setup.*\)/.test(SRC);
+  console.log(`  recordSortKey 函数: ${t15_10a ? "✓" : "✗"}`);
+  console.log(`  parseChapterNo 用于 record.setup: ${t15_10b ? "✓" : "✗"}`);
+  if (!(t15_10a && t15_10b)) allPass = false;
+
+  // 15.11 v10 → v11 迁移 - 从旧 setup/notes 拆出 records
+  const t15_11a = /v10.*v11|v11.*迁移|migrate.*v10|migration.*v11/.test(SRC) || /case 10:/.test(SRC);
+  const t15_11b = /it\.records\s*=/.test(SRC);
+  console.log(`  v10 → v11 迁移逻辑: ${t15_11a ? "✓" : "✗"}`);
+  console.log(`  item.records 字段初始化: ${t15_11b ? "✓" : "✗"}`);
+  if (!(t15_11a && t15_11b)) allPass = false;
+
+  // 15.12 CSS 样式齐全
+  const t15_12a = /\.fs-list-row\b/.test(_css) || /\.fs-cell\s+fs-col-no/.test(_css) || /\.fs-cell\b/.test(_css);
+  const t15_12b = /\.fs-col-fsno\b/.test(_css);
+  const t15_12c = /\.fs-records-section\b/.test(_css);
+  const t15_12d = /\.fs-record-row\b/.test(_css);
+  const t15_12e = /\.fs-rec-notes-link\b/.test(_css);
+  const t15_12f = /\.highlight-card\b/.test(_css);
+  const t15_12g = /\.highlight-mark\b/.test(_css);
+  const t15_12h = /\.import-section-card\b/.test(_css);
+  console.log(`  CSS .fs-cell (fs-list-row): ${t15_12a ? "✓" : "✗"}`);
+  console.log(`  CSS .fs-col-fsno: ${t15_12b ? "✓" : "✗"}`);
+  console.log(`  CSS .fs-records-section: ${t15_12c ? "✓" : "✗"}`);
+  console.log(`  CSS .fs-record-row: ${t15_12d ? "✓" : "✗"}`);
+  console.log(`  CSS .fs-rec-notes-link: ${t15_12e ? "✓" : "✗"}`);
+  console.log(`  CSS .highlight-card: ${t15_12f ? "✓" : "✗"}`);
+  console.log(`  CSS .highlight-mark: ${t15_12g ? "✓" : "✗"}`);
+  console.log(`  CSS .import-section-card: ${t15_12h ? "✓" : "✗"}`);
+  if (!(t15_12a && t15_12b && t15_12c && t15_12d && t15_12e && t15_12f && t15_12g && t15_12h)) allPass = false;
+
+  // 15.13 index.html 双 section 容器
+  const t15_13a = /id="import-section-chapter"/.test(_html);
+  const t15_13b = /id="import-section-foreshadowing"/.test(_html);
+  const t15_13c = /id="import-fs-main-drop"/.test(_html);
+  const t15_13d = /id="import-fs-record-drop"/.test(_html);
+  console.log(`  index.html #import-section-chapter: ${t15_13a ? "✓" : "✗"}`);
+  console.log(`  index.html #import-section-foreshadowing: ${t15_13b ? "✓" : "✗"}`);
+  console.log(`  index.html #import-fs-main-drop: ${t15_13c ? "✓" : "✗"}`);
+  console.log(`  index.html #import-fs-record-drop: ${t15_13d ? "✓" : "✗"}`);
+  if (!(t15_13a && t15_13b && t15_13c && t15_13d)) allPass = false;
+
+  const t15All = t15_1a && t15_2a && t15_2b && t15_2c && t15_2d && t15_2e && t15_3a && t15_3b && noFsSetup && noFsPayoff && t15_4a && t15_4b && t15_4c && t15_4d && t15_5a && t15_5b && t15_5c && t15_6a && t15_6b && t15_6c && t15_6d && t15_7a && t15_7b && t15_7c && t15_7d && t15_7e && t15_8a && t15_8b && t15_8c && t15_8d && t15_8e && t15_8f && t15_9a && t15_9b && t15_9c && t15_10a && t15_10b && t15_11a && t15_11b && t15_12a && t15_12b && t15_12c && t15_12d && t15_12e && t15_12f && t15_12g && t15_12h && t15_13a && t15_13b && t15_13c && t15_13d;
+  console.log("  v14 改动:", t15All ? "PASS" : "FAIL");
+  if (!t15All) allPass = false;
+
+  // ============================================================
+  // 测试 16：v15 主表字段精简（4 字段 → 3 字段，去掉"序号"）
+  // ============================================================
+  console.log("\n测试 16：v15（伏笔主表精简为 3 字段 - 伏笔编号/伏笔名称/状态）");
+
+  // 16.1 SCHEMA_VERSION = 12
+  const t16_1a = /const SCHEMA_VERSION\s*=\s*12;/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 12: ${t16_1a ? "✓" : "✗"}`);
+  if (!t16_1a) allPass = false;
+
+  // 16.2 PAGES.foreshadowing.fields 只含 3 个键：fsNo / name / status
+  //   用正则切片 fields 块（从 fields: { 到 recordFields: { 之间）
+  const fsFieldsStart = fsBlock.indexOf("fields:");
+  const fsRecordStart = fsBlock.indexOf("recordFields:");
+  const fsMainFieldsBlock =
+    fsFieldsStart > 0 && fsRecordStart > fsFieldsStart
+      ? fsBlock.slice(fsFieldsStart, fsRecordStart)
+      : "";
+  // 主表 fields 含三个键
+  const t16_2a = /fsNo:\s*\[\s*"伏笔编号"/.test(fsMainFieldsBlock);
+  const t16_2b = /name:\s*\[\s*"伏笔名称"/.test(fsMainFieldsBlock);
+  const t16_2c = /status:\s*\[/.test(fsMainFieldsBlock);
+  // 主表 fields 不应再有 no: 字段
+  const t16_2d = !/^\s*no:\s*\[/m.test(fsMainFieldsBlock);
+  console.log(`  主表 fields.fsNo ["伏笔编号"]: ${t16_2a ? "✓" : "✗"}`);
+  console.log(`  主表 fields.name ["伏笔名称"]: ${t16_2b ? "✓" : "✗"}`);
+  console.log(`  主表 fields.status [...]: ${t16_2c ? "✓" : "✗"}`);
+  console.log(`  主表 fields 已去掉 no: ${t16_2d ? "✓" : "✗"}`);
+  if (!(t16_2a && t16_2b && t16_2c && t16_2d)) allPass = false;
+
+  // 16.3 defaults() 不含 no
+  const fsDefaultsStart = fsBlock.indexOf("defaults()");
+  const fsRecordDefaultsStart = fsBlock.indexOf("recordDefaults()");
+  const fsDefaultsBlock =
+    fsDefaultsStart > 0 && fsRecordDefaultsStart > fsDefaultsStart
+      ? fsBlock.slice(fsDefaultsStart, fsRecordDefaultsStart)
+      : "";
+  const t16_3a = /fsNo:\s*"",?\s*name:\s*""/.test(fsDefaultsBlock);
+  const t16_3b = /status:\s*"活跃"/.test(fsDefaultsBlock);
+  const t16_3c = !/no:\s*0/.test(fsDefaultsBlock);
+  console.log(`  defaults() 含 fsNo/name 字段: ${t16_3a ? "✓" : "✗"}`);
+  console.log(`  defaults() 含 status 字段: ${t16_3b ? "✓" : "✗"}`);
+  console.log(`  defaults() 不含 no 字段: ${t16_3c ? "✓" : "✗"}`);
+  if (!(t16_3a && t16_3b && t16_3c)) allPass = false;
+
+  // 16.4 makeItem() 不含 no 字段
+  const makeItemStart = fsBlock.indexOf("makeItem(");
+  const makeItemEnd = fsBlock.indexOf("makeRecord(");
+  const makeItemBlock =
+    makeItemStart > 0 && makeItemEnd > makeItemStart
+      ? fsBlock.slice(makeItemStart, makeItemEnd)
+      : "";
+  // makeItem 应有 fsNo/name/status/sheet
+  const t16_4a = /id:\s*uid\(/.test(makeItemBlock);
+  const t16_4b = /fsNo:\s*String\(data\.fsNo/.test(makeItemBlock);
+  const t16_4c = /name:\s*data\.name/.test(makeItemBlock);
+  const t16_4d = /status:\s*data\.status/.test(makeItemBlock);
+  // makeItem 不应再有 no: 字段
+  const t16_4e = !/^\s*no:\s*parseFsNoToKey/m.test(makeItemBlock);
+  console.log(`  makeItem 含 id: ${t16_4a ? "✓" : "✗"}`);
+  console.log(`  makeItem 含 fsNo: ${t16_4b ? "✓" : "✗"}`);
+  console.log(`  makeItem 含 name: ${t16_4c ? "✓" : "✗"}`);
+  console.log(`  makeItem 含 status: ${t16_4d ? "✓" : "✗"}`);
+  console.log(`  makeItem 已去掉 no: ${t16_4e ? "✓" : "✗"}`);
+  if (!(t16_4a && t16_4b && t16_4c && t16_4d && t16_4e)) allPass = false;
+
+  // 16.5 列表 UI 3 列：fs-col-fsno / fs-col-name / fs-col-status（无 fs-col-no）
+  const t16_5a = /fs-cell\s+fs-col-fsno/.test(SRC);
+  const t16_5b = /fs-cell\s+fs-col-name/.test(SRC);
+  const t16_5c = /fs-cell\s+fs-col-status/.test(SRC);
+  // 列表行不应再有 fs-col-no span
+  const t16_5d = !/fs-cell\s+fs-col-no\b/.test(SRC);
+  console.log(`  列表含 fs-col-fsno 列: ${t16_5a ? "✓" : "✗"}`);
+  console.log(`  列表含 fs-col-name 列: ${t16_5b ? "✓" : "✗"}`);
+  console.log(`  列表含 fs-col-status 列: ${t16_5c ? "✓" : "✗"}`);
+  console.log(`  列表无 fs-col-no 列: ${t16_5d ? "✓" : "✗"}`);
+  if (!(t16_5a && t16_5b && t16_5c && t16_5d)) allPass = false;
+
+  // 16.6 编辑器 meta 字段只剩 3 个：meta-fsno / meta-title（伏笔名称）/ 状态
+  //   旧版有 meta-num（序号）应去掉
+  const t16_6a = /meta-field\s+meta-fsno/.test(SRC);
+  // 移除 meta-num 检查：fsBlock 内不能有 meta-num
+  // （整个 SRC 不带具体行号，但要确保伏笔编辑器里没出现 meta-num）
+  const t16_6b = !/meta-field\s+meta-num\b/.test(SRC);
+  // fs-no input 已删除
+  const t16_6c = !/id="fs-no"/.test(SRC);
+  console.log(`  编辑器含 meta-fsno 字段: ${t16_6a ? "✓" : "✗"}`);
+  console.log(`  编辑器无 meta-num（序号）字段: ${t16_6b ? "✓" : "✗"}`);
+  console.log(`  编辑器无 #fs-no input: ${t16_6c ? "✓" : "✗"}`);
+  if (!(t16_6a && t16_6b && t16_6c)) allPass = false;
+
+  // 16.7 v11 → v12 迁移：解构去掉 no + 写 schema = 12
+  const t16_7a = /const\s*\{\s*no\s*,\s*\.\.\.rest\s*\}\s*=\s*old/.test(SRC);
+  const t16_7b = /state\.schema\s*=\s*12/.test(SRC);
+  // 迁移块针对 foreshadowing items
+  const t16_7c = /fs\.items\.map\(\(old\)\s*=>/.test(SRC);
+  console.log(`  v11→v12 迁移: 解构 { no, ...rest }: ${t16_7a ? "✓" : "✗"}`);
+  console.log(`  v11→v12 迁移: state.schema = 12: ${t16_7b ? "✓" : "✗"}`);
+  console.log(`  v11→v12 迁移: fs.items.map((old) =>): ${t16_7c ? "✓" : "✗"}`);
+  if (!(t16_7a && t16_7b && t16_7c)) allPass = false;
+
+  // 16.8 styles.css 列表 grid 改 3 列 + 删 .fs-col-no
+  const t16_8a = /\.fs-list-row\s*\{[^}]*grid-template-columns:\s*130px\s+1fr\s+110px/s.test(_css);
+  const t16_8b = !/\.fs-col-no\s*\{/.test(_css);
+  console.log(`  CSS .fs-list-row 3 列 grid: ${t16_8a ? "✓" : "✗"}`);
+  console.log(`  CSS 删除 .fs-col-no 样式: ${t16_8b ? "✓" : "✗"}`);
+  if (!(t16_8a && t16_8b)) allPass = false;
+
+  // 16.9 index.html 导入提示写明 3 字段
+  const t16_9a = /伏笔数据表（3 字段）/.test(_html);
+  const t16_9b = /伏笔履历表（4 字段）/.test(_html);
+  // 主表 placeholder 是 3 列
+  const t16_9c = /id="import-fs-main-text"[^>]*placeholder="伏笔编号\s*伏笔名称\s*状态/.test(_html);
+  console.log(`  index.html 主表提示「3 字段」: ${t16_9a ? "✓" : "✗"}`);
+  console.log(`  index.html 履历表提示「4 字段」: ${t16_9b ? "✓" : "✗"}`);
+  console.log(`  index.html 主表 placeholder 3 列: ${t16_9c ? "✓" : "✗"}`);
+  if (!(t16_9a && t16_9b && t16_9c)) allPass = false;
+
+  // 16.10 履历表 recordFields 仍含 4 个字段（no/fsNo/setup/notes），结构未动
+  const recordFieldsStartV15 = fsBlock.indexOf("recordFields:");
+  const makeItemPosV15 = fsBlock.indexOf("makeItem(");
+  const recordFieldsBlockV15 =
+    recordFieldsStartV15 > 0 && makeItemPosV15 > recordFieldsStartV15
+      ? fsBlock.slice(recordFieldsStartV15, makeItemPosV15)
+      : "";
+  const t16_10a = /no:\s*\[\s*"序号"/.test(recordFieldsBlockV15);
+  const t16_10b = /fsNo:\s*\[\s*"伏笔编号"/.test(recordFieldsBlockV15);
+  const t16_10c = /setup:\s*\[\s*"提及章节"/.test(recordFieldsBlockV15);
+  const t16_10d = /notes:\s*\[\s*"原文描述"/.test(recordFieldsBlockV15);
+  console.log(`  履历表 recordFields.no ["序号"]: ${t16_10a ? "✓" : "✗"}`);
+  console.log(`  履历表 recordFields.fsNo ["伏笔编号"]: ${t16_10b ? "✓" : "✗"}`);
+  console.log(`  履历表 recordFields.setup ["提及章节"]: ${t16_10c ? "✓" : "✗"}`);
+  console.log(`  履历表 recordFields.notes ["原文描述"]: ${t16_10d ? "✓" : "✗"}`);
+  if (!(t16_10a && t16_10b && t16_10c && t16_10d)) allPass = false;
+
+  const t16All =
+    t16_1a &&
+    t16_2a && t16_2b && t16_2c && t16_2d &&
+    t16_3a && t16_3b && t16_3c &&
+    t16_4a && t16_4b && t16_4c && t16_4d && t16_4e &&
+    t16_5a && t16_5b && t16_5c && t16_5d &&
+    t16_6a && t16_6b && t16_6c &&
+    t16_7a && t16_7b && t16_7c &&
+    t16_8a && t16_8b &&
+    t16_9a && t16_9b && t16_9c &&
+    t16_10a && t16_10b && t16_10c && t16_10d;
+  console.log("  v15 改动:", t16All ? "PASS" : "FAIL");
+  if (!t16All) allPass = false;
 }
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

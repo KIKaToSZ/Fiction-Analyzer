@@ -328,6 +328,10 @@
     </div>
 
     <!-- ===================== 弹窗：导入 ===================== -->
+    <!-- v14：导入弹窗支持单/多 section
+         - 章节页：单 section（沿用旧 id：#import-drop / #import-text / #import-sheet-select / #import-preview / #btn-import-confirm）
+         - 伏笔页：双 section（伏笔数据表 + 伏笔履历表，各自独立导入/预览/确认）
+    -->
     <div id="modal-import" class="modal" hidden>
       <div class="modal-backdrop" data-close></div>
       <div class="modal-card modal-card-wide">
@@ -341,57 +345,148 @@
           </button>
         </header>
         <div class="modal-body">
-          <p class="muted hint">
-            选择一个本地 <code>.xlsx</code> 或 <code>.json</code> 文件。xlsx 按 sheet 名的特征自动归类到对应页面（章节 / 伏笔管理 / 后续扩展），可以手动指定；json 是数组格式的章节或伏笔数据，每项是一个对象、keys 作为列名。文本粘贴（Tab / 逗号 / 多空格 / JSON 数组）作为兜底，默认导入到「章节」页。
-          </p>
 
-          <div id="import-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入文件">
-            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-            <div class="import-drop-title">点击选择 / 拖入 .xlsx 或 .json 文件</div>
-            <div class="import-drop-hint">支持 .xlsx / .xlsm / .json 格式（json 为数组格式），单文件</div>
-            <input id="file-xlsx" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
+          <!-- ========== 章节导入 section（单文件，沿用旧 id） ========== -->
+          <div id="import-section-chapter" class="import-section" data-section-key="chapter" hidden>
+            <p class="muted hint">
+              选择一个本地 <code>.xlsx</code> 或 <code>.json</code> 文件。xlsx 按 sheet 名的特征自动归类到对应页面（章节 / 伏笔管理 / 后续扩展），可以手动指定；json 是数组格式的章节或伏笔数据，每项是一个对象、keys 作为列名。文本粘贴（Tab / 逗号 / 多空格 / JSON 数组）作为兜底，默认导入到「章节」页。
+            </p>
+            <div id="import-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入文件">
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <div class="import-drop-title">点击选择 / 拖入 .xlsx 或 .json 文件</div>
+              <div class="import-drop-hint">支持 .xlsx / .xlsm / .json 格式（json 为数组格式），单文件</div>
+              <input id="file-xlsx" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
+            </div>
+            <div id="import-file-info" class="import-file-info" hidden>
+              <span class="import-file-name"></span>
+              <button class="link-btn" id="btn-import-clear" type="button">清除</button>
+            </div>
+            <details class="import-advanced">
+              <summary>或粘贴文本（Tab / 逗号 / 多空格分隔）</summary>
+              <textarea id="import-text" rows="6" placeholder="章节号	章节名	文章内容&#10;1	寒江初雪	……"></textarea>
+            </details>
+            <div id="import-sheet-wrap" class="form-row form-row-sheets" hidden>
+              <label class="check">
+                <span>来源 sheet：</span>
+                <select id="import-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
+              </label>
+            </div>
+            <div id="import-target-wrap" class="form-row" hidden>
+              <label class="check">
+                <span>导入到：</span>
+                <select id="import-target-select" class="mini-select" aria-label="选择要导入到的页面"></select>
+              </label>
+              <span class="hint muted">每行会根据 sheet 名的特征自动归类，可以手动改</span>
+            </div>
+            <div class="form-row">
+              <label class="check">
+                <input id="import-skip-header" type="checkbox" checked />
+                <span>跳过首行表头</span>
+              </label>
+              <span id="import-stats" class="muted" aria-live="polite"></span>
+            </div>
+            <div id="import-preview" class="import-preview"></div>
           </div>
 
-          <div id="import-file-info" class="import-file-info" hidden>
-            <span class="import-file-name"></span>
-            <button class="link-btn" id="btn-import-clear" type="button">清除</button>
+          <!-- ========== 伏笔双 section 容器 ========== -->
+          <div id="import-section-foreshadowing" data-section-key="foreshadowing" hidden>
+            <p class="muted hint">
+              <strong>「伏笔数据表」</strong>和<strong>「伏笔履历表」</strong>分别独立导入：每个区域接受各自的 .xlsx / .json / 粘贴文本，互不影响，可以只填一个、也可以都填。
+              <br />· 伏笔数据表（3 字段）：<code>伏笔编号 / 伏笔名称 / 状态</code>
+              <br />· 伏笔履历表（4 字段）：<code>序号 / 伏笔编号 / 提及章节 / 原文描述</code>
+            </p>
+
+            <!-- 伏笔数据表 -->
+            <section class="import-section-card" data-section-key="fs-main">
+              <header class="import-section-card-header">
+                <span class="import-section-card-title">📋 伏笔数据表</span>
+                <span class="muted hint">伏笔编号 / 伏笔名称 / 状态</span>
+              </header>
+              <div id="import-fs-main-drop" class="import-drop" tabindex="0" role="button" aria-label="拖入或选择伏笔数据表文件">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <div class="import-drop-title">拖入或选择 .xlsx / .json 文件</div>
+                <div class="import-drop-hint">单文件，含 伏笔编号 / 伏笔名称 / 状态 列</div>
+                <input id="file-fs-main" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
+              </div>
+              <div id="import-fs-main-file-info" class="import-file-info" hidden>
+                <span class="import-file-name"></span>
+                <button class="link-btn" data-clear-section="fs-main" type="button">清除</button>
+              </div>
+              <details class="import-advanced">
+                <summary>或粘贴文本（Tab / 逗号 / 多空格）</summary>
+                <textarea id="import-fs-main-text" rows="4" placeholder="伏笔编号	伏笔名称	状态&#10;1	寒江初雪	活跃&#10;2	暗夜妖刀	已回收"></textarea>
+              </details>
+              <div id="import-fs-main-sheet-wrap" class="form-row form-row-sheets" hidden>
+                <label class="check">
+                  <span>来源 sheet：</span>
+                  <select id="import-fs-main-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="check">
+                  <input id="import-fs-main-skip-header" type="checkbox" checked />
+                  <span>跳过首行表头</span>
+                </label>
+                <span id="import-fs-main-stats" class="muted" aria-live="polite"></span>
+              </div>
+              <div id="import-fs-main-preview" class="import-preview"></div>
+            </section>
+
+            <!-- 伏笔履历表 -->
+            <section class="import-section-card" data-section-key="fs-record">
+              <header class="import-section-card-header">
+                <span class="import-section-card-title">📜 伏笔履历表</span>
+                <span class="muted hint">序号 / 伏笔编号 / 提及章节 / 原文描述</span>
+              </header>
+              <div id="import-fs-record-drop" class="import-drop" tabindex="0" role="button" aria-label="拖入或选择伏笔履历表文件">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <div class="import-drop-title">拖入或选择 .xlsx / .json 文件</div>
+                <div class="import-drop-hint">单文件，含 伏笔编号 / 提及章节 / 原文描述 列</div>
+                <input id="file-fs-record" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
+              </div>
+              <div id="import-fs-record-file-info" class="import-file-info" hidden>
+                <span class="import-file-name"></span>
+                <button class="link-btn" data-clear-section="fs-record" type="button">清除</button>
+              </div>
+              <details class="import-advanced">
+                <summary>或粘贴文本（Tab / 逗号 / 多空格）</summary>
+                <textarea id="import-fs-record-text" rows="4" placeholder="伏笔编号	提及章节	原文描述&#10;1	第3章	寒江独钓者，遗下一枚旧玉佩&#10;1	第7章	玉佩现世，主角发现背面刻有「雪」字"></textarea>
+              </details>
+              <div id="import-fs-record-sheet-wrap" class="form-row form-row-sheets" hidden>
+                <label class="check">
+                  <span>来源 sheet：</span>
+                  <select id="import-fs-record-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="check">
+                  <input id="import-fs-record-skip-header" type="checkbox" checked />
+                  <span>跳过首行表头</span>
+                </label>
+                <span id="import-fs-record-stats" class="muted" aria-live="polite"></span>
+              </div>
+              <div id="import-fs-record-preview" class="import-preview"></div>
+            </section>
           </div>
 
-          <details class="import-advanced">
-            <summary>或粘贴文本（Tab / 逗号 / 多空格分隔）</summary>
-            <textarea id="import-text" rows="6" placeholder="章节号	章节名	文章内容&#10;1	寒江初雪	……"></textarea>
-          </details>
-
-          <div id="import-sheet-wrap" class="form-row form-row-sheets" hidden>
-            <label class="check">
-              <span>来源 sheet：</span>
-              <select id="import-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
-            </label>
-          </div>
-
-          <div id="import-target-wrap" class="form-row" hidden>
-            <label class="check">
-              <span>导入到：</span>
-              <select id="import-target-select" class="mini-select" aria-label="选择要导入到的页面"></select>
-            </label>
-            <span class="hint muted">每行会根据 sheet 名的特征自动归类，可以手动改</span>
-          </div>
-
-          <div class="form-row">
-            <label class="check">
-              <input id="import-skip-header" type="checkbox" checked />
-              <span>跳过首行表头</span>
-            </label>
-            <span id="import-stats" class="muted" aria-live="polite"></span>
-          </div>
-          <div id="import-preview" class="import-preview"></div>
+          <!-- 通用底部按钮 -->
           <div class="form-actions">
             <button class="secondary-btn" data-close>取消</button>
-            <button id="btn-import-confirm" class="primary-btn" disabled>确认导入</button>
+            <button id="btn-import-confirm" class="primary-btn" data-section-key="chapter" disabled>确认导入</button>
+            <button id="btn-import-fs-main-confirm" class="primary-btn" data-section-key="fs-main" hidden disabled>确认导入「数据表」</button>
+            <button id="btn-import-fs-record-confirm" class="primary-btn" data-section-key="fs-record" hidden disabled>确认导入「履历表」</button>
           </div>
         </div>
       </div>

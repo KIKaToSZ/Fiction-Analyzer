@@ -10,7 +10,7 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 10;
+  const SCHEMA_VERSION = 12;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
   // 持久化 directory handle 的 key 前缀（完整 key = "dir:" + currentFileName）
@@ -132,46 +132,83 @@
           "伏线",
         ]);
       },
+      // v15：伏笔管理拆成两张表（重构）
+      //   - 主表 fields：伏笔编号 / 伏笔名称 / 伏笔状态（3 字段，UI 一行展示 3 列）
+      //   - 履历表 recordFields：序号 / 伏笔编号 / 提及章节 / 原文描述（4 字段，UI 列表展示）
+      // 履历表识别优先级比主表高（如果 sheet 同时含"原文描述"列就归为履历表 sheet），
+      // 通过 recordFieldsSheetMatch 单独判定。
+      // v15 调整：主表去掉"序号"字段（序号由列表渲染层按 fsNo 排序后 1-based 派生）
       fields: {
-        // v13：按用户要求只识别这 5 个关键词（v12 扩展的旧同义词全部移除）
-        no: ["序号"],
+        fsNo: ["伏笔编号"],
         name: ["伏笔名称"],
-        setup: ["提及章节"],
-        // payoff 字段保留在 schema 中以兼容旧数据，但导入时不再识别任何关键词
-        payoff: [],
-        status: ["回收状态"],
-        notes: ["原文描述"],
+        status: ["状态", "伏笔状态", "回收状态"],
+      },
+      recordFields: {
+        no: ["序号"],
+        fsNo: ["伏笔编号"],
+        setup: ["提及章节", "铺设章节"],
+        notes: ["原文描述", "备注", "描述"],
       },
       defaults() {
         return {
-          no: 0,
+          fsNo: "",
           name: "",
-          setup: "",
-          payoff: "",
           status: "活跃",
+        };
+      },
+      recordDefaults() {
+        return {
+          no: 0,
+          fsNo: "",
+          setup: "",
           notes: "",
         };
       },
       makeItem(data, sheet) {
         return {
           id: uid("fs"),
-          no: data.no || 0,
+          fsNo: String(data.fsNo ?? data.no ?? "").trim(),
           name: data.name || "",
-          setup: data.setup || "",
-          payoff: data.payoff || "",
           status: data.status || "活跃",
+          sheet,
+        };
+      },
+      makeRecord(data, sheet) {
+        return {
+          id: uid("fsr"),
+          no: parseFsNoToKey(data.no),
+          fsNo: String(data.fsNo ?? "").trim(),
+          setup: data.setup || "",
           notes: data.notes || "",
           sheet,
         };
       },
+      // v14：履历表 sheet 判定（同时含 fsNo + setup + notes 三个字段）
+      recordFieldsSheetMatch(header) {
+        const norm = (header || []).map((h) =>
+          String(h || "").replace(/\s+/g, "").toLowerCase()
+        );
+        const has = (cands) =>
+          cands.some((c) => norm.some((h) => h.includes(c.toLowerCase())));
+        return (
+          has(this.recordFields.fsNo) &&
+          has(this.recordFields.setup) &&
+          has(this.recordFields.notes)
+        );
+      },
       sortKey(item) {
-        return parseChapterNo(item.no);
+        // 主表按 fsNo 排序（字符串 + 数字兼容）
+        return parseFsNoKey(item.fsNo || item.no);
+      },
+      recordSortKey(rec) {
+        // 履历按"提及章节"解析成章节号排序
+        return parseChapterNo(rec.setup);
       },
       newItemLabel: "新增伏笔",
-      newItemToast(sheet, no) {
+      newItemToast(sheet, fsNo) {
         return sheet
-          ? `已新增伏笔 #${no} [${sheet}]`
-          : `已新增伏笔 #${no}`;
+          ? `已新增伏笔 #${fsNo} [${sheet}]`
+          : `已新增伏笔 #${fsNo}`;
       },
       emptyStateHtml() {
         return `
@@ -185,6 +222,24 @@
       },
     },
   };
+
+  // v14：把 fsNo（伏笔编号）解析为可排序的 key
+  // 兼容："1" / "FS-001" / "序章" / "12" 都能正常排序
+  function parseFsNoKey(raw) {
+    if (raw == null) return { num: Infinity, str: "", raw: "" };
+    const s = String(raw).trim();
+    if (!s) return { num: Infinity, str: "", raw: "" };
+    // 优先走 parseChapterNo 复用阿拉伯/中文数字解析
+    const p = parseChapterNo(s);
+    return { num: p.num, str: s, raw: s };
+  }
+  function parseFsNoToKey(no) {
+    // 序号字段统一存 number；如果解析不出数字就存 0（UI 仍然按字符串位置排）
+    const p = parseChapterNo(no);
+    if (p.hasNum && Number.isFinite(p.num)) return p.num;
+    if (typeof no === "number" && Number.isFinite(no)) return no;
+    return 0;
+  }
   const PAGE_IDS = Object.keys(PAGES);
   const DEFAULT_PAGE = "chapter";
 
@@ -283,10 +338,19 @@
   //   currentSheet:  string | null
   //   items:         [...]                            // 本页面的条目
   //   currentItemId: string | null
+  //   records:       [...]                            // v14：伏笔履历记录（仅 foreshadowing 用）
   // }
   // sheetsRaw:  [{name, rows2d, columns, rowCount, ok, page}]  // 全量 raw，写回用
   function makePageState() {
-    return { sheets: [], currentSheet: null, items: [], currentItemId: null };
+    return {
+      sheets: [],
+      currentSheet: null,
+      items: [],
+      currentItemId: null,
+      // v14：履历表——和 items 关联的多次"提及"记录
+      // 每条 {id, no, fsNo, setup, notes, sheet}
+      records: [],
+    };
   }
 
   // 是否有任何用户数据（用于在覆盖前判断是否需要先导出 json 备份）
@@ -353,6 +417,7 @@
           currentSheet: state.pages.foreshadowing.currentSheet,
           items: JSON.parse(JSON.stringify(state.pages.foreshadowing.items || [])),
           currentItemId: state.pages.foreshadowing.currentItemId,
+          records: JSON.parse(JSON.stringify(state.pages.foreshadowing.records || [])),
         },
       },
       sheetsRaw: JSON.parse(JSON.stringify(state.sheetsRaw || [])),
@@ -512,12 +577,27 @@
           it.title = $("#ch-title").value.trim();
           it.content = $("#ch-content").value;
         } else if (state.currentPage === "foreshadowing") {
-          it.no = $("#fs-no").value;
-          it.name = $("#fs-name").value.trim();
-          it.status = $("#fs-status").value || "活跃";
-          it.setup = $("#fs-setup").value.trim();
-          it.payoff = $("#fs-payoff").value.trim();
-          it.notes = $("#fs-notes").value;
+          // 序号 it.no 由列表自动管理,这里只同步核心字段
+          it.fsNo = String($("#fs-fsno")?.value ?? it.fsNo ?? "").trim();
+          it.name = String($("#fs-name")?.value ?? it.name ?? "").trim();
+          it.status = $("#fs-status")?.value || it.status || "活跃";
+          // 履历从编辑器 DOM 抓 (records[] 由 record-row 渲染)
+          try {
+            const rows = document.querySelectorAll("#fs-records-list .fs-record-row");
+            const recs = [];
+            rows.forEach((row) => {
+              const setup = row.querySelector(".fs-rec-setup")?.value?.trim() || "";
+              const notes = row.querySelector(".fs-rec-notes")?.value || "";
+              if (setup || notes) {
+                recs.push({
+                  id: row.dataset.recId || undefined,
+                  setup,
+                  notes,
+                });
+              }
+            });
+            it.records = recs;
+          } catch (_) {}
         }
       }
     } catch (_) {}
@@ -665,6 +745,66 @@
             };
           }
         }
+      }
+
+      // v14：伏笔管理表拆分迁移（v10/v13 → v11）
+      // - 旧 item 字段 {id, no, name, setup, payoff, status, notes, sheet}
+      //   → 拆成主表 item {id, no, fsNo, name, status, sheet} + 履历 record {id, no, fsNo, setup, notes, sheet}
+      // - 迁移策略：旧 no → fsNo（兼容用户在旧数据里把 no 当"伏笔编号"用）
+      //             旧 setup/notes 拼成一条 record（fsNo = 旧 no）
+      //             旧 payoff 直接丢弃（v11 主表/履历表都不再保留）
+      {
+        const fs = state.pages.foreshadowing;
+        if (!Array.isArray(fs.records)) fs.records = [];
+        if (Array.isArray(fs.items)) {
+          const migratedItems = [];
+          const migratedRecords = fs.records.slice();
+          for (const old of fs.items) {
+            const fsNoRaw = String(old.fsNo ?? old.no ?? "").trim();
+            const newItem = {
+              id: old.id || uid("fs"),
+              no: parseFsNoToKey(old.no),
+              fsNo: fsNoRaw,
+              name: old.name || "",
+              status: old.status || "活跃",
+              sheet: old.sheet,
+            };
+            migratedItems.push(newItem);
+            // 旧 setup / notes 拼成第一条 record（仅当 setup 或 notes 有内容时）
+            const oldSetup = String(old.setup || "").trim();
+            const oldNotes = String(old.notes || "").trim();
+            if (oldSetup || oldNotes) {
+              migratedRecords.push({
+                id: old.id ? `fsr_${old.id.slice(3)}` : uid("fsr"),
+                no: 0,
+                fsNo: fsNoRaw,
+                setup: oldSetup,
+                notes: oldNotes,
+                sheet: old.sheet,
+              });
+            }
+          }
+          fs.items = migratedItems;
+          fs.records = migratedRecords;
+          // schema 升到 v11
+          state.schema = 11;
+        }
+      }
+
+      // v15：伏笔主表去掉"序号"字段（v11 主表是 4 字段含 no，v15 只要 3 字段）
+      // - 把 items 里的 no 字段移除；records 仍保留 no 字段（履历表结构不动）
+      // - 序号由列表渲染层按 fsNo 排序后 1-based 派生
+      {
+        const fs = state.pages.foreshadowing;
+        if (Array.isArray(fs.items)) {
+          fs.items = fs.items.map((old) => {
+            if (!old || typeof old !== "object") return old;
+            // 解构去掉 no，其余字段保留
+            const { no, ...rest } = old;
+            return rest;
+          });
+        }
+        state.schema = 12;
       }
       if (Array.isArray(data.sheetsRaw)) {
         state.sheetsRaw = data.sheetsRaw;
@@ -1433,7 +1573,7 @@
     const items = getSortedItems();
     list.className = "fs-list";
     list.innerHTML = items
-      .map((it) => {
+      .map((it, idx) => {
         const status = it.status || "活跃";
         const cls =
           status === "已回收"
@@ -1441,11 +1581,14 @@
             : status === "已废弃"
               ? "fs-status-abandoned"
               : "fs-status-active";
+        // v15：列表项横向 3 列 [伏笔编号 / 伏笔名称 / 状态]
+        // 序号 = 当前 sheet 内按 fsNo 排序后的 1-based 索引（渲染层算，不存数据）
+        const displayNo = idx + 1;
         return `
           <li class="fs-item ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
-            <span class="fs-no">${escapeHtml(String(it.no))}</span>
-            <span class="fs-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
-            <span class="fs-status ${cls}">${escapeHtml(status)}</span>
+            <span class="fs-cell fs-col-fsno" title="${escapeHtml(it.fsNo || "—")}">${escapeHtml(it.fsNo || "—")}</span>
+            <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
+            <span class="fs-cell fs-col-status ${cls}">${escapeHtml(status)}</span>
           </li>`;
       })
       .join("");
@@ -1511,41 +1654,46 @@
       (s) =>
         `<option value="${escapeHtml(s)}" ${it.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`
     ).join("");
+    // v14：编辑/查看态标记
+    const isEditing = !!state.ui.fsEditing;
+    const readonlyAttr = isEditing ? "" : "readonly";
+    const disabledAttr = isEditing ? "" : "disabled";
+    const mainClass = isEditing ? "" : "readonly";
+    // 渲染当前伏笔的履历（按提及章节排序）
+    const recordsHtml = renderFsRecordRows(it.id);
     editor.innerHTML = `
-      <div class="editor-meta editor-meta-fs">
-        <div class="meta-field meta-num">
-          <label>序号</label>
-          <input id="fs-no" type="text" inputmode="numeric" placeholder="如：1 / 序章" value="${escapeHtml(String(it.no ?? ""))}" />
+      <div class="editor-meta editor-meta-fs ${mainClass}">
+        <div class="meta-field meta-fsno">
+          <label>伏笔编号</label>
+          <input id="fs-fsno" type="text" ${readonlyAttr} value="${escapeHtml(it.fsNo || "")}" placeholder="如：FS-001" />
         </div>
         <div class="meta-field meta-title">
           <label>伏笔名称</label>
-          <input id="fs-name" type="text" value="${escapeHtml(it.name || "")}" placeholder="给伏笔起个名字" />
+          <input id="fs-name" type="text" ${readonlyAttr} value="${escapeHtml(it.name || "")}" placeholder="给伏笔起个名字" />
         </div>
         <div class="meta-field">
           <label>状态</label>
-          <select id="fs-status">${opts}</select>
+          <select id="fs-status" ${disabledAttr}>${opts}</select>
         </div>
         <div class="meta-actions">
-          <button id="btn-fs-save" class="primary-btn">保存</button>
+          <button id="btn-fs-toggle" class="secondary-btn" title="${isEditing ? "切到查看态（履历原文可点击跳转）" : "切到编辑态（可改伏笔字段、新增/编辑履历）"}">${isEditing ? "✓ 完成编辑" : "✎ 编辑"}</button>
+          <button id="btn-fs-save" class="primary-btn" ${isEditing ? "" : "hidden"}>保存</button>
           <button id="btn-fs-delete" class="danger-btn">删除</button>
         </div>
       </div>
-      <div class="editor-body">
-        <div class="fs-form-row">
-          <div class="meta-field">
-            <label>铺设章节</label>
-            <input id="fs-setup" type="text" value="${escapeHtml(it.setup || "")}" placeholder="如：第三章、第12章" />
+      <div class="editor-body editor-body-fs ${mainClass}">
+        <div class="fs-records-section">
+          <div class="fs-records-header">
+            <span class="fs-records-title">📋 伏笔履历</span>
+            <span class="fs-records-meta muted">${isEditing ? `${getFsRecordsByFsNo(it).length} 条 · 按提及章节排序` : `${getFsRecordsByFsNo(it).length} 条 · 点击原文描述可跳转`}</span>
+            <button id="btn-fs-add-record" class="link-btn" ${isEditing ? "" : "hidden"}>+ 新增履历</button>
           </div>
-          <div class="meta-field">
-            <label>回收章节</label>
-            <input id="fs-payoff" type="text" value="${escapeHtml(it.payoff || "")}" placeholder="如：第二十章、第45章" />
+          <div class="fs-records-list" id="fs-records-list">
+            ${recordsHtml || `<div class="fs-records-empty muted">${isEditing ? "还没有履历，点上方「+ 新增履历」添加" : "还没有履历"}</div>`}
           </div>
         </div>
-        <label class="body-label">备注 / 详情</label>
-        <textarea id="fs-notes" placeholder="伏笔的具体内容、提示、相关情节等…">${escapeHtml(it.notes || "")}</textarea>
         <div class="body-stats">
           <div class="stats-left">
-            <span id="fs-word-count" class="muted">${charCount(it.notes)} 字</span>
             <span id="fs-save-status" class="muted"></span>
           </div>
           <span id="fs-file-path" class="muted file-path" title=""></span>
@@ -1555,6 +1703,58 @@
     // v10.1：editor.innerHTML 重写后 #fs-file-path 是新元素，
     // 必须补一次 updateFilePathDisplay()，否则保存/切伏笔后路径消失
     updateFilePathDisplay();
+  }
+
+  // v14：获取当前伏笔的所有履历（按"提及章节"排序）
+  function getFsRecordsByFsNo(item) {
+    if (!item) return [];
+    const fsNo = String(item.fsNo || "").trim();
+    const p = state.pages.foreshadowing;
+    if (!Array.isArray(p.records)) p.records = [];
+    const list = p.records.filter(
+      (r) => String(r.fsNo || "").trim() === fsNo
+    );
+    list.sort((a, b) => {
+      const ka = PAGES.foreshadowing.recordSortKey(a);
+      const kb = PAGES.foreshadowing.recordSortKey(b);
+      return compareChapterNo(ka, kb);
+    });
+    return list;
+  }
+
+  // v14：渲染履历列表 HTML
+  //  - 编辑态：每行可编辑（提到章节 / 原文描述）+ 删除按钮
+  //  - 查看态：原文描述 clickable，hover 高亮，点击跳转章节
+  function renderFsRecordRows(itemId) {
+    const item = state.pages.foreshadowing.items.find((x) => x.id === itemId);
+    if (!item) return "";
+    const records = getFsRecordsByFsNo(item);
+    const isEditing = !!state.ui.fsEditing;
+    if (records.length === 0) return "";
+    return records
+      .map((r, idx) => {
+        const no = idx + 1;
+        if (isEditing) {
+          return `
+            <div class="fs-record-row" data-record-id="${escapeHtml(r.id)}">
+              <span class="fs-rec-col-no">${no}</span>
+              <span class="fs-rec-col-fsno muted">${escapeHtml(r.fsNo || "—")}</span>
+              <input class="fs-rec-col-setup" type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="如：第3章 / Chapter 5" />
+              <textarea class="fs-rec-col-notes" data-field="notes" rows="1" placeholder="原文描述…">${escapeHtml(r.notes || "")}</textarea>
+              <button class="fs-rec-delete link-btn danger-link" data-record-id="${escapeHtml(r.id)}" title="删除该履历">×</button>
+            </div>`;
+        } else {
+          // 查看态：原文描述 clickable
+          return `
+            <div class="fs-record-row readonly" data-record-id="${escapeHtml(r.id)}">
+              <span class="fs-rec-col-no">${no}</span>
+              <span class="fs-rec-col-fsno muted">${escapeHtml(r.fsNo || "—")}</span>
+              <span class="fs-rec-col-setup">${escapeHtml(r.setup || "—")}</span>
+              <button class="fs-rec-col-notes fs-rec-notes-link" data-record-id="${escapeHtml(r.id)}" title="点击跳转到该章节">${escapeHtml(r.notes || "（无描述）")}</button>
+            </div>`;
+        }
+      })
+      .join("");
   }
 
   function bindChapterEditorEvents() {
@@ -1583,19 +1783,278 @@
   function bindFsEditorEvents() {
     const it = curItem();
     if (!it) return;
-    const fsNotes = $("#fs-notes");
-    fsNotes?.addEventListener("input", () => {
-      const len = charCount(fsNotes.value);
-      const wc = $("#fs-word-count");
-      if (wc) wc.textContent = `${len} 字`;
+    // v14：主表字段（除 no 只读外）实时写回 state
+    const fsFsno = $("#fs-fsno");
+    const fsName = $("#fs-name");
+    const fsStatus = $("#fs-status");
+    const syncMeta = () => {
+      it.fsNo = String(fsFsno?.value ?? it.fsNo ?? "").trim();
+      it.name = fsName?.value ?? it.name;
+      it.status = fsStatus?.value ?? it.status;
+      // 同步左侧列表项
+      const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
+      if (li) {
+        const fsnoCell = li.querySelector(".fs-col-fsno");
+        const nameCell = li.querySelector(".fs-col-name");
+        const statusCell = li.querySelector(".fs-col-status");
+        if (fsnoCell) fsnoCell.textContent = it.fsNo || "—";
+        if (nameCell) nameCell.textContent = it.name || "（无名）";
+        if (statusCell) {
+          statusCell.textContent = it.status || "活跃";
+          statusCell.className = "fs-cell fs-col-status " + (
+            it.status === "已回收" ? "fs-status-resolved" :
+            it.status === "已废弃" ? "fs-status-abandoned" : "fs-status-active"
+          );
+        }
+      }
       debouncedPushHistory();
+    };
+    [fsFsno, fsName, fsStatus].forEach((el) => {
+      el?.addEventListener("input", syncMeta);
+      el?.addEventListener("change", syncMeta);
     });
-    ["#fs-no", "#fs-name", "#fs-status", "#fs-setup", "#fs-payoff"].forEach(
-      (sel) => $(sel)?.addEventListener("input", debouncedPushHistory)
+    // v14：编辑/查看态切换
+    $("#btn-fs-toggle")?.addEventListener("click", () => {
+      // 切回查看态时如果有未保存的输入，自动写回
+      if (state.ui.fsEditing) {
+        saveCurrentItem();
+      }
+      state.ui.fsEditing = !state.ui.fsEditing;
+      save();
+      renderFsEditor();
+      // 重新挂事件（renderFsEditor 会重新生成 DOM）
+      // 注：renderFsEditor 内部已经调用了 bindFsEditorEvents
+      // 但保存按钮的逻辑在事件委托里（bindEditorButtons），无需重绑
+    });
+    // v14：新增履历
+    $("#btn-fs-add-record")?.addEventListener("click", () => {
+      if (!Array.isArray(state.pages.foreshadowing.records)) {
+        state.pages.foreshadowing.records = [];
+      }
+      const newRec = PAGES.foreshadowing.makeRecord(
+        { fsNo: it.fsNo, setup: "", notes: "" },
+        it.sheet
+      );
+      state.pages.foreshadowing.records.push(newRec);
+      // 不立刻 save()，等用户编辑完输入框内容再统一存
+      renderFsEditor();
+      // 聚焦到新行的 setup 输入
+      setTimeout(() => {
+        const row = document.querySelector(
+          `.fs-record-row[data-record-id="${CSS.escape(newRec.id)}"]`
+        );
+        const input = row?.querySelector(".fs-rec-col-setup");
+        if (input) {
+          input.focus();
+        }
+      }, 30);
+    });
+    // v14：履历编辑（事件委托：input/textarea change 时写回 state）
+    const list = $("#fs-records-list");
+    list?.addEventListener("input", (e) => {
+      const target = e.target;
+      if (!target) return;
+      const field = target.dataset?.field;
+      const row = target.closest(".fs-record-row");
+      const recId = row?.dataset?.recordId;
+      if (!field || !recId) return;
+      const rec = state.pages.foreshadowing.records.find(
+        (r) => r.id === recId
+      );
+      if (rec) {
+        rec[field] = target.value;
+        debouncedPushHistory();
+      }
+    });
+    // v14：删除履历
+    list?.addEventListener("click", (e) => {
+      const btn = e.target.closest(".fs-rec-delete");
+      if (!btn) return;
+      const recId = btn.dataset?.recordId;
+      if (!recId) return;
+      const idx = state.pages.foreshadowing.records.findIndex(
+        (r) => r.id === recId
+      );
+      if (idx < 0) return;
+      state.pages.foreshadowing.records.splice(idx, 1);
+      save();
+      pushHistory();
+      renderFsEditor();
+    });
+    // v14：点击原文描述 → 跳转到章节
+    list?.addEventListener("click", (e) => {
+      const link = e.target.closest(".fs-rec-notes-link");
+      if (!link) return;
+      const recId = link.dataset?.recordId;
+      if (!recId) return;
+      const rec = state.pages.foreshadowing.records.find(
+        (r) => r.id === recId
+      );
+      if (!rec) return;
+      jumpToChapterForRecord(rec);
+    });
+  }
+
+  // v14：点击履历的"原文描述"→ 跳转到对应章节并高亮匹配段
+  // 流程：解析 setup（"第3章" / "Chapter 5" / "12"）→ 找到 chapter.items 里同 no 的项
+  //     → 切到 chapter 页面 → 选中该章节 → 等渲染后用 overlay 在章节正文里高亮 notes
+  function jumpToChapterForRecord(rec) {
+    const setup = String(rec.setup || "").trim();
+    const notes = String(rec.notes || "").trim();
+    if (!setup && !notes) {
+      toast("履历没有可定位的章节或原文", "warn");
+      return;
+    }
+    // 1) 解析 setup → 找对应章节（先按章节号精确匹配，再按 sheet 内 fallback）
+    const parsed = parseChapterNo(setup);
+    const target = findChapterByNo(parsed.num, setup);
+    if (!target) {
+      toast(
+        `未找到「${setup}」对应的章节（先在「章节」页创建章节）`,
+        "warn",
+        3000
+      );
+      return;
+    }
+    // 2) 切到 chapter 页面 + 选中该章节
+    state.currentPage = "chapter";
+    const cp = state.pages.chapter;
+    cp.currentItemId = target.id;
+    if (target.sheet) cp.currentSheet = target.sheet;
+    save();
+    renderAll();
+    // 3) 等编辑器渲染完后，定位 textarea 并弹出高亮 overlay
+    requestAnimationFrame(() => {
+      const ta = $("#ch-content");
+      if (!ta) return;
+      // 尝试在章节正文里找 notes 字符串 → 选中 + 滚动到中央
+      let match = null;
+      if (notes) {
+        const idx = ta.value.indexOf(notes);
+        if (idx >= 0) {
+          match = { start: idx, end: idx + notes.length };
+        } else {
+          // 部分匹配：取前 16 个非空字符
+          const head = notes.slice(0, 16).trim();
+          if (head) {
+            const j = ta.value.indexOf(head);
+            if (j >= 0) match = { start: j, end: j + head.length };
+          }
+        }
+      }
+      showChapterHighlight(target, match, setup, notes);
+    });
+  }
+
+  // 按章节号找 chapter.items 里的目标
+  // num 是 parseChapterNo 出来的数字（无数字时为 Infinity）
+  // rawStr 是原文（用于 fallback，比如"序章"等纯汉字）
+  function findChapterByNo(num, rawStr) {
+    const list = state.pages.chapter.items || [];
+    if (Number.isFinite(num)) {
+      // 优先精确匹配数字
+      const exact = list.find(
+        (it) => Number(parseChapterNo(it.no).num) === num
+      );
+      if (exact) return exact;
+    }
+    // fallback：按原文字符串匹配
+    if (rawStr) {
+      const s = String(rawStr).trim();
+      const byStr = list.find((it) => String(it.no).trim() === s);
+      if (byStr) return byStr;
+    }
+    return null;
+  }
+
+  // v14：在章节内容上弹出"高亮 overlay"——把章节正文渲染到 overlay div，
+  //     匹配位置用 <mark> 标黄。3 秒后自动关闭，ESC 也可关闭。
+  function showChapterHighlight(target, match, setup, notes) {
+    // 移除旧的 overlay
+    const old = document.getElementById("chapter-highlight-overlay");
+    if (old) old.remove();
+    const content = String(target.content || "");
+    if (!content) {
+      toast(`章节「${target.title || target.no}」暂无正文`, "warn");
+      return;
+    }
+    const overlay = document.createElement("div");
+    overlay.id = "chapter-highlight-overlay";
+    overlay.className = "highlight-overlay";
+    // 把章节正文按匹配段分片渲染
+    let bodyHtml;
+    if (match && match.start < content.length) {
+      const before = content.slice(0, match.start);
+      const mid = content.slice(match.start, match.end);
+      const after = content.slice(match.end);
+      bodyHtml =
+        escapeHtml(before) +
+        '<mark class="highlight-mark">' +
+        escapeHtml(mid) +
+        "</mark>" +
+        escapeHtml(after);
+    } else {
+      bodyHtml = escapeHtml(content);
+    }
+    overlay.innerHTML = `
+      <div class="highlight-backdrop" data-close-overlay></div>
+      <div class="highlight-card" role="dialog" aria-label="履历原文定位">
+        <header class="highlight-header">
+          <div class="highlight-meta">
+            <span class="highlight-tag">📍 履历定位</span>
+            <span class="highlight-target">第 ${escapeHtml(String(target.no))} 章 · ${escapeHtml(target.title || "（无标题）")}</span>
+          </div>
+          <div class="highlight-actions">
+            ${match ? '<span class="highlight-match-info">✓ 已定位原文</span>' : '<span class="highlight-match-info muted">未在正文中精确匹配，按章节定位</span>'}
+            <button class="icon-btn" data-close-overlay aria-label="关闭">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        </header>
+        <div class="highlight-context">
+          <div class="highlight-context-row">
+            <span class="highlight-label">提及章节：</span>
+            <span class="highlight-value">${escapeHtml(setup || "—")}</span>
+          </div>
+          <div class="highlight-context-row">
+            <span class="highlight-label">原文描述：</span>
+            <span class="highlight-value">${escapeHtml(notes || "—")}</span>
+          </div>
+        </div>
+        <pre class="highlight-body">${bodyHtml}</pre>
+        <footer class="highlight-footer">
+          <span class="muted">点击空白处或按 ESC 关闭（${match ? "匹配段已高亮" : "无匹配段"}）</span>
+        </footer>
+      </div>`;
+    document.body.appendChild(overlay);
+    // 滚到匹配段
+    if (match) {
+      requestAnimationFrame(() => {
+        const mark = overlay.querySelector(".highlight-mark");
+        if (mark) {
+          mark.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
+    }
+    // 关闭逻辑
+    const close = () => overlay.remove();
+    overlay.addEventListener("click", (e) => {
+      if (e.target.closest("[data-close-overlay]")) close();
+    });
+    document.addEventListener(
+      "keydown",
+      function onEsc(e) {
+        if (e.key === "Escape") {
+          close();
+          document.removeEventListener("keydown", onEsc);
+        }
+      }
     );
-    ["#fs-no", "#fs-name", "#fs-status", "#fs-setup", "#fs-payoff"].forEach(
-      (sel) => $(sel)?.addEventListener("change", debouncedPushHistory)
-    );
+    // 30 秒兜底自动关闭
+    setTimeout(close, 30000);
   }
 
   function renderTheme() {
@@ -2505,12 +2964,11 @@
       it.title = $("#ch-title").value.trim();
       it.content = $("#ch-content").value;
     } else if (state.currentPage === "foreshadowing") {
-      it.no = $("#fs-no").value;
-      it.name = $("#fs-name").value.trim();
-      it.status = $("#fs-status").value || "活跃";
-      it.setup = $("#fs-setup").value.trim();
-      it.payoff = $("#fs-payoff").value.trim();
-      it.notes = $("#fs-notes").value;
+      // v14：主表字段（fsNo/name/status）
+      it.fsNo = String($("#fs-fsno")?.value ?? it.fsNo ?? "").trim();
+      it.name = String($("#fs-name")?.value ?? it.name ?? "").trim();
+      it.status = $("#fs-status")?.value || it.status || "活跃";
+      // 履历编辑在 input 事件里已经实时写回 records，这里不再处理
     }
     save();
     // 显式保存：取消任何在等的 debounce 入栈，立即入栈
@@ -2555,9 +3013,25 @@
     const def = curPageDef();
     const targetSheet =
       p.currentSheet || (p.sheets[0] && p.sheets[0].name) || null;
-    const nextNo = nextNoInCurrentSheet();
     const data = def.defaults();
-    data.no = nextNo;
+    if (state.currentPage === "chapter") {
+      data.no = nextNoInCurrentSheet();
+    } else if (state.currentPage === "foreshadowing") {
+      // v14：伏笔编号 fsNo 自动生成（取当前 sheet 内最大编号 +1，转字符串）
+      const maxFsNo = (() => {
+        const list = targetSheet
+          ? p.items.filter((it) => it.sheet === targetSheet)
+          : p.items;
+        let max = 0;
+        for (const it of list) {
+          const k = parseFsNoKey(it.fsNo);
+          if (Number.isFinite(k.num) && k.num > max) max = k.num;
+        }
+        return max + 1;
+      })();
+      data.no = maxFsNo;
+      data.fsNo = String(maxFsNo);
+    }
     const it = def.makeItem(data, targetSheet);
     p.items.push(it);
     p.currentItemId = it.id;
@@ -2577,40 +3051,159 @@
         if (el) el.focus();
       }
     }, 50);
-    toast(def.newItemToast(targetSheet, nextNo));
+    const displayKey = state.currentPage === "foreshadowing" ? (data.fsNo || data.no) : data.no;
+    toast(def.newItemToast(targetSheet, displayKey));
   }
 
   /* ============================================================
-     导入（xlsx + 文本） - 路由到正确的页面
+     导入（xlsx + 文本） - 多 section 通用逻辑
      ============================================================ */
-  let importAllSheets = null; // xlsx 解析出的所有 sheet（含 page 分类）
-  let importTargetPage = null; // 当前选中的 sheet 属于哪个 page
-  let importCurrentSheet = null; // 当前选中的 sheet 名
+  // v14：导入弹窗支持多 section
+  // 每个 section 描述：DOM id 集合 + 目标页/表 + 字段定义 + 是否是"履历表"
+  const IMPORT_SECTIONS = {
+    chapter: {
+      key: "chapter",
+      pid: "chapter",
+      table: "items",
+      containerId: "import-section-chapter",
+      dropId: "import-drop",
+      fileInputId: "file-xlsx",
+      textId: "import-text",
+      sheetWrapId: "import-sheet-wrap",
+      sheetSelectId: "import-sheet-select",
+      skipHeaderId: "import-skip-header",
+      statsId: "import-stats",
+      previewId: "import-preview",
+      fileInfoId: "import-file-info",
+      clearId: "btn-import-clear",
+      confirmId: "btn-import-confirm",
+      allowTargetPage: true,
+      isRecord: false,
+    },
+    "fs-main": {
+      key: "fs-main",
+      pid: "foreshadowing",
+      table: "items",
+      containerId: "import-section-foreshadowing",
+      dropId: "import-fs-main-drop",
+      fileInputId: "file-fs-main",
+      textId: "import-fs-main-text",
+      sheetWrapId: "import-fs-main-sheet-wrap",
+      sheetSelectId: "import-fs-main-sheet-select",
+      skipHeaderId: "import-fs-main-skip-header",
+      statsId: "import-fs-main-stats",
+      previewId: "import-fs-main-preview",
+      fileInfoId: "import-fs-main-file-info",
+      clearSel: '[data-clear-section="fs-main"]',
+      confirmId: "btn-import-fs-main-confirm",
+      allowTargetPage: false,
+      isRecord: false,
+    },
+    "fs-record": {
+      key: "fs-record",
+      pid: "foreshadowing",
+      table: "records",
+      containerId: "import-section-foreshadowing",
+      dropId: "import-fs-record-drop",
+      fileInputId: "file-fs-record",
+      textId: "import-fs-record-text",
+      sheetWrapId: "import-fs-record-sheet-wrap",
+      sheetSelectId: "import-fs-record-sheet-select",
+      skipHeaderId: "import-fs-record-skip-header",
+      statsId: "import-fs-record-stats",
+      previewId: "import-fs-record-preview",
+      fileInfoId: "import-fs-record-file-info",
+      clearSel: '[data-clear-section="fs-record"]',
+      confirmId: "btn-import-fs-record-confirm",
+      allowTargetPage: false,
+      isRecord: true,
+    },
+  };
+
+  // 每个 section 的运行时状态
+  const importState = {
+    chapter: { allSheets: null, currentSheet: null, targetPage: null, allSheetsTarget: null },
+    "fs-main": { allSheets: null, currentSheet: null, targetPage: "foreshadowing", allSheetsTarget: null },
+    "fs-record": { allSheets: null, currentSheet: null, targetPage: "foreshadowing", allSheetsTarget: null },
+  };
+
+  function getImportFieldsDef(sectionKey) {
+    const sec = IMPORT_SECTIONS[sectionKey];
+    if (!sec) return null;
+    const page = PAGES[sec.pid];
+    if (!page) return null;
+    return sec.isRecord ? page.recordFields : page.fields;
+  }
+  function getImportTable(sectionKey) {
+    const sec = IMPORT_SECTIONS[sectionKey];
+    if (!sec) return null;
+    return state.pages[sec.pid][sec.table];
+  }
+  function getImportDef(sectionKey) {
+    const sec = IMPORT_SECTIONS[sectionKey];
+    if (!sec) return null;
+    return PAGES[sec.pid];
+  }
 
   function bindImportEvents() {
+    // 打开弹窗：按当前页面显示对应 section
     $("#btn-import").addEventListener("click", () => {
-      $("#import-text").value = "";
-      $("#import-skip-header").checked = true;
-      $("#import-preview").innerHTML = "";
-      $("#btn-import-confirm").disabled = true;
-      $("#btn-import-confirm").dataset.parsed = "";
-      $("#btn-import-confirm").dataset.sheet = "";
-      $("#btn-import-confirm").dataset.page = "";
-      importAllSheets = null;
-      importCurrentSheet = null;
-      importTargetPage = null;
-      $("#import-file-info").hidden = true;
-      $("#import-drop").classList.remove("is-dragover");
-      const wrap = $("#import-sheet-wrap");
-      if (wrap) wrap.hidden = true;
-      setImportStats(null);
-      // 默认把目标 page 设到当前页
-      $("#import-target-wrap")?.setAttribute("hidden", "");
+      const pid = state.currentPage;
+      // 章节 → 单 section；伏笔 → 双 section
+      const sectionIds = pid === "foreshadowing"
+        ? ["fs-main", "fs-record"]
+        : ["chapter"];
+      for (const k of Object.keys(IMPORT_SECTIONS)) {
+        const sec = IMPORT_SECTIONS[k];
+        const container = $("#" + sec.containerId);
+        if (!container) continue;
+        const visible = sectionIds.includes(k);
+        container.hidden = !visible;
+        if (visible) resetImportSection(k);
+        else {
+          importState[k].allSheets = null;
+          importState[k].currentSheet = null;
+          importState[k].targetPage = null;
+        }
+      }
+      // 底部按钮显隐
+      for (const k of Object.keys(IMPORT_SECTIONS)) {
+        const btn = $("#" + IMPORT_SECTIONS[k].confirmId);
+        if (btn) btn.hidden = !sectionIds.includes(k);
+      }
       showModal("modal-import");
     });
 
-    const drop = $("#import-drop");
-    const fileInput = $("#file-xlsx");
+    // 通用：每个 section 绑拖拽 / 选择 / 文本输入 / sheet 切换
+    for (const key of Object.keys(IMPORT_SECTIONS)) {
+      bindImportSectionEvents(key);
+    }
+
+    // 通用：每个 section 的确认按钮
+    for (const key of Object.keys(IMPORT_SECTIONS)) {
+      const sec = IMPORT_SECTIONS[key];
+      const btn = $("#" + sec.confirmId);
+      if (!btn) continue;
+      btn.addEventListener("click", () => commitImportSection(key));
+    }
+
+    // chapter 专属：导入到目标页下拉
+    $("#import-target-select")?.addEventListener("change", () => {
+      importState.chapter.targetPage = $("#import-target-select").value;
+      refreshImportPreviewSection("chapter");
+    });
+  }
+
+  function bindImportSectionEvents(key) {
+    const sec = IMPORT_SECTIONS[key];
+    const drop = $("#" + sec.dropId);
+    const fileInput = $("#" + sec.fileInputId);
+    const text = $("#" + sec.textId);
+    const sheetSel = $("#" + sec.sheetSelectId);
+    const skipHeader = $("#" + sec.skipHeaderId);
+    const clear = sec.clearId ? $("#" + sec.clearId) : (sec.clearSel ? document.querySelector(sec.clearSel) : null);
+    if (!drop || !fileInput) return;
+
     drop.addEventListener("click", () => fileInput.click());
     drop.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -2620,7 +3213,7 @@
     });
     fileInput.addEventListener("change", (e) => {
       const f = e.target.files?.[0];
-      if (f) handleXlsxFile(f);
+      if (f) handleImportFile(f, key);
       e.target.value = "";
     });
     ["dragenter", "dragover"].forEach((evt) =>
@@ -2639,140 +3232,69 @@
     );
     drop.addEventListener("drop", (e) => {
       const f = e.dataTransfer?.files?.[0];
-      if (f) handleXlsxFile(f);
+      if (f) handleImportFile(f, key);
     });
 
-    $("#btn-import-clear").addEventListener("click", (e) => {
-      e.stopPropagation();
-      importAllSheets = null;
-      importCurrentSheet = null;
-      importTargetPage = null;
-      $("#import-file-info").hidden = true;
-      $("#import-preview").innerHTML = "";
-      $("#btn-import-confirm").disabled = true;
-      $("#btn-import-confirm").dataset.parsed = "";
-      $("#btn-import-confirm").dataset.sheet = "";
-      $("#btn-import-confirm").dataset.page = "";
-      const wrap = $("#import-sheet-wrap");
-      if (wrap) wrap.hidden = true;
-      const tw = $("#import-target-wrap");
-      if (tw) tw.hidden = true;
-      setImportStats(null);
-    });
-
-    $("#import-text").addEventListener("input", () => {
-      if (importAllSheets && $("#import-text").value.trim()) {
-        importAllSheets = null;
-        importCurrentSheet = null;
-        importTargetPage = null;
-        $("#import-file-info").hidden = true;
-        const wrap = $("#import-sheet-wrap");
-        if (wrap) wrap.hidden = true;
-        const tw = $("#import-target-wrap");
-        if (tw) tw.hidden = true;
-      }
-      refreshImportPreview();
-    });
-
-    $("#import-skip-header").addEventListener("change", refreshImportPreview);
-    $("#import-sheet-select")?.addEventListener("change", refreshImportPreview);
-    $("#import-target-select")?.addEventListener("change", () => {
-      importTargetPage = $("#import-target-select").value;
-      refreshImportPreview();
-    });
-
-    $("#btn-import-confirm").addEventListener("click", () => {
-      const raw = $("#btn-import-confirm").dataset.parsed;
-      const sheetName = $("#btn-import-confirm").dataset.sheet || "";
-      const targetPid = $("#btn-import-confirm").dataset.page || "";
-      if (!raw) return;
-      const rows = JSON.parse(raw).filter((r) => !r._error);
-      if (rows.length === 0) {
-        toast("没有可导入的内容", "error");
-        return;
-      }
-      if (!targetPid || !PAGES[targetPid]) {
-        toast("未指定目标页面", "error");
-        return;
-      }
-      const def = PAGES[targetPid];
-      const p = state.pages[targetPid];
-      let added = 0,
-        replaced = 0;
-      rows.forEach((r) => {
-        // 用 sheet + no 作为去重 key（仅 chapter / foreshadowing 都有 no）
-        const existingIdx = p.items.findIndex(
-          (x) => Number(x.no) === Number(r.no) && x.sheet === sheetName
-        );
-        const data = def.defaults();
-        // 把所有 row 字段覆盖到 defaults
-        for (const k of Object.keys(def.fields)) {
-          if (k in r) data[k] = r[k];
-        }
-        if (existingIdx >= 0) {
-          // 保留 id
-          p.items[existingIdx] = { ...p.items[existingIdx], ...data, sheet: sheetName };
-          replaced++;
-        } else {
-          const it = def.makeItem(data, sheetName);
-          p.items.push(it);
-          added++;
-        }
+    if (clear) {
+      clear.addEventListener("click", (e) => {
+        e.stopPropagation();
+        resetImportSection(key);
       });
-      p.items.sort((a, b) => compareChapterNo(def.sortKey(a), def.sortKey(b)));
-      // 把这个 sheet 注册到 state.sheetsRaw（如不存在）+ 该页面的 sheets
-      if (sheetName && !state.sheetsRaw.find((s) => s.name === sheetName)) {
-        // 没有 raw 缓存时（罕见：用户先 import 后才 open file），构造一个空 raw
-        const header = rows[0] ? Object.keys(def.fields) : [];
-        const aoa = [header];
-        state.sheetsRaw.push({
-          name: sheetName,
-          rows2d: aoa,
-          columns: Object.fromEntries(
-            Object.keys(def.fields).map((k, i) => [k, i])
-          ),
-          rowCount: aoa.length,
-          ok: true,
-          page: targetPid,
-        });
-        if (!p.sheets.find((s) => s.name === sheetName)) {
-          p.sheets.push({
-            name: sheetName,
-            columns: Object.fromEntries(
-              Object.keys(def.fields).map((k, i) => [k, i])
-            ),
-            rowCount: 1,
-            ok: true,
-          });
+    }
+    if (text) {
+      text.addEventListener("input", () => {
+        if (importState[key].allSheets && text.value.trim()) {
+          // 一旦用户开始手填文本，就把已解析的 file 清掉（互斥）
+          importState[key].allSheets = null;
+          importState[key].currentSheet = null;
+          const fi = $("#" + sec.fileInfoId);
+          if (fi) fi.hidden = true;
+          const sw = $("#" + sec.sheetWrapId);
+          if (sw) sw.hidden = true;
         }
-      }
-      save();
-      pushHistory();
-      hideModal("modal-import");
-      // 切到目标页面 + 该 sheet
-      state.currentPage = targetPid;
-      const tp = state.pages[targetPid];
-      tp.currentSheet = sheetName;
-      const first = getSortedItems()[0];
-      tp.currentItemId = first ? first.id : null;
-      renderAll();
-      toast(
-        `导入完成：[${def.label}·${sheetName}] 新增 ${added} 条，覆盖 ${replaced} 条`
-      );
-    });
+        refreshImportPreviewSection(key);
+      });
+    }
+    if (skipHeader) skipHeader.addEventListener("change", () => refreshImportPreviewSection(key));
+    if (sheetSel) sheetSel.addEventListener("change", () => refreshImportPreviewSection(key));
   }
 
-  // v13：import 弹窗支持 .xlsx / .xlsm / .json
-  // - .xlsx / .xlsm → 走 SheetJS 解析，按 sheet 分类
-  // - .json → JSON 数组格式（每项是对象，keys 作为列名），用字段定义识别
-  function handleXlsxFile(file) {
+  function resetImportSection(key) {
+    const sec = IMPORT_SECTIONS[key];
+    importState[key] = {
+      allSheets: null,
+      currentSheet: null,
+      targetPage: sec.allowTargetPage ? null : sec.pid,
+      allSheetsTarget: null,
+    };
+    const text = $("#" + sec.textId);
+    if (text) text.value = "";
+    const fi = $("#" + sec.fileInfoId);
+    if (fi) fi.hidden = true;
+    const sw = $("#" + sec.sheetWrapId);
+    if (sw) sw.hidden = true;
+    const pv = $("#" + sec.previewId);
+    if (pv) pv.innerHTML = "";
+    const st = $("#" + sec.statsId);
+    if (st) { st.textContent = ""; st.className = "muted"; }
+    const btn = $("#" + sec.confirmId);
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.parsed = "";
+      btn.dataset.sheet = "";
+      btn.dataset.page = "";
+    }
+  }
+
+  // 分发：根据扩展名调用 xlsx 或 json 解析
+  function handleImportFile(file, sectionKey) {
     const ext = (file.name.split(".").pop() || "").toLowerCase();
     if (!["xlsx", "xlsm", "json"].includes(ext)) {
       toast(`不支持的文件类型：.${ext}（仅支持 .xlsx / .xlsm / .json）`, "error");
       return;
     }
     if (ext === "json") {
-      handleJsonImportFile(file);
+      handleJsonImportFileFor(file, sectionKey);
       return;
     }
     if (!window.XLSX) {
@@ -2783,44 +3305,13 @@
     reader.onload = () => {
       try {
         const data = new Uint8Array(reader.result);
-        const wb = XLSX.read(data, {
-          type: "array",
-          cellDates: true,
-          cellNF: true,
-        });
+        const wb = XLSX.read(data, { type: "array", cellDates: true, cellNF: true });
         if (!wb.SheetNames || wb.SheetNames.length === 0) {
           toast("xlsx 内没有可用的 sheet", "error");
           return;
         }
-        // 解析所有 sheet + 分类
-        importAllSheets = wb.SheetNames.map((name) => {
-          const sheet = wb.Sheets[name];
-          const rows2d = XLSX.utils.sheet_to_json(sheet, {
-            header: 1,
-            defval: "",
-            raw: true,
-          });
-          const header = (rows2d[0] || []).map((c) => unpackCell(c).trim());
-          const page = classifySheet(name, header);
-          const parsed = page ? parseRowsForPage(rows2d, page) : { rows: [], columns: { header } };
-          const ok = !!page && parsed.columns && Object.keys(parsed.columns).some(
-            (k) => k !== "header" && parsed.columns[k] >= 0
-          );
-          return { name, rows2d, parsed, ok, page };
-        });
-        afterImportParsed(file.name);
-        if (importAllSheets.length === 0) {
-          toast("没有任何 sheet 匹配已注册的页面字段", "warn", 3000);
-        } else {
-          const okCount = importAllSheets.filter((s) => s.ok).length;
-          if (okCount === 0) {
-            toast("没有任何 sheet 匹配已注册的页面字段", "warn", 3000);
-          } else if (okCount < importAllSheets.length) {
-            toast(`解析完成：${okCount}/${importAllSheets.length} 个 sheet 有匹配字段`, "info", 1800);
-          } else {
-            toast(`解析完成：${okCount} 个 sheet 均有匹配字段`, "info", 1800);
-          }
-        }
+        const sheets = wb.SheetNames.map((name) => parseXlsxSheetForImport(name, wb.Sheets[name]));
+        afterImportParsedSection(file.name, sheets, sectionKey);
       } catch (err) {
         console.error(err);
         toast("xlsx 解析失败：" + (err.message || err), "error");
@@ -2830,10 +3321,45 @@
     reader.readAsArrayBuffer(file);
   }
 
-  // v13：处理 .json 文件导入
-  // 解析为 JSON 数组 → 尝试匹配每个 page 的字段定义，找到能识别的 page
-  // 文件名（去后缀）作为"虚拟 sheet 名"参与去重
-  function handleJsonImportFile(file) {
+  // 解析单个 sheet：对每个 page 都尝试（找到能识别的 page）
+  // 如果是双 section（fs-main/fs-record），限定只识别自己 pid
+  function parseXlsxSheetForImport(name, sheet) {
+    const rows2d = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: "",
+      raw: true,
+    });
+    const header = (rows2d[0] || []).map((c) => unpackCell(c).trim());
+    // 先用 sheet 名分类（这是 sheet 级的 pid 标记）
+    const pageFromName = classifySheet(name, header);
+    // 解析所有候选 page
+    const candidates = [];
+    for (const pid of PAGE_IDS) {
+      const parsed = parseRowsForPage(rows2d, pid);
+      if (parsed.columns) {
+        const hitCount = Object.keys(parsed.columns).filter(
+          (k) => k !== "header" && (parsed.columns[k] | 0) >= 0
+        ).length;
+        if (hitCount > 0) {
+          candidates.push({ pid, parsed, hitCount, ok: true });
+        }
+      }
+    }
+    // 选命中数最多的
+    candidates.sort((a, b) => b.hitCount - a.hitCount);
+    const winner = candidates[0];
+    return {
+      name,
+      rows2d,
+      header,
+      candidates,
+      winner: winner || null,
+      page: winner ? winner.pid : pageFromName,
+      ok: !!winner,
+    };
+  }
+
+  function handleJsonImportFileFor(file, sectionKey) {
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -2843,7 +3369,7 @@
           toast("JSON 文件无法解析为数组（应为 JSON 数组 / JSON Lines）", "error", 3500);
           return;
         }
-        // 对每个 page 都试一遍解析，找出能识别字段的那个
+        // 对每个 page 都试一遍解析
         const candidates = [];
         for (const pid of PAGE_IDS) {
           const parsed = parseJsonArrayForPage(arr, pid);
@@ -2857,27 +3383,25 @@
           }
         }
         if (candidates.length === 0) {
-          toast("JSON 数据未匹配任何已注册的页面字段（章节号 / 伏笔名称 等）", "error", 4000);
+          toast("JSON 数据未匹配任何已注册的页面字段", "error", 4000);
           return;
         }
-        // 取命中数最多的 page
         candidates.sort((a, b) => b.hitCount - a.hitCount);
-        const winner = candidates[0];
-        // 文件名（去后缀）作为 sheet 名
         const baseName = (file.name || "imported").replace(/\.[^.]+$/, "");
-        // 把数据组装成与 xlsx 路径同样的结构（一个虚拟"json" sheet）
-        importAllSheets = [{
-          name: baseName,
-          rows2d: [winner.parsed.columns.header, ...arr.map((it) =>
-            winner.parsed.columns.header.map((k) => it[k] != null ? it[k] : "")
+        const sheets = candidates.map((c, i) => ({
+          name: i === 0 ? baseName : `${baseName}·${PAGES[c.pid].label}`,
+          rows2d: [c.parsed.columns.header, ...arr.map((it) =>
+            c.parsed.columns.header.map((k) => it[k] != null ? it[k] : "")
           )],
-          parsed: { rows: winner.parsed.rows, columns: winner.parsed.columns },
+          header: c.parsed.columns.header,
+          candidates: [c],
+          winner: c,
+          page: c.pid,
           ok: true,
-          page: winner.pid,
-        }];
-        afterImportParsed(file.name);
+        }));
+        afterImportParsedSection(file.name, sheets, sectionKey);
         toast(
-          `JSON 解析完成：${winner.parsed.rows.length} 条 → ${PAGES[winner.pid].label}`,
+          `JSON 解析完成：${arr.length} 条 → ${PAGES[candidates[0].pid].label}`,
           "info",
           1800
         );
@@ -2890,56 +3414,417 @@
     reader.readAsText(file);
   }
 
-  // v13：handleXlsxFile / handleJsonImportFile 解析完后的公共 UI 装配
-  function afterImportParsed(fileName) {
-    const sel = $("#import-sheet-select");
-    const wrap = $("#import-sheet-wrap");
+  // section 解析完后的 UI 装配
+  // 关键过滤：双 section（fs-main/fs-record）只接收自己 pid/table 的 sheet
+  function afterImportParsedSection(fileName, sheets, sectionKey) {
+    const sec = IMPORT_SECTIONS[sectionKey];
+    const def = getImportDef(sectionKey);
+    const fields = sec.isRecord ? def.recordFields : def.fields;
+    // 过滤：双 section 只接受自己 pid
+    let filtered = sheets;
+    if (!sec.allowTargetPage) {
+      // 伏笔 section：fs-main 接受 page=foreshadowing + hit fields 含 no/name/status；
+      //                fs-record 接受 page=foreshadowing + hit 含 no/fsNo/setup/notes
+      filtered = sheets
+        .map((s) => {
+          // 在该 sheet 的所有 candidate 里找匹配的 page
+          const matched = s.candidates
+            ? s.candidates.find((c) => c.pid === sec.pid)
+            : null;
+          if (!matched) return null;
+          return {
+            name: s.name,
+            rows2d: s.rows2d,
+            header: s.header,
+            candidates: [matched],
+            winner: matched,
+            page: sec.pid,
+            ok: true,
+          };
+        })
+        .filter(Boolean);
+      if (filtered.length === 0) {
+        toast(
+          sec.isRecord
+            ? "该文件未找到「伏笔履历表」相关字段（需要：伏笔编号 / 提及章节 / 原文描述）"
+            : "该文件未找到「伏笔数据表」相关字段（需要：伏笔编号 / 伏笔名称 / 状态）",
+          "error",
+          3500
+        );
+        return;
+      }
+    } else {
+      // 章节 section：保留多 sheet 选项，但只显示与该 sheet 名匹配的 page
+      filtered = sheets.filter((s) => s.ok);
+      if (filtered.length === 0) {
+        toast("没有可识别的 sheet 字段", "warn", 3000);
+        return;
+      }
+    }
+    importState[sectionKey].allSheets = filtered;
+    const sel = $("#" + sec.sheetSelectId);
+    const wrap = $("#" + sec.sheetWrapId);
     if (sel) {
-      sel.innerHTML = importAllSheets
+      sel.innerHTML = filtered
         .map(
           (s) =>
-            `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} [${escapeHtml(pageBadge(s.page))}]${s.ok ? "" : "（未匹配字段）"}</option>`
+            `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} → ${escapeHtml(pageBadge(s.page))}</option>`
         )
         .join("");
     }
-    if (wrap) wrap.hidden = importAllSheets.length <= 1;
-    // 默认选第一个 ok 的 sheet
-    const firstOk = importAllSheets.find((s) => s.ok);
-    if (sel && firstOk) sel.value = firstOk.name;
-    else if (sel) sel.value = importAllSheets[0].name;
-
-    const info = $("#import-file-info");
-    info.hidden = false;
-    const okCount = importAllSheets.filter((s) => s.ok).length;
-    info.querySelector(".import-file-name").textContent =
-      `${fileName} · ${importAllSheets.length} 个 sheet（${okCount} 个有匹配字段）`;
-
-    // 显示目标页面下拉
-    const targetWrap = $("#import-target-wrap");
-    const targetSel = $("#import-target-select");
-    if (targetSel) {
-      // 收集本次出现的 page
-      const present = new Set(
-        importAllSheets.map((s) => s.page).filter(Boolean)
-      );
-      // + 当前 currentPage（兜底）
-      present.add(state.currentPage);
-      const options = Array.from(present).map(
-        (pid) =>
-          `<option value="${pid}">${PAGES[pid] ? PAGES[pid].icon + " " + PAGES[pid].label : pid}</option>`
-      );
-      // 加一个"未分类"选项（如果选了未分类的 sheet）
-      options.push(`<option value="">— 未分类（不导入）—</option>`);
-      targetSel.innerHTML = options.join("");
-      // 默认选第一个 ok sheet 的 page
-      const def0 = firstOk ? firstOk.page : state.currentPage;
-      targetSel.value = def0 || state.currentPage;
-      importTargetPage = targetSel.value;
+    if (wrap) wrap.hidden = filtered.length <= 1;
+    const info = $("#" + sec.fileInfoId);
+    if (info) {
+      info.hidden = false;
+      const nameEl = info.querySelector(".import-file-name");
+      if (nameEl) nameEl.textContent = fileName;
     }
-    if (targetWrap) targetWrap.hidden = false;
+    // 默认 targetPage
+    if (sec.allowTargetPage) {
+      importState[sectionKey].targetPage = filtered[0].page || state.currentPage;
+    } else {
+      importState[sectionKey].targetPage = sec.pid;
+    }
+    // chapter 专属：填「导入到」下拉
+    if (sec.allowTargetPage) {
+      const tw = $("#import-target-wrap");
+      const tsel = $("#import-target-select");
+      if (tsel) {
+        const present = new Set(filtered.map((s) => s.page).filter(Boolean));
+        present.add(state.currentPage);
+        const options = Array.from(present).map(
+          (pid) =>
+            `<option value="${pid}">${PAGES[pid] ? PAGES[pid].icon + " " + PAGES[pid].label : pid}</option>`
+        );
+        options.push(`<option value="">— 未分类（不导入）—</option>`);
+        tsel.innerHTML = options.join("");
+        tsel.value = importState[sectionKey].targetPage;
+      }
+      if (tw) tw.hidden = false;
+    }
+    refreshImportPreviewSection(sectionKey);
+  }
 
-    $("#import-text").value = "";
-    refreshImportPreview();
+  function refreshImportPreviewSection(sectionKey) {
+    const sec = IMPORT_SECTIONS[sectionKey];
+    const st = importState[sectionKey];
+    if (st.allSheets) {
+      const sheetName = ($("#" + sec.sheetSelectId)?.value) || st.currentSheet || st.allSheets[0]?.name;
+      const target = st.allSheets.find((s) => s.name === sheetName);
+      if (!target) {
+        renderImportPreviewSection(null, sec, "items");
+        const btn = $("#" + sec.confirmId);
+        if (btn) {
+          btn.disabled = true;
+          btn.dataset.parsed = "";
+          btn.dataset.sheet = "";
+          btn.dataset.page = "";
+        }
+        setSectionStats(sec, null);
+        return;
+      }
+      // rows 来自 target.winner.parsed.rows
+      const rows = target.winner?.parsed?.rows || [];
+      renderImportPreviewSection(rows, sec, sec.isRecord ? "records" : "items");
+      const okCount = rows.filter((r) => !r._error).length;
+      const btn = $("#" + sec.confirmId);
+      if (btn) {
+        btn.disabled = !st.targetPage || okCount === 0;
+        btn.dataset.parsed = JSON.stringify(rows);
+        btn.dataset.sheet = target.name;
+        btn.dataset.page = st.targetPage;
+        btn.dataset.table = sec.table;
+      }
+      st.currentSheet = target.name;
+      setSectionStats(sec, rows, st.targetPage);
+    } else {
+      // 文本路径
+      const text = $("#" + sec.textId)?.value;
+      const rows = parseImportTextFor(text, sectionKey);
+      renderImportPreviewSection(rows, sec, sec.isRecord ? "records" : "items");
+      const btn = $("#" + sec.confirmId);
+      if (btn) {
+        const okCount = rows.filter((r) => !r._error).length;
+        btn.disabled = okCount === 0;
+        btn.dataset.parsed = JSON.stringify(rows);
+        btn.dataset.sheet = "";
+        btn.dataset.page = sec.pid;
+        btn.dataset.table = sec.table;
+      }
+      setSectionStats(sec, rows, sec.pid);
+    }
+  }
+
+  // 文本导入：按 section 字段定义解析
+  function parseImportTextFor(text, sectionKey) {
+    if (!text || !text.trim()) return [];
+    const sec = IMPORT_SECTIONS[sectionKey];
+    const def = getImportDef(sectionKey);
+    if (!sec || !def) return [];
+    const fields = sec.isRecord ? def.recordFields : def.fields;
+    // 章节 section 走原 parseImportText（已经有完整逻辑）
+    if (sectionKey === "chapter") {
+      return parseImportText(text);
+    }
+    // 伏笔 section：通用 TSV/CSV 解析
+    // 先尝试 JSON
+    const jsonArr = tryParseJsonText(text);
+    if (jsonArr) {
+      const parsed = parseJsonArrayForPage(jsonArr, sec.pid);
+      return parsed.rows;
+    }
+    const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    if (lines.length === 0) return [];
+    const detectSep = (sample) => {
+      if (sample.includes("\t")) return "\t";
+      if (/ {2,}/.test(sample)) return / {2,}/;
+      if (sample.includes(",")) return ",";
+      return /\s+/;
+    };
+    const sep = detectSep(lines[0]);
+    const splitLine = (line) =>
+      sep instanceof RegExp ? line.split(sep) : line.split(sep);
+    const skipHeader = $("#" + sec.skipHeaderId)?.checked ?? true;
+    const startIdx = skipHeader ? 1 : 0;
+    const out = [];
+    // 用字段定义构建 header → 字段名映射
+    const headerCandidates = [];
+    for (const k of Object.keys(fields)) {
+      headerCandidates.push({ key: k, cands: fields[k] });
+    }
+    // 第 0 行（如果 skipHeader=true 实际是第 1 行）解析为 header
+    let header = null;
+    if (!skipHeader && lines.length > 0) {
+      const parts = splitLine(lines[0]).map((s) => s.trim());
+      header = parts;
+    }
+    for (let i = startIdx; i < lines.length; i++) {
+      const parts = splitLine(lines[i]).map((s) => s.trim());
+      const o = { _line: i + 1, _error: null };
+      if (parts.length < 1) {
+        o._error = "行内容为空";
+        out.push(o);
+        continue;
+      }
+      // 没有 header 时按字段顺序取值
+      if (!header) {
+        const data = {};
+        for (let j = 0; j < headerCandidates.length && j < parts.length; j++) {
+          data[headerCandidates[j].key] = parts[j];
+        }
+        Object.assign(o, data);
+      } else {
+        // 用 header 名称匹配字段
+        const data = {};
+        for (let j = 0; j < header.length; j++) {
+          const colName = header[j];
+          const matchKey = headerCandidates.find((c) =>
+            c.cands.some((cand) => cand.toLowerCase() === colName.toLowerCase())
+          );
+          if (matchKey) data[matchKey.key] = parts[j] || "";
+        }
+        Object.assign(o, data);
+      }
+      // no 字段标准化
+      if (typeof o.no === "string") {
+        const p = parseChapterNo(o.no);
+        if (p.hasNum && Number.isFinite(p.num)) o.no = p.num;
+        else if (p.raw) o.no = p.raw;
+        else o.no = 0;
+      }
+      out.push(o);
+    }
+    return out;
+  }
+
+  function renderImportPreviewSection(rows, sec, tableKind) {
+    const pv = $("#" + sec.previewId);
+    if (!pv) return;
+    if (!rows || rows.length === 0) {
+      pv.innerHTML = "";
+      return;
+    }
+    pv.innerHTML = rows
+      .map((r) => {
+        if (r._error) {
+          return `
+            <div class="preview-row preview-error" title="${escapeHtml(r._error)}">
+              <span class="preview-no">#${r._line || "-"}</span>
+              <span class="preview-title">⚠ ${escapeHtml(r._error)}</span>
+              <span class="preview-len">失败</span>
+            </div>`;
+        }
+        let main = "";
+        if (sec.isRecord) {
+          main = `${r.setup || "—"} · ${r.notes || "（无描述）"}`;
+        } else if (sec.key === "chapter") {
+          main = r.title || "（无标题）";
+        } else {
+          main = `${r.fsNo || "—"} · ${r.name || "（无名）"}`;
+        }
+        const no = r.no != null ? r.no : "—";
+        return `
+          <div class="preview-row">
+            <span class="preview-no">${escapeHtml(String(no))}</span>
+            <span class="preview-title" title="${escapeHtml(main)}">${escapeHtml(main)}</span>
+            <span class="preview-len">${charCount(r.notes || r.content || "")}字</span>
+          </div>`;
+      })
+      .join("");
+  }
+
+  function setSectionStats(sec, rows, pid) {
+    const el = $("#" + sec.statsId);
+    if (!el) return;
+    if (!rows || rows.length === 0) {
+      el.textContent = "";
+      el.className = "muted";
+      return;
+    }
+    const ok = rows.filter((r) => !r._error).length;
+    const err = rows.length - ok;
+    el.classList.remove("has-error", "has-success");
+    const label = pid && PAGES[pid] ? `→ ${PAGES[pid].label}` : "";
+    if (err === 0) {
+      el.classList.add("has-success");
+      el.textContent = `✓ ${ok} 行可导入 ${label}`;
+    } else {
+      el.classList.add("has-error");
+      el.textContent = `✓ ${ok} 行 / ✗ ${err} 行解析失败 ${label}`;
+    }
+  }
+
+  // 确认导入 section
+  function commitImportSection(sectionKey) {
+    const sec = IMPORT_SECTIONS[sectionKey];
+    const btn = $("#" + sec.confirmId);
+    if (!btn) return;
+    const raw = btn.dataset.parsed;
+    const sheetName = btn.dataset.sheet || "";
+    const targetPid = btn.dataset.page || "";
+    const table = btn.dataset.table || sec.table;
+    if (!raw) return;
+    const rows = JSON.parse(raw).filter((r) => !r._error);
+    if (rows.length === 0) {
+      toast("没有可导入的内容", "error");
+      return;
+    }
+    if (!targetPid || !PAGES[targetPid]) {
+      toast("未指定目标页面", "error");
+      return;
+    }
+    const def = PAGES[targetPid];
+    const target = state.pages[targetPid][table];
+    if (!Array.isArray(target)) {
+      toast("目标表不存在：" + table, "error");
+      return;
+    }
+    const isRecord = table === "records";
+    const fieldsDef = isRecord ? def.recordFields : def.fields;
+    const defaultsFn = isRecord ? def.recordDefaults : def.defaults;
+    const makeFn = isRecord ? def.makeRecord : def.makeItem;
+    let added = 0, replaced = 0;
+    rows.forEach((r) => {
+      // 去重 key：items 用 sheet+no；records 用 sheet+no+fsNo
+      const existingIdx = isRecord
+        ? target.findIndex(
+            (x) => x.sheet === sheetName &&
+                   String(x.fsNo || "") === String(r.fsNo || "") &&
+                   String(x.setup || "") === String(r.setup || "")
+          )
+        : target.findIndex(
+            (x) => Number(x.no) === Number(r.no) && x.sheet === sheetName
+          );
+      const data = defaultsFn();
+      for (const k of Object.keys(fieldsDef)) {
+        if (k in r) data[k] = r[k];
+      }
+      if (existingIdx >= 0) {
+        target[existingIdx] = { ...target[existingIdx], ...data, sheet: sheetName };
+        replaced++;
+      } else {
+        const it = makeFn(data, sheetName);
+        target.push(it);
+        added++;
+      }
+    });
+    // 排序
+    if (isRecord) {
+      target.sort((a, b) =>
+        compareChapterNo(def.recordSortKey(a), def.recordSortKey(b))
+      );
+    } else {
+      target.sort((a, b) =>
+        compareChapterNo(def.sortKey(a), def.sortKey(b))
+      );
+    }
+    // sheet 注册到 state.sheetsRaw（如不存在）
+    if (sheetName && !state.sheetsRaw.find((s) => s.name === sheetName)) {
+      const header = rows[0] ? Object.keys(fieldsDef) : [];
+      const aoa = [header];
+      state.sheetsRaw.push({
+        name: sheetName,
+        rows2d: aoa,
+        columns: Object.fromEntries(
+          Object.keys(fieldsDef).map((k, i) => [k, i])
+        ),
+        rowCount: aoa.length,
+        ok: true,
+        page: targetPid,
+      });
+      if (!state.pages[targetPid].sheets.find((s) => s.name === sheetName)) {
+        state.pages[targetPid].sheets.push({
+          name: sheetName,
+          columns: Object.fromEntries(
+            Object.keys(fieldsDef).map((k, i) => [k, i])
+          ),
+          rowCount: 1,
+          ok: true,
+        });
+      }
+    }
+    save();
+    pushHistory();
+    // 切到目标页面（如未在）
+    if (state.currentPage !== targetPid) {
+      state.currentPage = targetPid;
+    }
+    if (sheetName) {
+      state.pages[targetPid].currentSheet = sheetName;
+    }
+    const first = getSortedItems()[0];
+    state.pages[targetPid].currentItemId = first ? first.id : null;
+    renderAll();
+    const tableLabel = isRecord ? "履历表" : "数据表";
+    toast(
+      `导入完成：${def.label}·${tableLabel} [${sheetName || "(文本)"}] 新增 ${added} 条，覆盖 ${replaced} 条`
+    );
+    // 章节 section 关弹窗；伏笔 section 留在弹窗让用户可继续填另一区
+    if (sectionKey === "chapter") {
+      hideModal("modal-import");
+    } else {
+      // 重置当前 section 让用户继续填
+      resetImportSection(sectionKey);
+    }
+  }
+
+  // 兼容旧调用：handleXlsxFile / handleJsonImportFile 现在按 section 派发
+  function handleXlsxFile(file) {
+    // 旧调用已不存在；保留为外部代码可能引用，但实际现在通过 handleImportFile
+    handleImportFile(file, "chapter");
+  }
+  function handleJsonImportFile(file) {
+    handleImportFile(file, "chapter");
+  }
+  // 旧 parseImportText / refreshImportPreview 保留为 chapter section 用
+  // parseImportText 已经在前面定义过；refreshImportPreview 也保留了
+  // 这里补一个"空"的旧函数以防外部意外引用
+  function refreshImportPreview() {
+    refreshImportPreviewSection("chapter");
+  }
+  // 旧 afterImportParsed 不再使用
+  function afterImportParsed() {
+    /* deprecated, see afterImportParsedSection */
   }
 
   function parseImportText(text) {
