@@ -835,7 +835,19 @@
       // v9：恢复自动写盘提示的 dismissed 状态
       state._autoSavePromptDismissed = data.autoSavePromptDismissed || {};
       state.theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
-      state.ui = { sort: "asc", layout: {}, ...(data.ui || {}) };
+      // v18：伏笔独立排序 + 状态筛选 + 履历排序（章节用 ui.sort,伏笔用 ui.fsSort）
+  state.ui = {
+    sort: "asc",
+    fsSort: "asc",
+    fsStatusFilter: "all", // "all" | "未回收" | "部分回收" | "已回收"
+    fsRecordSort: "asc",
+    layout: {},
+    ...(data.ui || {}),
+  };
+  // 旧数据兼容：补默认值
+  if (!state.ui.fsSort) state.ui.fsSort = "asc";
+  if (!state.ui.fsStatusFilter) state.ui.fsStatusFilter = "all";
+  if (!state.ui.fsRecordSort) state.ui.fsRecordSort = "asc";
       // 兜底：ui.layout 各字段补默认
       state.ui.layout = {
         nav: LAYOUT_DEFAULTS.nav,
@@ -1034,11 +1046,24 @@
     const arr = sheet
       ? p.items.filter((it) => !sheet || it.sheet === sheet)
       : p.items.slice();
+    // v18：伏笔页用独立的 fsSort（避免和章节 sort 混用）
+    const sortDir = state.currentPage === "foreshadowing"
+      ? (state.ui.fsSort === "asc" ? "asc" : "desc")
+      : (state.ui.sort === "asc" ? "asc" : "desc");
     arr.sort((a, b) => {
       const cmp = compareChapterNo(def.sortKey(a), def.sortKey(b));
-      return state.ui.sort === "asc" ? cmp : -cmp;
+      return sortDir === "asc" ? cmp : -cmp;
     });
     return arr;
+  }
+
+  // v18：按状态筛选（用于伏笔列表）
+  // filter: "all" | "未回收" | "部分回收" | "已回收"
+  function getFilteredItems() {
+    const sorted = getSortedItems();
+    const filter = state.ui.fsStatusFilter;
+    if (!filter || filter === "all") return sorted;
+    return sorted.filter((it) => (it.status || FS_STATUS_DEFAULT) === filter);
   }
   // 找章节中最大的 no（只考虑数字序号的；纯文字"序章/楔子"等不参与 max）
   function nextNoInCurrentSheet() {
@@ -1579,7 +1604,18 @@
     const list = $("#fs-list");
     if (!list) return;
     const p = curPage();
-    const items = getSortedItems();
+    // v18：列表用「筛选 + 排序」结果
+    const items = getFilteredItems();
+    // v18：同步排序按钮文字
+    const sortLabel = $("#fs-sort-label");
+    if (sortLabel) sortLabel.textContent = state.ui.fsSort === "asc" ? "正序" : "倒序";
+    // v18：同步状态筛选按钮 active 态
+    const seg = $("#seg-fs-status");
+    if (seg) {
+      seg.querySelectorAll(".seg-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.fsStatus === state.ui.fsStatusFilter);
+      });
+    }
     list.className = "fs-list";
     list.innerHTML = items
       .map((it, idx) => {
@@ -1674,6 +1710,10 @@
     const recordsHtml = renderFsRecordRows(it.id);
     editor.innerHTML = `
       <div class="editor-meta editor-meta-fs ${mainClass}">
+        <!-- v18：「编辑」按钮挪到「伏笔编号」前 -->
+        <div class="meta-actions meta-actions-first">
+          <button id="btn-fs-toggle" class="secondary-btn" title="${isEditing ? "切到查看态（履历原文可点击跳转）" : "切到编辑态（可改伏笔字段、新增/编辑履历）"}">${isEditing ? "✓ 完成编辑" : "✎ 编辑"}</button>
+        </div>
         <div class="meta-field meta-fsno">
           <label>伏笔编号</label>
           <input id="fs-fsno" type="text" ${readonlyAttr} value="${escapeHtml(it.fsNo || "")}" placeholder="如：FS-001" />
@@ -1686,8 +1726,7 @@
           <label>状态</label>
           <select id="fs-status" ${disabledAttr}>${opts}</select>
         </div>
-        <div class="meta-actions">
-          <button id="btn-fs-toggle" class="secondary-btn" title="${isEditing ? "切到查看态（履历原文可点击跳转）" : "切到编辑态（可改伏笔字段、新增/编辑履历）"}">${isEditing ? "✓ 完成编辑" : "✎ 编辑"}</button>
+        <div class="meta-actions meta-actions-last">
           <button id="btn-fs-save" class="primary-btn" ${isEditing ? "" : "hidden"}>保存</button>
           <!-- v17：编辑按钮旁的"删除"按钮移除——删除统一在左侧列表的 .fs-delete 叉号触发，避免重复入口 -->
         </div>
@@ -1696,7 +1735,9 @@
         <div class="fs-records-section">
           <div class="fs-records-header">
             <span class="fs-records-title">📋 伏笔履历</span>
-            <span class="fs-records-meta muted">${isEditing ? `${getFsRecordsByFsNo(it).length} 条 · 按提及章节排序` : `${getFsRecordsByFsNo(it).length} 条 · 点击原文描述可跳转`}</span>
+            <span class="fs-records-meta muted">${isEditing ? `${getFsRecordsByFsNo(it).length} 条 · 按提及章节` : `${getFsRecordsByFsNo(it).length} 条 · 点击原文描述可跳转`}</span>
+            <!-- v18：履历排序（按提及章节正/倒序） -->
+            <button id="btn-fs-record-sort" class="link-btn" title="切换正/倒序（按提及章节）">${state.ui.fsRecordSort === "asc" ? "正序" : "倒序"}</button>
             <button id="btn-fs-add-record" class="link-btn" ${isEditing ? "" : "hidden"}>+ 新增履历</button>
           </div>
           <div class="fs-records-list" id="fs-records-list">
@@ -1717,6 +1758,7 @@
   }
 
   // v14：获取当前伏笔的所有履历（按"提及章节"排序）
+  // v18：增加正/倒序切换 (state.ui.fsRecordSort)
   function getFsRecordsByFsNo(item) {
     if (!item) return [];
     const fsNo = String(item.fsNo || "").trim();
@@ -1725,10 +1767,12 @@
     const list = p.records.filter(
       (r) => String(r.fsNo || "").trim() === fsNo
     );
+    const dir = state.ui.fsRecordSort === "desc" ? "desc" : "asc";
     list.sort((a, b) => {
       const ka = PAGES.foreshadowing.recordSortKey(a);
       const kb = PAGES.foreshadowing.recordSortKey(b);
-      return compareChapterNo(ka, kb);
+      const cmp = compareChapterNo(ka, kb);
+      return dir === "asc" ? cmp : -cmp;
     });
     return list;
   }
@@ -1744,14 +1788,20 @@
     if (records.length === 0) return "";
     return records
       .map((r) => {
+        // v18：编辑态 & 查看态 - 都不再显示"提及章节"标题文字,只显示数字
+        //  - 数字解析自 r.setup (parseChapterNo)
+        //  - 数字字号放大 2 倍 (~2em),与右侧文本框高度差不多
+        //  - 原文描述(label) 保留,跟"右侧文本框高差不多"的对照需要
+        const setupParsed = parseChapterNo(r.setup || "");
+        const setupNum = setupParsed.hasNum && Number.isFinite(setupParsed.num)
+          ? String(setupParsed.num)
+          : "";
         if (isEditing) {
-          // v17：履历行简化为「提及章节 + 原文描述(填满) + 叉号」
-          // 序号列去掉（按章节排序后位置=序号）、伏笔编号列去掉（=父级，无意义）
           return `
             <div class="fs-record-row" data-record-id="${escapeHtml(r.id)}">
               <div class="fs-rec-col-setup">
-                <span class="muted small-label">提及章节</span>
-                <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="如：第3章 / Chapter 5" />
+                <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="如：第3章" class="fs-rec-setup-big" />
+                <span class="fs-rec-setup-num" title="解析后的章节号">${escapeHtml(setupNum)}</span>
               </div>
               <div class="fs-rec-col-notes">
                 <span class="muted small-label">原文描述</span>
@@ -1764,8 +1814,7 @@
           return `
             <div class="fs-record-row readonly" data-record-id="${escapeHtml(r.id)}">
               <div class="fs-rec-col-setup">
-                <span class="muted small-label">提及章节</span>
-                <span class="fs-rec-setup-text">${escapeHtml(r.setup || "—")}</span>
+                <span class="fs-rec-setup-num fs-rec-setup-num-static" title="${escapeHtml(r.setup || "")}">${escapeHtml(setupNum || "—")}</span>
               </div>
               <button class="fs-rec-notes-link" data-record-id="${escapeHtml(r.id)}" title="点击跳转到该章节">${escapeHtml(r.notes || "（无描述）")}</button>
             </div>`;
@@ -1842,6 +1891,12 @@
       // 重新挂事件（renderFsEditor 会重新生成 DOM）
       // 注：renderFsEditor 内部已经调用了 bindFsEditorEvents
       // 但保存按钮的逻辑在事件委托里（bindEditorButtons），无需重绑
+    });
+    // v18：履历排序（按提及章节正/倒序）
+    $("#btn-fs-record-sort")?.addEventListener("click", () => {
+      state.ui.fsRecordSort = state.ui.fsRecordSort === "asc" ? "desc" : "asc";
+      save();
+      renderFsEditor();
     });
     // v14：新增履历
     $("#btn-fs-add-record")?.addEventListener("click", () => {
@@ -4252,6 +4307,25 @@
       // 排序改动不压栈（数据本身没变，只换展示）
       renderCurrentPage();
     });
+    // v18：伏笔页排序（按伏笔编号）
+    $("#btn-fs-sort")?.addEventListener("click", () => {
+      state.ui.fsSort = state.ui.fsSort === "asc" ? "desc" : "asc";
+      save();
+      renderFsList();
+    });
+    // v18：伏笔页状态筛选（全部 / 未回收 / 部分回收 / 已回收）
+    const segFsStatus = $("#seg-fs-status");
+    if (segFsStatus) {
+      segFsStatus.addEventListener("click", (e) => {
+        const btn = e.target.closest(".seg-btn[data-fs-status]");
+        if (!btn) return;
+        const v = btn.dataset.fsStatus || "all";
+        if (state.ui.fsStatusFilter === v) return;
+        state.ui.fsStatusFilter = v;
+        save();
+        renderFsList();
+      });
+    }
     // 撤销 / 重做
     $("#btn-undo")?.addEventListener("click", undo);
     $("#btn-redo")?.addEventListener("click", redo);

@@ -1979,6 +1979,7 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
 
   // 18.5 列表删除按钮靠右：.fs-col-name 加 flex: 1
   const css18 = fs.readFileSync(path.join(__dirname, "styles.css"), "utf-8");
+  const css19 = css18; // 同一份 CSS,只是给 v18 测试块用 alias 方便阅读
   const t18_5a = /\.fs-col-name\s*\{[\s\S]{0,80}flex:\s*1/.test(css18);
   console.log(`  CSS .fs-col-name 含 flex: 1 (推动删除按钮靠右): ${t18_5a ? "✓" : "✗"}`);
   if (!t18_5a) allPass = false;
@@ -2006,7 +2007,7 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!(t18_6a && t18_6b && t18_6c && t18_6d && t18_6e && t18_6f)) allPass = false;
 
   // 18.7 履历 grid 改为 minmax(setup) + 1fr(notes) + auto(delete)
-  const t18_7a = /\.fs-record-row\s*\{[\s\S]{0,300}minmax\(\s*120px\s*,\s*200px\s*\)\s+1fr\s+auto/.test(css18);
+  const t18_7a = /\.fs-record-row\s*\{[\s\S]{0,300}minmax\(\s*\d+px\s*,\s*\d+px\s*\)\s+1fr\s+auto/.test(css18);
   console.log(`  .fs-record-row grid: setup 固定 + notes 1fr 填满: ${t18_7a ? "✓" : "✗"}`);
   if (!t18_7a) allPass = false;
 
@@ -2061,6 +2062,174 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     t18_10a && t18_10b && t18_10c;
   console.log("  v17 改动:", t18All ? "PASS" : "FAIL");
   if (!t18All) allPass = false;
+
+  // ============================================================
+  // 测试 19：v18 改动（伏笔列表筛选/排序/履历排序/状态色/编辑按钮位置/章节数字号）
+  // ============================================================
+  console.log("\n测试 19：v18（6 项需求）");
+  const html19 = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
+
+  // 19.1 state.ui 加 fsStatusFilter / fsSort / fsRecordSort 字段
+  const t19_1a = /fsStatusFilter\s*:\s*"all"/.test(SRC);
+  const t19_1b = /fsSort\s*:\s*"asc"/.test(SRC);
+  const t19_1c = /fsRecordSort\s*:\s*"asc"/.test(SRC);
+  // 旧数据兼容
+  const t19_1d = /if\s*\(\s*!state\.ui\.fsSort\s*\)\s*state\.ui\.fsSort\s*=\s*"asc"/.test(SRC);
+  const t19_1e = /if\s*\(\s*!state\.ui\.fsStatusFilter\s*\)\s*state\.ui\.fsStatusFilter\s*=\s*"all"/.test(SRC);
+  const t19_1f = /if\s*\(\s*!state\.ui\.fsRecordSort\s*\)\s*state\.ui\.fsRecordSort\s*=\s*"asc"/.test(SRC);
+  console.log(`  state.ui 加 fsStatusFilter: ${t19_1a ? "✓" : "✗"}`);
+  console.log(`  state.ui 加 fsSort: ${t19_1b ? "✓" : "✗"}`);
+  console.log(`  state.ui 加 fsRecordSort: ${t19_1c ? "✓" : "✗"}`);
+  console.log(`  旧数据兼容 fsSort: ${t19_1d ? "✓" : "✗"}`);
+  console.log(`  旧数据兼容 fsStatusFilter: ${t19_1e ? "✓" : "✗"}`);
+  console.log(`  旧数据兼容 fsRecordSort: ${t19_1f ? "✓" : "✗"}`);
+  if (!(t19_1a && t19_1b && t19_1c && t19_1d && t19_1e && t19_1f)) allPass = false;
+
+  // 19.2 状态筛选 UI: index.html 加了 #seg-fs-status + 4 个按钮(全部/未回收/部分回收/已回收)
+  const t19_2a = /id="seg-fs-status"/.test(html19);
+  const t19_2b = /data-fs-status="all"/.test(html19);
+  const t19_2c = /data-fs-status="未回收"/.test(html19);
+  const t19_2d = /data-fs-status="部分回收"/.test(html19);
+  const t19_2e = /data-fs-status="已回收"/.test(html19);
+  console.log(`  html19 #seg-fs-status 存在: ${t19_2a ? "✓" : "✗"}`);
+  console.log(`  html19 全部按钮: ${t19_2b ? "✓" : "✗"}`);
+  console.log(`  html19 未回收按钮: ${t19_2c ? "✓" : "✗"}`);
+  console.log(`  html19 部分回收按钮: ${t19_2d ? "✓" : "✗"}`);
+  console.log(`  html19 已回收按钮: ${t19_2e ? "✓" : "✗"}`);
+  if (!(t19_2a && t19_2b && t19_2c && t19_2d && t19_2e)) allPass = false;
+
+  // 19.3 伏笔排序按钮: #btn-fs-sort + 同步 label
+  const t19_3a = /id="btn-fs-sort"/.test(html19);
+  const t19_3b = /id="fs-sort-label"/.test(html19);
+  // app.js renderFsList 内有 fsSort label 同步
+  const fsListBlock19 = SRC.slice(
+    SRC.indexOf("function renderFsList"),
+    SRC.indexOf("function renderChapterEditor")
+  );
+  const t19_3c = /state\.ui\.fsSort\s*===\s*"asc"\s*\?\s*"正序"\s*:\s*"倒序"/.test(fsListBlock19);
+  // bindEditorButtons 加 btn-fs-sort click
+  const t19_3d = /\$\("#btn-fs-sort"\)\?\.addEventListener\(["']click["']/.test(SRC);
+  console.log(`  html19 #btn-fs-sort 存在: ${t19_3a ? "✓" : "✗"}`);
+  console.log(`  html19 #fs-sort-label 存在: ${t19_3b ? "✓" : "✗"}`);
+  console.log(`  renderFsList 同步 fsSort label: ${t19_3c ? "✓" : "✗"}`);
+  console.log(`  bindEditorButtons 绑 btn-fs-sort click: ${t19_3d ? "✓" : "✗"}`);
+  if (!(t19_3a && t19_3b && t19_3c && t19_3d)) allPass = false;
+
+  // 19.4 getSortedItems: 伏笔页用 fsSort
+  const t19_4a = /state\.currentPage\s*===\s*"foreshadowing"[\s\S]{0,200}fsSort/.test(SRC);
+  const t19_4b = /state\.ui\.sort\s*===\s*"asc"/.test(SRC);
+  console.log(`  getSortedItems 按 currentPage 选 sort: ${t19_4a ? "✓" : "✗"}`);
+  console.log(`  getSortedItems 仍兼容 state.ui.sort: ${t19_4b ? "✓" : "✗"}`);
+  if (!(t19_4a && t19_4b)) allPass = false;
+
+  // 19.5 getFilteredItems: 状态筛选
+  const t19_5a = /function\s+getFilteredItems/.test(SRC);
+  const t19_5b = /state\.ui\.fsStatusFilter/.test(SRC);
+  // renderFsList 改用 getFilteredItems
+  const t19_5c = /const\s+items\s*=\s*getFilteredItems\(\)/.test(fsListBlock19);
+  console.log(`  新增 getFilteredItems 函数: ${t19_5a ? "✓" : "✗"}`);
+  console.log(`  getFilteredItems 用 fsStatusFilter: ${t19_5b ? "✓" : "✗"}`);
+  console.log(`  renderFsList 改用 getFilteredItems: ${t19_5c ? "✓" : "✗"}`);
+  if (!(t19_5a && t19_5b && t19_5c)) allPass = false;
+
+  // 19.6 状态筛选按钮事件
+  const t19_6a = /seg-fs-status[\s\S]{0,400}addEventListener[\s\S]{0,400}data-fs-status/.test(SRC);
+  const t19_6b = /state\.ui\.fsStatusFilter\s*=\s*v/.test(SRC);
+  console.log(`  状态筛选 seg 绑 click 事件: ${t19_6a ? "✓" : "✗"}`);
+  console.log(`  点击更新 state.ui.fsStatusFilter: ${t19_6b ? "✓" : "✗"}`);
+  if (!(t19_6a && t19_6b)) allPass = false;
+
+  // 19.7 履历排序按钮: #btn-fs-record-sort + state.ui.fsRecordSort
+  const t19_7a = /id="btn-fs-record-sort"/.test(SRC);
+  const t19_7b = /\$\("#btn-fs-record-sort"\)\?\.addEventListener\(["']click["']/.test(SRC);
+  // getFsRecordsByFsNo 改用 fsRecordSort
+  const getRecBlock19 = SRC.slice(
+    SRC.indexOf("function getFsRecordsByFsNo"),
+    SRC.indexOf("function getFsRecordsByFsNo") + 800
+  );
+  const t19_7c = /state\.ui\.fsRecordSort\s*===\s*"desc"\s*\?\s*"desc"\s*:\s*"asc"/.test(getRecBlock19);
+  console.log(`  html19/JS #btn-fs-record-sort 存在: ${t19_7a ? "✓" : "✗"}`);
+  console.log(`  btn-fs-record-sort 绑 click: ${t19_7b ? "✓" : "✗"}`);
+  console.log(`  getFsRecordsByFsNo 读 fsRecordSort: ${t19_7c ? "✓" : "✗"}`);
+  if (!(t19_7a && t19_7b && t19_7c)) allPass = false;
+
+  // 19.8 履历行 - 章节数字号放大 + 去掉"提及章节"标题文字
+  const recRowsBlock19 = SRC.slice(
+    SRC.indexOf("function renderFsRecordRows"),
+    SRC.indexOf("function bindChapterEditorEvents")
+  );
+  // 编辑态:行内含 fs-rec-setup-big input + fs-rec-setup-num 数字 span
+  const t19_8a = /class="fs-rec-setup-big"/.test(recRowsBlock19);
+  const t19_8b = /class="fs-rec-setup-num"/.test(recRowsBlock19);
+  // 编辑态: setup 列不再有 small-label "提及章节" 标题
+  //  - 原来: <span class="muted small-label">提及章节</span>
+  //  - 现在: setup 列只有 input + 数字 span
+  // 只查 innerHTML 模板(<div ...> 开头到 </div> 结束),不查 JS 注释
+  const templateMatch19 = recRowsBlock19.match(/<div class="fs-record-row[\s\S]*?<\/div>\s*<\/div>/g);
+  const allTemplates = templateMatch19 ? templateMatch19.join("\n") : recRowsBlock19;
+  const t19_8c = !/small-label">提及章节/.test(allTemplates);
+  // 查看态:用 fs-rec-setup-num-static
+  const t19_8d = /fs-rec-setup-num-static/.test(recRowsBlock19);
+  // CSS:章节数字号 font-size: 2em
+  const t19_8e = /\.fs-rec-setup-num\s*\{[^}]*font-size:\s*2em/.test(css19);
+  console.log(`  履历行编辑态 input class fs-rec-setup-big: ${t19_8a ? "✓" : "✗"}`);
+  console.log(`  履历行编辑态数字 span fs-rec-setup-num: ${t19_8b ? "✓" : "✗"}`);
+  console.log(`  履历行不再显示"提及章节"标题: ${t19_8c ? "✓" : "✗"}`);
+  console.log(`  查看态用 fs-rec-setup-num-static: ${t19_8d ? "✓" : "✗"}`);
+  console.log(`  CSS .fs-rec-setup-num font-size 2em: ${t19_8e ? "✓" : "✗"}`);
+  if (!(t19_8a && t19_8b && t19_8c && t19_8d && t19_8e)) allPass = false;
+
+  // 19.9 状态色 - 未回收/已回收 互换
+  // 原来:未回收=绿(#2c5d3a),已回收=蓝(#2c4a6d)
+  // 现在:未回收=蓝(#2c4a6d),已回收=绿(#2c5d3a)
+  // 验证 fs-status-unresolved 块里是蓝色,fs-status-resolved 块里是绿色
+  // CSS 里同时存在旧定义(v15 前的 fs-status-active/resolved)和新定义(v17 起的 unresolved/resolved)
+  // 找 v18 注释后的新块(v18: 状态色 - 未回收 / 部分回收 / 已回收 三档)
+  const v18CssMarker = "v18：状态色";
+  const v18Idx = css19.indexOf(v18CssMarker);
+  const v18Css = v18Idx >= 0 ? css19.slice(v18Idx) : css19;
+  const allUnresBlocks = v18Css.match(/\.fs-status-unresolved[\s\S]{0,400}?\}\s*\n/g) || [];
+  const allResBlocks = v18Css.match(/\.fs-status-resolved[\s\S]{0,400}?\}\s*\n/g) || [];
+  // v18 块里第一个 unresolved (没 slate 限定符的) + 第一个 resolved
+  const t19_9a = allUnresBlocks.some((b) => /#2c4a6d/.test(b)); // 蓝
+  const t19_9b = allResBlocks.some((b) => /#2c5d3a/.test(b)); // 绿
+  console.log(`  未回收 = 蓝色 #2c4a6d: ${t19_9a ? "✓" : "✗"}`);
+  console.log(`  已回收 = 绿色 #2c5d3a: ${t19_9b ? "✓" : "✗"}`);
+  if (!(t19_9a && t19_9b)) allPass = false;
+
+  // 19.10 编辑按钮挪到编号前
+  // 顺序: [meta-actions-first] [meta-fsno] [meta-title] [状态] [meta-actions-last]
+  const fsEditorStart19 = SRC.indexOf("function renderFsEditor");
+  const fsEditorEnd19 = SRC.indexOf("function getFsRecordsByFsNo");
+  const fsEditorBlock19 = fsEditorStart19 > 0 && fsEditorEnd19 > fsEditorStart19
+    ? SRC.slice(fsEditorStart19, fsEditorEnd19)
+    : "";
+  // 找 fs-no toggle 那段,检查顺序
+  const metaBlock = fsEditorBlock19.match(/editor-meta editor-meta-fs[\s\S]{0,1500}?<\/div>\s*<\/div>/);
+  const t19_10a = /meta-actions-first[\s\S]{0,300}meta-fsno/.test(metaBlock ? metaBlock[0] : "");
+  const t19_10b = /meta-fsno[\s\S]{0,400}meta-title/.test(metaBlock ? metaBlock[0] : "");
+  const t19_10c = /meta-title[\s\S]{0,400}meta-actions-last/.test(metaBlock ? metaBlock[0] : "");
+  // CSS grid 包含 5 列
+  const t19_10d = /\.editor-meta-fs\s*\{[^}]*grid-template-columns:[^}]*auto[^}]*130px[^}]*1fr[^}]*140px[^}]*auto/.test(css19);
+  console.log(`  编辑器 meta-actions-first 在 meta-fsno 前: ${t19_10a ? "✓" : "✗"}`);
+  console.log(`  meta-fsno 在 meta-title 前: ${t19_10b ? "✓" : "✗"}`);
+  console.log(`  meta-title 在 meta-actions-last 前: ${t19_10c ? "✓" : "✗"}`);
+  console.log(`  CSS editor-meta-fs 5 列布局: ${t19_10d ? "✓" : "✗"}`);
+  if (!(t19_10a && t19_10b && t19_10c && t19_10d)) allPass = false;
+
+  const t19All =
+    t19_1a && t19_1b && t19_1c && t19_1d && t19_1e && t19_1f &&
+    t19_2a && t19_2b && t19_2c && t19_2d && t19_2e &&
+    t19_3a && t19_3b && t19_3c && t19_3d &&
+    t19_4a && t19_4b &&
+    t19_5a && t19_5b && t19_5c &&
+    t19_6a && t19_6b &&
+    t19_7a && t19_7b && t19_7c &&
+    t19_8a && t19_8b && t19_8c && t19_8d && t19_8e &&
+    t19_9a && t19_9b &&
+    t19_10a && t19_10b && t19_10c && t19_10d;
+  console.log("  v18 改动:", t19All ? "PASS" : "FAIL");
+  if (!t19All) allPass = false;
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);

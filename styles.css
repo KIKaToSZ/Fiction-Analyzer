@@ -1373,6 +1373,24 @@ body.is-resizing .resizer * {
   cursor: pointer;
   white-space: nowrap;
 }
+/* v18：状态筛选分段按钮 - 紧贴彼此，跟其他 seg 视觉一致 */
+.seg-fs-status {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-left: 4px;
+}
+.seg-fs-status .seg-btn {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--border);
+  padding: 5px 10px;
+}
+.seg-fs-status .seg-btn:last-child {
+  border-right: none;
+}
 
 .seg-btn:hover {
   color: var(--text);
@@ -2090,8 +2108,15 @@ input[type="range"]::-moz-range-thumb {
 /* ============================================
    伏笔编辑器布局
    ============================================ */
+/* v18：编辑按钮挪到「伏笔编号」前 → [编辑] [编号] [名称] [状态] [保存] */
 .editor-meta-fs {
-  grid-template-columns: 80px 1fr 120px auto;
+  grid-template-columns: auto 130px 1fr 140px auto;
+}
+.editor-meta-fs .meta-actions-first {
+  align-self: end; /* 跟其他输入框底对齐 */
+}
+.editor-meta-fs .meta-actions-last {
+  align-self: end;
 }
 
 .fs-form-row {
@@ -2196,24 +2221,24 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
-/* v17：状态色 - 未回收 / 部分回收 / 已回收 三档
-   - 未回收：绿（活跃色）
+/* v18：状态色 - 未回收 / 部分回收 / 已回收 三档
+   - 未回收：蓝（待完成色，跟"待办"语义一致）
    - 部分回收：琥珀/橙（半完成色）
-   - 已回收：蓝（完成色）
+   - 已回收：绿（完成色）
    - 旧 .fs-status-active 保留为 alias，避免历史数据渲染时丢色
    - 旧 .fs-status-abandoned 保留为 alias（用户切回旧值时仍可显示） */
 .fs-status-unresolved,
 .fs-status-active {
-  color: #2c5d3a;
-  background: rgba(106, 158, 92, 0.22);
+  color: #2c4a6d;
+  background: rgba(92, 130, 178, 0.22);
 }
 .fs-status-partial {
   color: #8a5a1f;
   background: rgba(214, 158, 79, 0.22);
 }
 .fs-status-resolved {
-  color: #2c4a6d;
-  background: rgba(92, 130, 178, 0.22);
+  color: #2c5d3a;
+  background: rgba(106, 158, 92, 0.22);
 }
 .fs-status-abandoned {
   color: #6b3848;
@@ -2223,6 +2248,10 @@ input[type="range"]::-moz-range-thumb {
 [data-accent="slate"] .fs-status-active {
   color: #3a4655;
   background: rgba(92, 107, 122, 0.22);
+}
+[data-accent="slate"] .fs-status-resolved {
+  color: #3a4655;
+  background: rgba(122, 155, 126, 0.22);
 }
 
 
@@ -2239,6 +2268,29 @@ input[type="range"]::-moz-range-thumb {
   color: var(--text, #2c2418);
   padding-top: 4px;
   word-break: break-word;
+  align-items: center; /* 数字居中 */
+  justify-content: center;
+}
+/* v18：章节数字号 - 字号 2em（≈26px），粗体,跟右侧 textarea 高度接近 */
+.fs-rec-setup-num {
+  font-size: 2em;
+  font-weight: 700;
+  color: var(--accent, #785a3c);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fs-rec-setup-num-static {
+  /* 查看态没有 input,数字居中显示 */
+  min-width: 48px;
+}
+.fs-rec-setup-big {
+  /* 编辑态 - input 自身保持原大小,旁边显示大字号数字 */
+  font-size: 13px;
+  text-align: center;
 }
 /* 编辑态 textarea / view 态链接 - 横向填满 */
 .fs-record-row .fs-rec-col-notes {
@@ -2324,7 +2376,8 @@ input[type="range"]::-moz-range-thumb {
    - 原文描述 1fr 横向填充满，编辑态尾部加一个叉号 */
 .fs-record-row {
   display: grid;
-  grid-template-columns: minmax(120px, 200px) 1fr auto;
+  /* v18:第 1 列窄一点(只显示大字号数字),给中间原文描述让出空间 */
+  grid-template-columns: minmax(80px, 110px) 1fr auto;
   gap: 10px;
   padding: 8px;
   background: var(--card-bg, rgba(255, 255, 255, 0.4));

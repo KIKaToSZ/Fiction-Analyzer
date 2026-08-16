@@ -269,6 +269,20 @@
                 </svg>
                 <span>导入</span>
               </button>
+              <!-- v18：伏笔列表状态筛选（全部 / 未回收 / 部分回收 / 已回收） -->
+              <div id="seg-fs-status" class="seg seg-fs-status" role="group" aria-label="按状态筛选">
+                <button class="seg-btn active" data-fs-status="all" title="显示全部">全部</button>
+                <button class="seg-btn" data-fs-status="未回收" title="只显示未回收的伏笔">未回收</button>
+                <button class="seg-btn" data-fs-status="部分回收" title="只显示部分回收的伏笔">部分回收</button>
+                <button class="seg-btn" data-fs-status="已回收" title="只显示已回收的伏笔">已回收</button>
+              </div>
+              <!-- v18：伏笔列表排序（按伏笔编号正/倒序） -->
+              <button id="btn-fs-sort" class="tool-btn" title="切换正/倒序（按伏笔编号）">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                <span id="fs-sort-label">正序</span>
+              </button>
               <span class="page-toolbar-spacer"></span>
               <span id="fs-count" class="muted page-toolbar-meta">0 条</span>
             </div>
