@@ -1015,6 +1015,92 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
 
   console.log("  v10.1 修复:", (t11_1a && t11_1b && t11_2a && t11_2b && t11_3a && t11_3b && t11_4 && t11_5) ? "PASS" : "FAIL");
   if (!(t11_1a && t11_1b && t11_2a && t11_2b && t11_3a && t11_3b && t11_4 && t11_5)) allPass = false;
+
+  // ============================================================
+  // 测试 12：v11（默认写盘路径 D:/yuelan + 导入按钮移到伏笔页）
+  // ============================================================
+  console.log("\n测试 12：v11（默认写盘路径 + 导入按钮移位）");
+
+  // 12.1 showDirectoryPicker 必须传 id（浏览器用它记住目录，下次直接打开）
+  const enableBlock = SRC.slice(
+    SRC.indexOf("async function enableAutoSave"),
+    SRC.indexOf("function updateAutosaveButton")
+  );
+  const t12_1a = /showDirectoryPicker\s*\(\s*\{[\s\S]{0,200}?id:\s*AUTOSAVE_DIR_ID/.test(enableBlock);
+  const t12_1b = /const AUTOSAVE_DIR_ID\s*=\s*"fiction-analyzer-autosave-yuelan"/.test(SRC);
+  console.log(`  enableAutoSave 用 AUTOSAVE_DIR_ID 调 showDirectoryPicker: ${t12_1a ? "✓" : "✗"}`);
+  console.log(`  AUTOSAVE_DIR_ID 常量存在（"fiction-analyzer-autosave-yuelan"）: ${t12_1b ? "✓" : "✗"}`);
+  if (!t12_1a || !t12_1b) allPass = false;
+
+  // 12.2 updateAutosaveButton 文字逻辑：未配置显示「建议 D:/yuelan」，已配置显示「写盘目录：xxx」
+  const updateBtnBlock = SRC.slice(
+    SRC.indexOf("function updateAutosaveButton"),
+    SRC.indexOf("function maybePromptEnableAutoSave")
+  );
+  const t12_2a = /启用自动写盘（建议 \$\{AUTOSAVE_DEFAULT_HINT\}）/.test(updateBtnBlock);
+  const t12_2b = /写盘目录：\$\{state\.directoryName\}（点此修改）/.test(updateBtnBlock);
+  const t12_2c = /AUTOSAVE_DEFAULT_HINT\s*=\s*"D:\/yuelan"/.test(SRC);
+  console.log(`  未配置时按钮显示「启用自动写盘（建议 D:/yuelan）」: ${t12_2a ? "✓" : "✗"}`);
+  console.log(`  已配置时按钮显示「写盘目录：xxx（点此修改）」: ${t12_2b ? "✓" : "✗"}`);
+  console.log(`  常量 AUTOSAVE_DEFAULT_HINT = "D:/yuelan": ${t12_2c ? "✓" : "✗"}`);
+  if (!t12_2a || !t12_2b || !t12_2c) allPass = false;
+
+  // 12.3 updateAutosaveButton 在合适时机被调用
+  // - enableAutoSave 成功后
+  // - load() 末尾
+  // - bindEditorButtons 末尾（init 时）
+  const t12_3a = /toast\("✓ 已启用自动写盘[^"]*", "info", 2500\);\s*\n\s*return true;/.test(enableBlock) === false; // 已确认存在
+  const callAfterEnable = /state\.directoryName = dirHandle\.name[\s\S]{0,400}?updateAutosaveButton\(\)/.test(enableBlock);
+  const loadBlock = SRC.slice(SRC.indexOf("function load"), SRC.indexOf("let _dbPromise"));
+  const callAfterLoad = /sheetsRaw[\s\S]{0,300}?updateAutosaveButton\(\)/.test(loadBlock);
+  const btnBindBlock = SRC.slice(SRC.indexOf("#btn-enable-autosave")?.addEventListener ? 0 : 0, 0); // 占位
+  const idxBind = SRC.indexOf('$("#btn-enable-autosave")?.addEventListener');
+  const idxBindEnd = SRC.indexOf("// JSON 导入走", idxBind);
+  const bindBlock = SRC.slice(idxBind, idxBindEnd > 0 ? idxBindEnd : idxBind + 1000);
+  const callAfterBind = /updateAutosaveButton\(\)/.test(bindBlock);
+  console.log(`  enableAutoSave 成功路径调 updateAutosaveButton: ${callAfterEnable ? "✓" : "✗"}`);
+  console.log(`  load() 末尾调 updateAutosaveButton: ${callAfterLoad ? "✓" : "✗"}`);
+  console.log(`  bindEditorButtons 末尾调 updateAutosaveButton: ${callAfterBind ? "✓" : "✗"}`);
+  if (!callAfterEnable || !callAfterLoad || !callAfterBind) allPass = false;
+
+  // 12.4 maybePromptEnableAutoSave 文案提了 D:/yuelan
+  const promptBlock = SRC.slice(
+    SRC.indexOf("function maybePromptEnableAutoSave"),
+    SRC.indexOf("function ensureWritePermission")
+  );
+  const t12_4 = /AUTOSAVE_DEFAULT_HINT/.test(promptBlock) && /建议 \$\{AUTOSAVE_DEFAULT_HINT\}/.test(promptBlock);
+  console.log(`  maybePromptEnableAutoSave confirm 文案含 D:/yuelan 建议: ${t12_4 ? "✓" : "✗"}`);
+  if (!t12_4) allPass = false;
+
+  // 12.5 #btn-import 已从章节页删除、加到伏笔管理页
+  const HTML_PATH = "/home/gem/.aily/workdir/task_7672995282002398156/fiction-analyzer/index.html";
+  const html = fs.readFileSync(HTML_PATH, "utf-8");
+  // 章节 page-view="chapter" 段中不应再含 #btn-import
+  const chSection = html.slice(
+    html.indexOf('data-page-view="chapter"'),
+    html.indexOf('data-page-view="foreshadowing"')
+  );
+  const fsSection = html.slice(
+    html.indexOf('data-page-view="foreshadowing"'),
+    html.indexOf('<!-- ===================== 弹窗：导入')
+  );
+  const t12_5a = !/id="btn-import"/.test(chSection);
+  const t12_5b = /id="btn-import"/.test(fsSection);
+  // 顺序：#btn-new-fs 在前、#btn-import 在后
+  const fsOrder = fsSection.indexOf('id="btn-new-fs"') < fsSection.indexOf('id="btn-import"') &&
+                  fsSection.indexOf('id="btn-import"') < fsSection.indexOf('id="btn-fs-save"');
+  console.log(`  章节页 page-toolbar 已删 #btn-import: ${t12_5a ? "✓" : "✗"}`);
+  console.log(`  伏笔页 page-toolbar 已加 #btn-import: ${t12_5b ? "✓" : "✗"}`);
+  console.log(`  顺序：btn-new-fs < btn-import: ${fsOrder ? "✓" : "✗"}`);
+  if (!t12_5a || !t12_5b || !fsOrder) allPass = false;
+
+  // 12.6 按钮初始文字改了
+  const t12_6 = /启用自动写盘（建议 D:\/yuelan）/.test(html);
+  console.log(`  index.html 初始按钮文字含「D:/yuelan」: ${t12_6 ? "✓" : "✗"}`);
+  if (!t12_6) allPass = false;
+
+  console.log("  v11 修复:", (t12_1a && t12_1b && t12_2a && t12_2b && t12_2c && callAfterEnable && callAfterLoad && callAfterBind && t12_4 && t12_5a && t12_5b && fsOrder && t12_6) ? "PASS" : "FAIL");
+  if (!(t12_1a && t12_1b && t12_2a && t12_2b && t12_2c && callAfterEnable && callAfterLoad && callAfterBind && t12_4 && t12_5a && t12_5b && fsOrder && t12_6)) allPass = false;
 }
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

@@ -726,6 +726,8 @@
       for (const s of state.sheetsRaw) {
         if (!s.page) s.page = "chapter";
       }
+      // v11：恢复配置后刷新「写盘目录」按钮文字
+      updateAutosaveButton();
     } catch (e) {
       console.error("读取失败，使用默认状态", e);
     }
@@ -2051,6 +2053,12 @@
     return { ok: true, mode: "download" };
   }
 
+  // v11：自动写盘用 showDirectoryPicker({id}) 时浏览器会"记住"这个 id 对应的目录。
+  // ——之后再次用同 id 唤起，浏览器会**直接打开上次的目录**（不需要用户重选），
+  // 等于软性地实现了"默认路径"。建议路径是 D:/yuelan，但不强求。
+  const AUTOSAVE_DIR_ID = "fiction-analyzer-autosave-yuelan";
+  const AUTOSAVE_DEFAULT_HINT = "D:/yuelan";
+
   // v9：让用户授权一个目录，之后所有保存都自动写 json 到该目录
   // （绕开浏览器对拖入文件无 handle 的限制）
   async function enableAutoSave() {
@@ -2060,7 +2068,12 @@
     }
     let dirHandle;
     try {
-      dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      // v11：传 id，浏览器会记住这个 id 关联的目录（即使跨会话），
+      // 下次同 id 唤起会**直接打开**该目录（体验上等于"默认路径"）。
+      dirHandle = await window.showDirectoryPicker({
+        id: AUTOSAVE_DIR_ID,
+        mode: "readwrite",
+      });
     } catch (e) {
       if (e && e.name === "AbortError") {
         toast("已取消授权", "info", 1200);
@@ -2098,6 +2111,7 @@
       state.directoryName = dirHandle.name || null;
       save();
       updateFilePathDisplay();
+      updateAutosaveButton();
       toast("✓ 已启用自动写盘：之后保存会写到该目录", "info", 2500);
       return true;
     } catch (e) {
@@ -2110,6 +2124,27 @@
     }
   }
 
+  // v11：根据是否已配置写盘目录，动态更新「启用自动写盘」按钮的文字 / tooltip
+  // ——未配置：提示「建议 D:/yuelan」让用户知道该选哪里
+  // ——已配置：显示「写盘目录：xxx（点此修改）」让用户一眼能看到当前写到哪
+  function updateAutosaveButton() {
+    const btn = document.getElementById("btn-enable-autosave");
+    if (!btn) return;
+    if (state.directoryHandleKey && state.directoryName) {
+      btn.textContent = `写盘目录：${state.directoryName}（点此修改）`;
+      btn.title =
+        `当前写盘目录：${state.directoryName}\n` +
+        `点击可改成其他目录。\n` +
+        `建议路径：${AUTOSAVE_DEFAULT_HINT}`;
+    } else {
+      btn.textContent = `启用自动写盘（建议 ${AUTOSAVE_DEFAULT_HINT}）`;
+      btn.title =
+        `授权一个目录，让「保存」自动写 json 到磁盘。\n` +
+        `推荐选 ${AUTOSAVE_DEFAULT_HINT} 目录。\n` +
+        `首次授权后浏览器会记住路径，下次直接打开该目录。`;
+    }
+  }
+
   // v9：拖入文件后只提示一次（每个文件名一次）。已经启用过就跳过。
   function maybePromptEnableAutoSave() {
     if (!state.currentFileName) return;
@@ -2119,7 +2154,10 @@
     const dismissed = state._autoSavePromptDismissed || {};
     if (dismissed[state.currentFileName]) return;
     if (!confirm(
-      `要让「保存」自动写 json 到磁盘吗？\n\n拖入的文件没有写入权限，每次保存目前只是写浏览器内。\n点击「确定」：选择一个目录（建议选 xlsx 所在目录），之后保存会直接覆盖同名 .json。\n点击「取消」：跳过这步，继续用「导出 json」手动备份。`
+      `要让「保存」自动写 json 到磁盘吗？\n\n` +
+      `拖入的文件没有写入权限，每次保存目前只是写浏览器内。\n` +
+      `点击「确定」：选择一个目录（建议 ${AUTOSAVE_DEFAULT_HINT}，浏览器会记住路径），之后保存会直接覆盖同名 .json。\n` +
+      `点击「取消」：跳过这步，继续用「导出 json」手动备份。`
     )) {
       dismissed[state.currentFileName] = true;
       state._autoSavePromptDismissed = dismissed;
@@ -3175,6 +3213,8 @@
     $("#btn-enable-autosave")?.addEventListener("click", () => {
       enableAutoSave();
     });
+    // v11：按钮文字初始化（已配置则显示「写盘目录：xxx」，未配置则提示「建议 D:/yuelan」）
+    updateAutosaveButton();
 
     // JSON 导入走「打开文件」弹窗的拖入区（v8+），这里不再单独挂事件
   }

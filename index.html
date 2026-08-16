@@ -130,7 +130,8 @@
                   <div class="seg seg-data">
                     <button id="btn-export" class="seg-btn" title="把当前数据导出为 xlsx（默认日常保存走 json，速度快；需要 xlsx 时点这里）">导出 xlsx</button>
                     <button id="btn-export-json" class="seg-btn" title="把当前数据导出为 json（用于备份 / 迁移）">导出 json</button>
-                    <button id="btn-enable-autosave" class="seg-btn" title="授权一个目录，让「保存」自动写 json 到磁盘（拖入文件后建议启用）">启用自动写盘</button>
+                    <!-- v11：文字由 updateAutosaveButton() 动态管理；此处给个安全的初始值 -->
+                    <button id="btn-enable-autosave" class="seg-btn" title="授权一个目录，让「保存」自动写 json 到磁盘">启用自动写盘（建议 D:/yuelan）</button>
                   </div>
                 </div>
               </div>
@@ -152,14 +153,6 @@
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
                 <span>新增章节</span>
-              </button>
-              <button id="btn-import" class="tool-btn" title="从 xlsx 文件导入条目">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="17 8 12 3 7 8" />
-                  <line x1="12" y1="3" x2="12" y2="15" />
-                </svg>
-                <span>导入</span>
               </button>
               <button id="btn-sort" class="tool-btn" title="切换正/倒序">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -258,6 +251,15 @@
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
                 <span>新增伏笔</span>
+              </button>
+              <!-- v11：「导入」从章节页移到这里（章节是手动写；伏笔批量来源多更需要导入） -->
+              <button id="btn-import" class="tool-btn" title="从 xlsx 文件导入伏笔条目">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span>导入</span>
               </button>
               <span class="page-toolbar-spacer"></span>
               <span id="fs-count" class="muted page-toolbar-meta">0 条</span>
