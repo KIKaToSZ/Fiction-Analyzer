@@ -332,7 +332,7 @@
       <div class="modal-backdrop" data-close></div>
       <div class="modal-card modal-card-wide">
         <header class="modal-header">
-          <h3>导入 xlsx 条目</h3>
+          <h3>导入条目</h3>
           <button class="icon-btn" data-close aria-label="关闭">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -342,18 +342,18 @@
         </header>
         <div class="modal-body">
           <p class="muted hint">
-            选择一个本地 <code>.xlsx</code> 文件。系统会按 sheet 名的特征自动归类到对应的页面（章节 / 伏笔管理 / 后续扩展），也可以手动指定。文本粘贴仅作为兜底，默认导入到「章节」页。
+            选择一个本地 <code>.xlsx</code> 或 <code>.json</code> 文件。xlsx 按 sheet 名的特征自动归类到对应页面（章节 / 伏笔管理 / 后续扩展），可以手动指定；json 是数组格式的章节或伏笔数据，每项是一个对象、keys 作为列名。文本粘贴（Tab / 逗号 / 多空格 / JSON 数组）作为兜底，默认导入到「章节」页。
           </p>
 
-          <div id="import-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入 xlsx 文件">
+          <div id="import-drop" class="import-drop" tabindex="0" role="button" aria-label="点击或拖入文件">
             <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            <div class="import-drop-title">点击选择 / 拖入 .xlsx 文件</div>
-            <div class="import-drop-hint">支持 .xlsx / .xlsm 格式，单文件</div>
-            <input id="file-xlsx" type="file" accept=".xlsx,.xlsm" hidden />
+            <div class="import-drop-title">点击选择 / 拖入 .xlsx 或 .json 文件</div>
+            <div class="import-drop-hint">支持 .xlsx / .xlsm / .json 格式（json 为数组格式），单文件</div>
+            <input id="file-xlsx" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
           </div>
 
           <div id="import-file-info" class="import-file-info" hidden>

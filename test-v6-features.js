@@ -1095,7 +1095,7 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!t12_5a || !t12_5b || !fsOrder) allPass = false;
 
   // 12.6 按钮初始文字改了
-  const t12_6 = /启用自动写盘（建议 D:\/yuelan）/.test(html);
+  const t12_6 = html.includes("启用自动写盘（建议 D:/yuelan）");
   console.log(`  index.html 初始按钮文字含「D:/yuelan」: ${t12_6 ? "✓" : "✗"}`);
   if (!t12_6) allPass = false;
 
@@ -1176,22 +1176,22 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   const t13_6b = /setup:[^\]]*提及章节/.test(fsFields);
   const t13_6c = /status:[^\]]*回收状态/.test(fsFields);
   const t13_6d = /notes:[^\]]*原文描述/.test(fsFields);
-  // 原有关键词保留
-  const t13_6e = /name:[^\]]*"名称"/.test(fsFields);
-  const t13_6f = /setup:[^\]]*"铺设章节"/.test(fsFields);
-  const t13_6g = /status:[^\]]*"状态"/.test(fsFields);
-  const t13_6h = /notes:[^\]]*"备注"/.test(fsFields);
-  // no 字段已含"序号"
+  // v13：v12 扩展的同义词已全部移除（伏笔字段精简为 5 个）
+  const t13_6e = !/name:[^\]]*"名称"/.test(fsFields);
+  const t13_6f = !/setup:[^\]]*"铺设章节"/.test(fsFields);
+  const t13_6g = !/status:[^\]]*"状态"/.test(fsFields);
+  const t13_6h = !/notes:[^\]]*"备注"/.test(fsFields);
+  // no 字段仍含"序号"
   const t13_6i = /no:[^\]]*"序号"/.test(fsFields);
   console.log(`  name 加了「伏笔名称」: ${t13_6a ? "✓" : "✗"}`);
   console.log(`  setup 加了「提及章节」: ${t13_6b ? "✓" : "✗"}`);
   console.log(`  status 加了「回收状态」: ${t13_6c ? "✓" : "✗"}`);
   console.log(`  notes 加了「原文描述」: ${t13_6d ? "✓" : "✗"}`);
-  console.log(`  原有 name「名称」保留: ${t13_6e ? "✓" : "✗"}`);
-  console.log(`  原有 setup「铺设章节」保留: ${t13_6f ? "✓" : "✗"}`);
-  console.log(`  原有 status「状态」保留: ${t13_6g ? "✓" : "✗"}`);
-  console.log(`  原有 notes「备注」保留: ${t13_6h ? "✓" : "✗"}`);
-  console.log(`  原有 no「序号」保留: ${t13_6i ? "✓" : "✗"}`);
+  console.log(`  旧 name「名称」已移除: ${t13_6e ? "✓" : "✗"}`);
+  console.log(`  旧 setup「铺设章节」已移除: ${t13_6f ? "✓" : "✗"}`);
+  console.log(`  旧 status「状态」已移除: ${t13_6g ? "✓" : "✗"}`);
+  console.log(`  旧 notes「备注」已移除: ${t13_6h ? "✓" : "✗"}`);
+  console.log(`  no「序号」保留: ${t13_6i ? "✓" : "✗"}`);
   if (!(t13_6a && t13_6b && t13_6c && t13_6d && t13_6e && t13_6f && t13_6g && t13_6h && t13_6i)) allPass = false;
 
   // 13.7 行为验证：parseChapterNo 真实输出（用 vm 跑过的 ctx 取函数）
@@ -1222,6 +1222,277 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
 
   console.log("  v12 修复:", (t13_1 && t13_2a && t13_2b && t13_2c && t13_2d && t13_3a && t13_3b && t13_3c && t13_4a && t13_4b && t13_4c && t13_4d && t13_5a && t13_5b && t13_5c && t13_5d && t13_6a && t13_6b && t13_6c && t13_6d && t13_6e && t13_6f && t13_6g && t13_6h && t13_6i && t13_7) ? "PASS" : "FAIL");
   if (!(t13_1 && t13_2a && t13_2b && t13_2c && t13_2d && t13_3a && t13_3b && t13_3c && t13_4a && t13_4b && t13_4c && t13_4d && t13_5a && t13_5b && t13_5c && t13_5d && t13_6a && t13_6b && t13_6c && t13_6d && t13_6e && t13_6f && t13_6g && t13_6h && t13_6i && t13_7)) allPass = false;
+
+  // ============================================================
+  // 测试 14：v13（import 支持 .json 拖入 + JSON 文本粘贴 + 伏笔字段精简为 5 个）
+  // ============================================================
+  console.log("\n测试 14：v13（import 支持 .json + 伏笔字段精简）");
+
+  // 14.1 伏笔 fields 只剩 5 个指定关键词 + payoff 为空
+  const fsFieldsV14 = (() => {
+    const start = SRC.indexOf("foreshadowing: {");
+    const end = SRC.indexOf("\n    },\n\n    chapter:", start);
+    return SRC.slice(start, end > 0 ? end : start + 5000);
+  })();
+  const t14_1a = /no:\s*\[\s*"序号"\s*\]/.test(fsFieldsV14);
+  const t14_1b = /name:\s*\[\s*"伏笔名称"\s*\]/.test(fsFieldsV14);
+  const t14_1c = /setup:\s*\[\s*"提及章节"\s*\]/.test(fsFieldsV14);
+  const t14_1d = /payoff:\s*\[\s*\]/.test(fsFieldsV14);
+  const t14_1e = /status:\s*\[\s*"回收状态"\s*\]/.test(fsFieldsV14);
+  const t14_1f = /notes:\s*\[\s*"原文描述"\s*\]/.test(fsFieldsV14);
+  const noOldSynonyms =
+    !/no:[^\]]*"编号"/.test(fsFieldsV14) &&
+    !/name:[^\]]*"名称"/.test(fsFieldsV14) &&
+    !/setup:[^\]]*"铺设章节"/.test(fsFieldsV14) &&
+    !/payoff:[^\]]*"回收章节"/.test(fsFieldsV14) &&
+    !/status:[^\]]*"状态"/.test(fsFieldsV14) &&
+    !/notes:[^\]]*"备注"/.test(fsFieldsV14);
+  console.log(`  no: ["序号"] 单关键词: ${t14_1a ? "✓" : "✗"}`);
+  console.log(`  name: ["伏笔名称"] 单关键词: ${t14_1b ? "✓" : "✗"}`);
+  console.log(`  setup: ["提及章节"] 单关键词: ${t14_1c ? "✓" : "✗"}`);
+  console.log(`  payoff: [] 空: ${t14_1d ? "✓" : "✗"}`);
+  console.log(`  status: ["回收状态"] 单关键词: ${t14_1e ? "✓" : "✗"}`);
+  console.log(`  notes: ["原文描述"] 单关键词: ${t14_1f ? "✓" : "✗"}`);
+  console.log(`  旧同义词全部移除: ${noOldSynonyms ? "✓" : "✗"}`);
+  if (!(t14_1a && t14_1b && t14_1c && t14_1d && t14_1e && t14_1f && noOldSynonyms)) allPass = false;
+
+  // 14.2 新增 parseJsonArrayForPage / tryParseJsonText 函数
+  const t14_2a = /function parseJsonArrayForPage\s*\(/.test(SRC);
+  const t14_2b = /function tryParseJsonText\s*\(/.test(SRC);
+  console.log(`  parseJsonArrayForPage 函数存在: ${t14_2a ? "✓" : "✗"}`);
+  console.log(`  tryParseJsonText 函数存在: ${t14_2b ? "✓" : "✗"}`);
+  if (!(t14_2a && t14_2b)) allPass = false;
+
+  // 14.3 handleXlsxFile 接受 .json + 新增 handleJsonImportFile + afterImportParsed
+  const t14_3a = /if\s*\(!\["xlsx",\s*"xlsm",\s*"json"\]\.includes\(ext\)\)/.test(SRC);
+  const t14_3b = /function handleJsonImportFile\s*\(/.test(SRC);
+  const t14_3c = /function afterImportParsed\s*\(/.test(SRC);
+  console.log(`  handleXlsxFile 接受 .json 后缀: ${t14_3a ? "✓" : "✗"}`);
+  console.log(`  新增 handleJsonImportFile: ${t14_3b ? "✓" : "✗"}`);
+  console.log(`  提取 afterImportParsed 公共逻辑: ${t14_3c ? "✓" : "✗"}`);
+  if (!(t14_3a && t14_3b && t14_3c)) allPass = false;
+
+  // 14.4 parseImportText 调 tryParseJsonText
+  const txtBlock14 = SRC.slice(
+    SRC.indexOf("function parseImportText"),
+    SRC.indexOf("function refreshImportPreview")
+  );
+  const t14_4a = /tryParseJsonText\(text\)/.test(txtBlock14);
+  const t14_4b = /parseJsonArrayForPage\(jsonArr,\s*"chapter"\)/.test(txtBlock14);
+  console.log(`  parseImportText 调用 tryParseJsonText: ${t14_4a ? "✓" : "✗"}`);
+  console.log(`  parseImportText JSON 路径走 chapter: ${t14_4b ? "✓" : "✗"}`);
+  if (!(t14_4a && t14_4b)) allPass = false;
+
+  // 14.5 index.html import-drop 接受 .json
+  const htmlV14 = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
+  const t14_5a = /id="file-xlsx"[^>]*accept="\.xlsx,\.xlsm,\.json,application\/json"/.test(html);
+  const t14_5b = !/导入 xlsx 条目/.test(html);
+  const t14_5c = /点击选择 \/ 拖入 \.xlsx 或 \.json 文件/.test(html);
+  console.log(`  index.html import-drop accept 加 .json: ${t14_5a ? "✓" : "✗"}`);
+  console.log(`  modal 标题去除"导入 xlsx 条目": ${t14_5b ? "✓" : "✗"}`);
+  console.log(`  import-drop 提示文案更新: ${t14_5c ? "✓" : "✗"}`);
+  if (!(t14_5a && t14_5b && t14_5c)) allPass = false;
+
+  // 14.6-14.9 行为：v13 新增函数 + 字段识别
+  // IIFE 内部函数无法从外部 vm 访问，从 SRC 提取关键函数代码到独立 sandbox 跑
+  // extractFn：跳过字符串 / 注释 / regex 字面量 内的大括号，准确提取函数体
+  // 注意：String.match 不会更新 re.lastIndex（只有 exec 才会），所以 m.index + m[0].length - 1 才是「{」的位置
+  function extractFn(src, name) {
+    const re = new RegExp("function\\s+" + name + "\\s*\\([^)]*\\)\\s*\\{");
+    const m = src.match(re);
+    if (!m) return null;
+    const start = m.index;
+    // 找到函数体的 {（在 m[0] 末尾）
+    let i = m.index + m[0].length - 1;
+    let depth = 0;
+    let mode = 'code'; // code | line_comment | block_comment | sq | dq | tm | regex
+    let prevSig = '';
+    for (; i < src.length; i++) {
+      const ch = src[i];
+      const next = src[i + 1];
+      if (mode === 'line_comment') {
+        if (ch === '\n') mode = 'code';
+      } else if (mode === 'block_comment') {
+        if (ch === '*' && next === '/') { mode = 'code'; i++; }
+      } else if (mode === 'sq') {
+        if (ch === '\\') { i++; continue; }
+        if (ch === "'") mode = 'code';
+      } else if (mode === 'dq') {
+        if (ch === '\\') { i++; continue; }
+        if (ch === '"') mode = 'code';
+      } else if (mode === 'tm') {
+        if (ch === '\\') { i++; continue; }
+        if (ch === '\`') mode = 'code';
+      } else if (mode === 'regex') {
+        if (ch === '\\') { i++; continue; }
+        if (ch === '[') { mode = 'charclass'; continue; }
+        if (ch === '/') {
+          // 跳过 regex flags
+          mode = 'code';
+          i++;
+          while (i < src.length && /[a-z]/i.test(src[i])) i++;
+          i--;
+        }
+      } else if (mode === 'charclass') {
+        if (ch === '\\') { i++; continue; }
+        if (ch === ']') mode = 'regex';
+      } else { // code
+        if (ch === '/' && next === '/') { mode = 'line_comment'; i++; continue; }
+        if (ch === '/' && next === '*') { mode = 'block_comment'; i++; continue; }
+        if (ch === "'") { mode = 'sq'; continue; }
+        if (ch === '"') { mode = 'dq'; continue; }
+        if (ch === '\`') { mode = 'tm'; continue; }
+        if (ch === '/') {
+          // 可能是 regex 字面量：在表达式位置才生效。简化：看 prevSig 是否可能是表达式结尾
+          // 这里用近似：如果前一个非空 token 是标识符 / 数字 / ) / ]，则是除号，否则是 regex 开始
+          const lastCodeChar = (() => {
+            for (let j = i - 1; j >= start; j--) {
+              const c = src[j];
+              if (/\s/.test(c)) continue;
+              return c;
+            }
+            return '';
+          })();
+          if (!/[\w\)\]]/.test(lastCodeChar)) {
+            mode = 'regex';
+            continue;
+          }
+        }
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) return src.slice(start, i + 1);
+        }
+      }
+    }
+    return null;
+  }
+  // 提取：PAGES（顶层 const） + findColumnIndex + parseChapterNo + parseJsonArrayForPage + tryParseJsonText
+  // 因为 parseChapterNo 依赖 parseChineseNumeral，提取 PAGES 用简单括号计数
+  // （不能 indexOf("};")，会因为内嵌对象/函数返回的 }; 提前结束）
+  const PAGES_START = SRC.indexOf("const PAGES = {");
+  let _pe = PAGES_START + "const PAGES = {".length - 1; // 指向 {
+  let _pd = 0;
+  let _pInStr = false, _pStrCh = '', _pLineCom = false, _pBlockCom = false;
+  for (; _pe < SRC.length; _pe++) {
+    const _ch = SRC[_pe], _nx = SRC[_pe + 1];
+    if (_pBlockCom) { if (_ch === '*' && _nx === '/') { _pBlockCom = false; _pe++; } continue; }
+    if (_pLineCom) { if (_ch === '\n') _pLineCom = false; continue; }
+    if (_pInStr) { if (_ch === '\\') { _pe++; continue; } if (_ch === _pStrCh) _pInStr = false; continue; }
+    if (_ch === '/' && _nx === '/') { _pLineCom = true; _pe++; continue; }
+    if (_ch === '/' && _nx === '*') { _pBlockCom = true; _pe++; continue; }
+    if (_ch === '"' || _ch === "'") { _pInStr = true; _pStrCh = _ch; continue; }
+    if (_ch === '{') _pd++;
+    else if (_ch === '}') { _pd--; if (_pd === 0) { _pe++; break; } }
+  }
+  const PAGES_END = _pe;
+  const pagesCode = SRC.slice(PAGES_START, PAGES_END);
+  const findColCode = extractFn(SRC, "findColumnIndex");
+  const parseNoCode = extractFn(SRC, "parseChapterNo");
+  const parseCnCode = extractFn(SRC, "parseChineseNumeral");
+  const parseJsonCode = extractFn(SRC, "parseJsonArrayForPage");
+  const tryParseCode = extractFn(SRC, "tryParseJsonText");
+  const sandbox14 = {};
+  vm.createContext(sandbox14);
+  vm.runInContext(
+    (parseCnCode || "") + "\n" +
+    (parseNoCode || "") + "\n" +
+    (findColCode || "") + "\n" +
+    pagesCode + "\n" +
+    (parseJsonCode || "") + "\n" +
+    (tryParseCode || "") + "\n" +
+    "this.parseJsonArrayForPage = parseJsonArrayForPage;\n" +
+    "this.tryParseJsonText = tryParseJsonText;",
+    sandbox14
+  );
+  const v14Api = sandbox14;
+
+  // 14.6 章节 JSON
+  const chJson = [
+    { "章节号": 1, "章节名": "寒江初雪", "文章内容": "第一章内容..." },
+    { "章节号": 2, "章节名": "北风", "文章内容": "第二章内容..." },
+    { "章节号": "第3章", "章节名": "月落", "文章内容": "第三章内容..." },
+  ];
+  const chParsed = v14Api.parseJsonArrayForPage(chJson, "chapter");
+  const t14_6a = chParsed.columns.no === 0 && chParsed.columns.title === 1 && chParsed.columns.content === 2;
+  const t14_6b =
+    chParsed.rows.length === 3 &&
+    chParsed.rows[0].no === 1 &&
+    chParsed.rows[0].title === "寒江初雪" &&
+    chParsed.rows[0].content === "第一章内容..." &&
+    chParsed.rows[2].no === 3;
+  console.log(`  章节 JSON 字段识别（no/title/content）: ${t14_6a ? "✓" : "✗"}`);
+  console.log(`  章节 JSON 数据 + no 提取: ${t14_6b ? "✓" : "✗"}`);
+  if (!(t14_6a && t14_6b)) allPass = false;
+
+  // 14.7 伏笔 JSON（5 个关键词）
+  const fsJson = [
+    { "序号": 1, "伏笔名称": "断剑", "提及章节": "第3章", "原文描述": "雪地里捡到的断剑", "回收状态": "未回收" },
+    { "序号": 2, "伏笔名称": "玉佩", "提及章节": "第5章", "原文描述": "娘亲遗留的玉佩", "回收状态": "已回收" },
+  ];
+  const fsParsed = v14Api.parseJsonArrayForPage(fsJson, "foreshadowing");
+  const t14_7a =
+    fsParsed.columns.no === 0 &&
+    fsParsed.columns.name === 1 &&
+    fsParsed.columns.setup === 2 &&
+    fsParsed.columns.notes === 3 &&
+    fsParsed.columns.status === 4;
+  // v13 设计：只有 no 字段走 parseChapterNo 提数字；setup 字段保留原字符串（"第3章"），
+  // 避免在编辑器里丢失"第"字给用户造成"我输了第3章怎么变成3了"的困惑
+  const t14_7b =
+    fsParsed.rows.length === 2 &&
+    fsParsed.rows[0].no === 1 &&
+    fsParsed.rows[0].name === "断剑" &&
+    fsParsed.rows[0].setup === "第3章" &&
+    fsParsed.rows[0].notes === "雪地里捡到的断剑" &&
+    fsParsed.rows[0].status === "未回收" &&
+    fsParsed.rows[0].payoff === "";
+  console.log(`  伏笔 JSON 字段识别（5 个关键词 + payoff 跳过）: ${t14_7a ? "✓" : "✗"}`);
+  console.log(`  伏笔 JSON 数据: ${t14_7b ? "✓" : "✗"}`);
+  if (!(t14_7a && t14_7b)) allPass = false;
+
+  // 14.8 旧伏笔同义词不再识别
+  const fsJsonOld = [{ "序号": 1, "名称": "x", "铺设章节": "第1章", "备注": "y", "状态": "活跃" }];
+  const fsOldParsed = v14Api.parseJsonArrayForPage(fsJsonOld, "foreshadowing");
+  const t14_8a = fsOldParsed.columns.no === 0;
+  const t14_8b = fsOldParsed.columns.name < 0;
+  const t14_8c = fsOldParsed.columns.setup < 0;
+  const t14_8d = fsOldParsed.columns.notes < 0;
+  const t14_8e = fsOldParsed.columns.status < 0;
+  console.log(`  "序号" 仍识别: ${t14_8a ? "✓" : "✗"}`);
+  console.log(`  "名称" 不再识别: ${t14_8b ? "✓" : "✗"}`);
+  console.log(`  "铺设章节" 不再识别: ${t14_8c ? "✓" : "✗"}`);
+  console.log(`  "备注" 不再识别: ${t14_8d ? "✓" : "✗"}`);
+  console.log(`  "状态" 不再识别: ${t14_8e ? "✓" : "✗"}`);
+  if (!(t14_8a && t14_8b && t14_8c && t14_8d && t14_8e)) allPass = false;
+
+  // 14.9 tryParseJsonText
+  const t14_9a = JSON.stringify(v14Api.tryParseJsonText('[{"a":1},{"a":2}]')) === JSON.stringify([{a:1},{a:2}]);
+  const t14_9b = JSON.stringify(v14Api.tryParseJsonText('{"a":1}')) === JSON.stringify([{a:1}]);
+  // JSON Lines：用真实的换行符（不是 "\n" 字面量）
+  const t14_9c = JSON.stringify(v14Api.tryParseJsonText('{"a":1}\n{"a":2}')) === JSON.stringify([{a:1},{a:2}]);
+  const t14_9d = v14Api.tryParseJsonText("章节号\t章节名\n1\t寒江") === null;
+  const t14_9e = v14Api.tryParseJsonText("") === null;
+  console.log(`  JSON 数组直接解析: ${t14_9a ? "✓" : "✗"}`);
+  console.log(`  单 JSON 对象包装成数组: ${t14_9b ? "✓" : "✗"}`);
+  console.log(`  JSON Lines 解析: ${t14_9c ? "✓" : "✗"}`);
+  console.log(`  tab 文本返回 null（fallback）: ${t14_9d ? "✓" : "✗"}`);
+  console.log(`  空文本返回 null: ${t14_9e ? "✓" : "✗"}`);
+  if (!(t14_9a && t14_9b && t14_9c && t14_9d && t14_9e)) allPass = false;
+
+  // 14.10 chapter fields 未动
+  const chFieldsV14 = (() => {
+    const idx = SRC.indexOf("chapter: {");
+    return SRC.slice(idx, idx + 1500);
+  })();
+  const t14_10a = /no:\s*\["章节号",/.test(chFieldsV14);
+  const t14_10b = /content:\s*\["文章内容",/.test(chFieldsV14);
+  console.log(`  chapter fields 未动: ${t14_10a && t14_10b ? "✓" : "✗"}`);
+  if (!(t14_10a && t14_10b)) allPass = false;
+
+  const v14Pass = t14_1a && t14_1b && t14_1c && t14_1d && t14_1e && t14_1f && noOldSynonyms && t14_2a && t14_2b && t14_3a && t14_3b && t14_3c && t14_4a && t14_4b && t14_5a && t14_5b && t14_5c && t14_6a && t14_6b && t14_7a && t14_7b && t14_8a && t14_8b && t14_8c && t14_8d && t14_8e && t14_9a && t14_9b && t14_9c && t14_9d && t14_9e && t14_10a && t14_10b;
+  console.log("  v13 修复:", v14Pass ? "PASS" : "FAIL");
+  if (!v14Pass) allPass = false;
 }
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

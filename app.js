@@ -133,33 +133,14 @@
         ]);
       },
       fields: {
-        no: ["序号", "编号", "no", "number", "id", "序", "伏笔号"],
-        name: ["名称", "伏笔名", "伏笔名称", "伏笔", "name", "title", "线索", "名字"],
-        setup: [
-          "铺设章节",
-          "铺设",
-          "埋设",
-          "埋设章节",
-          "提及章节",
-          "setup",
-          "setup_chapter",
-          "埋点",
-          "出现章节",
-          "铺设章",
-          "开始章节",
-        ],
-        payoff: [
-          "回收章节",
-          "回收",
-          "揭晓",
-          "揭晓章节",
-          "payoff",
-          "payoff_chapter",
-          "回收章",
-          "结束章节",
-        ],
-        status: ["回收状态", "状态", "status", "state", "进度", "完成度"],
-        notes: ["原文描述", "备注", "说明", "notes", "description", "详情", "内容"],
+        // v13：按用户要求只识别这 5 个关键词（v12 扩展的旧同义词全部移除）
+        no: ["序号"],
+        name: ["伏笔名称"],
+        setup: ["提及章节"],
+        // payoff 字段保留在 schema 中以兼容旧数据，但导入时不再识别任何关键词
+        payoff: [],
+        status: ["回收状态"],
+        notes: ["原文描述"],
       },
       defaults() {
         return {
@@ -973,13 +954,17 @@
     return String(v);
   }
 
-  function findColumnIndex(header, candidates) {
+  // header: 列名数组；candidates: 候选关键词数组
+  // exactOnly: true 时只做完全相等匹配（用户要求"只识别这 5 个关键词"时使用，
+  //   否则模糊匹配会让"状态"误匹配到"回收状态"、"名称"误匹配到"伏笔名称"）
+  function findColumnIndex(header, candidates, exactOnly = false) {
     const norm = (s) => String(s || "").replace(/\s+/g, "").toLowerCase();
     const nHeader = header.map(norm);
     const nCands = candidates.map(norm);
     for (let i = 0; i < nHeader.length; i++) {
       if (nCands.includes(nHeader[i])) return i;
     }
+    if (exactOnly) return -1;
     const hits = [];
     for (let i = 0; i < nHeader.length; i++) {
       const h = nHeader[i];
@@ -1004,8 +989,10 @@
     const dataRows = rows2d.slice(1);
     const fieldKeys = Object.keys(def.fields);
     const columns = {};
+    // v13：伏笔管理页面要求严格只识别 5 个指定字段名（不做模糊匹配）
+    const exactOnly = pageId === "foreshadowing";
     for (const key of fieldKeys) {
-      columns[key] = findColumnIndex(header, def.fields[key]);
+      columns[key] = findColumnIndex(header, def.fields[key], exactOnly);
     }
     const out = [];
     const allMissing = fieldKeys.every((k) => (columns[k] | 0) < 0);
@@ -1056,6 +1043,123 @@
       rows: out,
       columns: { ...columns, header },
     };
+  }
+
+  // v13：从 JSON 数组解析（每项是一个对象，keys 是字段名）
+  // - 用 findColumnIndex 模糊匹配 def.fields 里的关键词
+  // - no 字段同样走 parseChapterNo 提取数字
+  // - 输出结构与 parseRowsForPage 一致：{rows, columns}
+  //   columns.header 是识别出的字段名（按 def.fields 顺序）
+  //   columns[key] 是该字段在原始 JSON 数组里的"匹配列索引"（实际指 JSON 数组第几项的 keys 顺序）
+  function parseJsonArrayForPage(jsonArray, pageId) {
+    const def = PAGES[pageId];
+    if (!def) return { rows: [], columns: null };
+    if (!Array.isArray(jsonArray) || jsonArray.length === 0) {
+      return { rows: [], columns: null };
+    }
+    // 用第一行（或第二个有意义的行）的 keys 作为 header
+    const headerRow = (() => {
+      for (const it of jsonArray) {
+        if (it && typeof it === "object" && !Array.isArray(it)) {
+          return Object.keys(it);
+        }
+      }
+      return [];
+    })();
+    if (headerRow.length === 0) return { rows: [], columns: null };
+    const fieldKeys = Object.keys(def.fields);
+    // v13：伏笔管理页面要求严格只识别 5 个指定字段名（不做模糊匹配），
+    // 避免"状态"误匹配到"回收状态"、"名称"误匹配到"伏笔名称"
+    const columns = {};
+    const exactOnly = pageId === "foreshadowing";
+    for (const key of fieldKeys) {
+      const idx = findColumnIndex(headerRow, def.fields[key], exactOnly);
+      // 找不到就当 -1
+      columns[key] = idx;
+    }
+    // 没有任何字段命中 → 该 JSON 数组不属于这个 page
+    const anyHit = fieldKeys.some((k) => (columns[k] | 0) >= 0);
+    if (!anyHit) return { rows: [], columns: { ...columns, header: headerRow } };
+    const out = [];
+    for (let i = 0; i < jsonArray.length; i++) {
+      const item = jsonArray[i];
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const o = { _line: i + 1, _error: null };
+      const data = {};
+      let hasAny = false;
+      for (const key of fieldKeys) {
+        const idx = columns[key];
+        if (idx < 0) {
+          data[key] = "";
+        } else {
+          const keyName = headerRow[idx];
+          const v = item[keyName];
+          const s = v == null ? "" : (typeof v === "string" ? v.trim() : String(v).trim());
+          if (s) hasAny = true;
+          data[key] = s;
+        }
+      }
+      if (!hasAny) continue;
+      // no 字段：能提取出数字就提（如"第12章"→12），纯汉字无数字保留原字符串
+      if (columns.no >= 0) {
+        const trimmed = String(data.no || "").trim();
+        if (!trimmed) {
+          data.no = 0;
+        } else {
+          const parsed = parseChapterNo(trimmed);
+          if (parsed.hasNum && Number.isFinite(parsed.num)) {
+            data.no = parsed.num;
+          } else {
+            data.no = trimmed;
+          }
+        }
+      } else {
+        data.no = 0;
+      }
+      Object.assign(o, data);
+      out.push(o);
+    }
+    return {
+      rows: out,
+      columns: { ...columns, header: headerRow },
+    };
+  }
+
+  // v13：尝试把整段文本解析为 JSON 数组
+  // - 整段能 parse → 视为 JSON 数组
+  // - 整段 parse 失败 → 尝试按行 parse（JSON Lines / 单 JSON 对象）
+  // - 都失败 → 返回 null（调用方 fall back 到分隔符逻辑）
+  function tryParseJsonText(text) {
+    if (!text || !text.trim()) return null;
+    const trimmed = text.trim();
+    // 快速判断：必须以 [ 或 { 开头
+    const first = trimmed[0];
+    if (first !== "[" && first !== "{") return null;
+    // 1) 整段 parse
+    try {
+      const v = JSON.parse(trimmed);
+      if (Array.isArray(v)) return v;
+      // 单个 JSON 对象 → 包装成数组
+      if (v && typeof v === "object") return [v];
+      return null;
+    } catch (_) {}
+    // 2) JSON Lines
+    const lines = trimmed.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    if (lines.length === 0) return null;
+    const out = [];
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t || (t[0] !== "{" && t[0] !== "[")) return null;
+      try {
+        const v = JSON.parse(t);
+        if (Array.isArray(v)) out.push(...v);
+        else if (v && typeof v === "object") out.push(v);
+        else return null;
+      } catch (_) {
+        return null;
+      }
+    }
+    return out.length > 0 ? out : null;
   }
 
   function parseXlsxAllSheets(ab) {
@@ -2658,14 +2762,21 @@
     });
   }
 
+  // v13：import 弹窗支持 .xlsx / .xlsm / .json
+  // - .xlsx / .xlsm → 走 SheetJS 解析，按 sheet 分类
+  // - .json → JSON 数组格式（每项是对象，keys 作为列名），用字段定义识别
   function handleXlsxFile(file) {
-    if (!window.XLSX) {
-      toast("xlsx 解析库未加载，请检查网络", "error");
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    if (!["xlsx", "xlsm", "json"].includes(ext)) {
+      toast(`不支持的文件类型：.${ext}（仅支持 .xlsx / .xlsm / .json）`, "error");
       return;
     }
-    const ext = (file.name.split(".").pop() || "").toLowerCase();
-    if (!["xlsx", "xlsm"].includes(ext)) {
-      toast(`不支持的文件类型：.${ext}（仅支持 .xlsx / .xlsm）`, "error");
+    if (ext === "json") {
+      handleJsonImportFile(file);
+      return;
+    }
+    if (!window.XLSX) {
+      toast("xlsx 解析库未加载，请检查网络", "error");
       return;
     }
     const reader = new FileReader();
@@ -2697,61 +2808,18 @@
           );
           return { name, rows2d, parsed, ok, page };
         });
-        // sheet 下拉
-        const sel = $("#import-sheet-select");
-        const wrap = $("#import-sheet-wrap");
-        if (sel) {
-          sel.innerHTML = importAllSheets
-            .map(
-              (s) =>
-                `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} [${escapeHtml(pageBadge(s.page))}]${s.ok ? "" : "（未匹配字段）"}</option>`
-            )
-            .join("");
-        }
-        if (wrap) wrap.hidden = importAllSheets.length <= 1;
-        // 默认选第一个 ok 的 sheet
-        const firstOk = importAllSheets.find((s) => s.ok);
-        if (sel && firstOk) sel.value = firstOk.name;
-        else if (sel) sel.value = importAllSheets[0].name;
-
-        const info = $("#import-file-info");
-        info.hidden = false;
-        const okCount = importAllSheets.filter((s) => s.ok).length;
-        info.querySelector(".import-file-name").textContent =
-          `${file.name} · ${importAllSheets.length} 个 sheet（${okCount} 个有匹配字段）`;
-
-        // 显示目标页面下拉
-        const targetWrap = $("#import-target-wrap");
-        const targetSel = $("#import-target-select");
-        if (targetSel) {
-          // 收集本次出现的 page
-          const present = new Set(
-            importAllSheets.map((s) => s.page).filter(Boolean)
-          );
-          // + 当前 currentPage（兜底）
-          present.add(state.currentPage);
-          const options = Array.from(present).map(
-            (pid) =>
-              `<option value="${pid}">${PAGES[pid] ? PAGES[pid].icon + " " + PAGES[pid].label : pid}</option>`
-          );
-          // 加一个"未分类"选项（如果选了未分类的 sheet）
-          options.push(`<option value="">— 未分类（不导入）—</option>`);
-          targetSel.innerHTML = options.join("");
-          // 默认选第一个 ok sheet 的 page
-          const def0 = firstOk ? firstOk.page : state.currentPage;
-          targetSel.value = def0 || state.currentPage;
-          importTargetPage = targetSel.value;
-        }
-        if (targetWrap) targetWrap.hidden = false;
-
-        $("#import-text").value = "";
-        refreshImportPreview();
-        if (okCount === 0) {
+        afterImportParsed(file.name);
+        if (importAllSheets.length === 0) {
           toast("没有任何 sheet 匹配已注册的页面字段", "warn", 3000);
-        } else if (okCount < importAllSheets.length) {
-          toast(`解析完成：${okCount}/${importAllSheets.length} 个 sheet 有匹配字段`, "info", 1800);
         } else {
-          toast(`解析完成：${okCount} 个 sheet 均有匹配字段`, "info", 1800);
+          const okCount = importAllSheets.filter((s) => s.ok).length;
+          if (okCount === 0) {
+            toast("没有任何 sheet 匹配已注册的页面字段", "warn", 3000);
+          } else if (okCount < importAllSheets.length) {
+            toast(`解析完成：${okCount}/${importAllSheets.length} 个 sheet 有匹配字段`, "info", 1800);
+          } else {
+            toast(`解析完成：${okCount} 个 sheet 均有匹配字段`, "info", 1800);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -2762,8 +2830,127 @@
     reader.readAsArrayBuffer(file);
   }
 
+  // v13：处理 .json 文件导入
+  // 解析为 JSON 数组 → 尝试匹配每个 page 的字段定义，找到能识别的 page
+  // 文件名（去后缀）作为"虚拟 sheet 名"参与去重
+  function handleJsonImportFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = String(reader.result || "");
+        const arr = tryParseJsonText(text);
+        if (!arr) {
+          toast("JSON 文件无法解析为数组（应为 JSON 数组 / JSON Lines）", "error", 3500);
+          return;
+        }
+        // 对每个 page 都试一遍解析，找出能识别字段的那个
+        const candidates = [];
+        for (const pid of PAGE_IDS) {
+          const parsed = parseJsonArrayForPage(arr, pid);
+          if (parsed.columns) {
+            const hitCount = Object.keys(parsed.columns).filter(
+              (k) => k !== "header" && (parsed.columns[k] | 0) >= 0
+            ).length;
+            if (hitCount > 0) {
+              candidates.push({ pid, parsed, hitCount });
+            }
+          }
+        }
+        if (candidates.length === 0) {
+          toast("JSON 数据未匹配任何已注册的页面字段（章节号 / 伏笔名称 等）", "error", 4000);
+          return;
+        }
+        // 取命中数最多的 page
+        candidates.sort((a, b) => b.hitCount - a.hitCount);
+        const winner = candidates[0];
+        // 文件名（去后缀）作为 sheet 名
+        const baseName = (file.name || "imported").replace(/\.[^.]+$/, "");
+        // 把数据组装成与 xlsx 路径同样的结构（一个虚拟"json" sheet）
+        importAllSheets = [{
+          name: baseName,
+          rows2d: [winner.parsed.columns.header, ...arr.map((it) =>
+            winner.parsed.columns.header.map((k) => it[k] != null ? it[k] : "")
+          )],
+          parsed: { rows: winner.parsed.rows, columns: winner.parsed.columns },
+          ok: true,
+          page: winner.pid,
+        }];
+        afterImportParsed(file.name);
+        toast(
+          `JSON 解析完成：${winner.parsed.rows.length} 条 → ${PAGES[winner.pid].label}`,
+          "info",
+          1800
+        );
+      } catch (err) {
+        console.error(err);
+        toast("JSON 解析失败：" + (err.message || err), "error");
+      }
+    };
+    reader.onerror = () => toast("读取文件失败", "error");
+    reader.readAsText(file);
+  }
+
+  // v13：handleXlsxFile / handleJsonImportFile 解析完后的公共 UI 装配
+  function afterImportParsed(fileName) {
+    const sel = $("#import-sheet-select");
+    const wrap = $("#import-sheet-wrap");
+    if (sel) {
+      sel.innerHTML = importAllSheets
+        .map(
+          (s) =>
+            `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} [${escapeHtml(pageBadge(s.page))}]${s.ok ? "" : "（未匹配字段）"}</option>`
+        )
+        .join("");
+    }
+    if (wrap) wrap.hidden = importAllSheets.length <= 1;
+    // 默认选第一个 ok 的 sheet
+    const firstOk = importAllSheets.find((s) => s.ok);
+    if (sel && firstOk) sel.value = firstOk.name;
+    else if (sel) sel.value = importAllSheets[0].name;
+
+    const info = $("#import-file-info");
+    info.hidden = false;
+    const okCount = importAllSheets.filter((s) => s.ok).length;
+    info.querySelector(".import-file-name").textContent =
+      `${fileName} · ${importAllSheets.length} 个 sheet（${okCount} 个有匹配字段）`;
+
+    // 显示目标页面下拉
+    const targetWrap = $("#import-target-wrap");
+    const targetSel = $("#import-target-select");
+    if (targetSel) {
+      // 收集本次出现的 page
+      const present = new Set(
+        importAllSheets.map((s) => s.page).filter(Boolean)
+      );
+      // + 当前 currentPage（兜底）
+      present.add(state.currentPage);
+      const options = Array.from(present).map(
+        (pid) =>
+          `<option value="${pid}">${PAGES[pid] ? PAGES[pid].icon + " " + PAGES[pid].label : pid}</option>`
+      );
+      // 加一个"未分类"选项（如果选了未分类的 sheet）
+      options.push(`<option value="">— 未分类（不导入）—</option>`);
+      targetSel.innerHTML = options.join("");
+      // 默认选第一个 ok sheet 的 page
+      const def0 = firstOk ? firstOk.page : state.currentPage;
+      targetSel.value = def0 || state.currentPage;
+      importTargetPage = targetSel.value;
+    }
+    if (targetWrap) targetWrap.hidden = false;
+
+    $("#import-text").value = "";
+    refreshImportPreview();
+  }
+
   function parseImportText(text) {
     if (!text || !text.trim()) return [];
+    // v13：先尝试识别 JSON 数组 / JSON Lines
+    const jsonArr = tryParseJsonText(text);
+    if (jsonArr) {
+      // 按 chapter 解析（文本导入兜底走章节）
+      const parsed = parseJsonArrayForPage(jsonArr, "chapter");
+      return parsed.rows;
+    }
     const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
     if (lines.length === 0) return [];
     const detectSep = (sample) => {
