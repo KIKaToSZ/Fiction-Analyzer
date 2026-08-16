@@ -1589,6 +1589,7 @@
             <span class="fs-cell fs-col-fsno" title="${escapeHtml(it.fsNo || "—")}">${escapeHtml(it.fsNo || "—")}</span>
             <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
             <span class="fs-cell fs-col-status ${cls}">${escapeHtml(status)}</span>
+            <button class="fs-delete" data-id="${escapeHtml(it.id)}" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
           </li>`;
       })
       .join("");
@@ -3975,6 +3976,51 @@
   /* ============================================================
      事件：文件 / 列表点击 / 编辑器按钮
      ============================================================ */
+  // v16：新建空白文件
+  // - 有用户数据时弹 confirm，确认后先 saveAsJson({silent:true}) 备份到当前写盘位置，再重置 state
+  // - 重置 state.pages（每个 page 走 makePageState()）/ sheetsRaw / 4 个文件名 / history 栈
+  // - 故意保留 state.directoryHandleKey（之前授权过的写盘目录继续可用，新建后保存直接写到该目录）
+  async function createNewFile() {
+    if (hasAnyUserData()) {
+      const ok = window.confirm(
+        "确定要新建空白文件吗？\n\n" +
+        "当前数据会保留在内存中，新建后会清空。\n" +
+        "如果浏览器已经授权过写盘目录，已写盘的内容会继续保留；\n" +
+        "未写盘的内容会先尝试自动备份一次。\n\n" +
+        "确定继续？"
+      );
+      if (!ok) return;
+      // 先尝试静默备份（如果有写盘权限/handle，走静默路径；否则兜底会下载到本地）
+      try {
+        await saveAsJson({ silent: true });
+      } catch (e) {
+        console.warn("新建前备份失败：", e);
+      }
+    }
+    // 重置 state
+    state.pages = {
+      chapter: makePageState(),
+      foreshadowing: makePageState(),
+    };
+    state.sheetsRaw = [];
+    state.currentFileName = null;
+    state.xlsxFileName = null;
+    state.jsonFileName = null;
+    state.jsonHandleKey = null;
+    state.directoryName = null;
+    // 故意保留 state.directoryHandleKey —— 让之前授权过的写盘目录继续可用
+    // 清空 history 栈
+    history.stack = [];
+    history.idx = -1;
+    save();
+    renderAll();
+    // 刷新自动写盘按钮文案（因为 directoryName 重置了）
+    if (typeof updateAutosaveButton === "function") updateAutosaveButton();
+    // 刷新右下角"实际写入文件"显示
+    if (typeof updateFilePathDisplay === "function") updateFilePathDisplay();
+    toast("已新建空白文件", "info", 1500);
+  }
+
   function bindFileEvents() {
     // v10：数据源下拉菜单已移除。openFileByName 现在只被 openDirectory（文件夹内文件列表）调用。
     // 这里不再绑定 #file-select（已删除）。
@@ -3995,6 +4041,9 @@
       }
       showModal("modal-open-dir");
     });
+
+    // v16：左上角"新建文件"按钮
+    $("#file-new")?.addEventListener("click", createNewFile);
 
     $("#btn-open-dir-pick").addEventListener("click", async () => {
       try {
@@ -4124,6 +4173,16 @@
       if (e.target.closest(".ch-delete")) {
         e.stopPropagation();
         const id = e.target.closest(".ch-delete").dataset.id;
+        if (!id) return;
+        // 先选中该项（让 deleteCurrentItem 找到 curItem），再删
+        curPage().currentItemId = id;
+        deleteCurrentItem();
+        return;
+      }
+      // v16：伏笔列表的"删除"叉号，行为和章节一致
+      if (e.target.closest(".fs-delete")) {
+        e.stopPropagation();
+        const id = e.target.closest(".fs-delete").dataset.id;
         if (!id) return;
         // 先选中该项（让 deleteCurrentItem 找到 curItem），再删
         curPage().currentItemId = id;

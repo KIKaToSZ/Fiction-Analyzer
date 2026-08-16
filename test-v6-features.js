@@ -1809,10 +1809,122 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     t16_10a && t16_10b && t16_10c && t16_10d;
   console.log("  v15 改动:", t16All ? "PASS" : "FAIL");
   if (!t16All) allPass = false;
-}
+
+  // ============================================================
+  // 测试 17：v16 伏笔列表叉号删除 + 左上角"新建文件"按钮
+  // ============================================================
+  console.log("\n测试 17：v16（伏笔列表叉号删除按钮 + 新建文件按钮）");
+
+  // 17.1 伏笔列表渲染：每条 li 末尾有 .fs-delete 叉号
+  const fsListBlock = SRC.slice(
+    SRC.indexOf("function renderFsList"),
+    SRC.indexOf("function renderChapterEditor")
+  );
+  const t17_1a = /class="fs-delete"/.test(fsListBlock);
+  const t17_1b = /class="fs-delete"[\s\S]{0,200}data-id="\$\{escapeHtml\(it\.id\)\}"/.test(fsListBlock);
+  const t17_1c =
+    fsListBlock.indexOf("fs-col-status") < fsListBlock.indexOf('class="fs-delete"');
+  const t17_1d = /title="删除该伏笔"/.test(fsListBlock);
+  console.log(`  renderFsList 模板含 .fs-delete 按钮: ${t17_1a ? "✓" : "✗"}`);
+  console.log(`  .fs-delete 有 data-id 绑定: ${t17_1b ? "✓" : "✗"}`);
+  console.log(`  .fs-delete 在 status 之后: ${t17_1c ? "✓" : "✗"}`);
+  console.log(`  .fs-delete 含中文 title: ${t17_1d ? "✓" : "✗"}`);
+  if (!(t17_1a && t17_1b && t17_1c && t17_1d)) allPass = false;
+
+  // 17.2 bindListEvents 的 onClick 处理 .fs-delete
+  const bindListBlock = SRC.slice(
+    SRC.indexOf("function bindListEvents"),
+    SRC.indexOf("function bindEditorButtons")
+  );
+  const t17_2a = /e\.target\.closest\("\.fs-delete"\)/.test(bindListBlock);
+  const t17_2b = /e\.target\.closest\("\.fs-delete"\)[\s\S]{0,80}stopPropagation/.test(bindListBlock);
+  const t17_2c = /e\.target\.closest\("\.fs-delete"\)[\s\S]{0,200}deleteCurrentItem\(\)/.test(bindListBlock);
+  console.log(`  onClick 含 .fs-delete 分支: ${t17_2a ? "✓" : "✗"}`);
+  console.log(`  .fs-delete 分支调 stopPropagation: ${t17_2b ? "✓" : "✗"}`);
+  console.log(`  .fs-delete 分支调 deleteCurrentItem: ${t17_2c ? "✓" : "✗"}`);
+  if (!(t17_2a && t17_2b && t17_2c)) allPass = false;
+
+  // 17.3 styles.css 含 .fs-delete 样式块
+  const css17 = fs.readFileSync(path.join(__dirname, "styles.css"), "utf-8");
+  const t17_3a = /\.fs-delete\s*\{/.test(css17);
+  const t17_3b = /\.fs-item:hover \.fs-delete,[\s\S]{0,80}\.fs-item\.active \.fs-delete/.test(css17);
+  const t17_3c = /\.fs-delete:hover\s*\{[\s\S]{0,80}#c0392b/.test(css17);
+  console.log(`  styles.css 有 .fs-delete 块: ${t17_3a ? "✓" : "✗"}`);
+  console.log(`  .fs-item:hover/active 时 .fs-delete 显示: ${t17_3b ? "✓" : "✗"}`);
+  console.log(`  .fs-delete:hover 变红: ${t17_3c ? "✓" : "✗"}`);
+  if (!(t17_3a && t17_3b && t17_3c)) allPass = false;
+
+  // 17.4 index.html 顶部有 #file-new 按钮
+  const html17 = fs.readFileSync(
+    "/home/gem/.aily/workdir/task_7672995282002398156/fiction-analyzer/index.html",
+    "utf-8"
+  );
+  const fileRow17 = html17.slice(
+    html17.indexOf('<div class="file-row">'),
+    html17.indexOf('class="topbar-actions"')
+  );
+  const t17_4a = /id="file-new"/.test(fileRow17);
+  const t17_4b =
+    fileRow17.indexOf('id="file-new"') < fileRow17.indexOf('id="file-pick"');
+  const t17_4c = /title="新建空白文件[^"]*"/.test(fileRow17);
+  console.log(`  index.html .file-row 含 #file-new: ${t17_4a ? "✓" : "✗"}`);
+  console.log(`  #file-new 在 #file-pick 之前: ${t17_4b ? "✓" : "✗"}`);
+  console.log(`  #file-new title 描述: ${t17_4c ? "✓" : "✗"}`);
+  if (!(t17_4a && t17_4b && t17_4c)) allPass = false;
+
+  // 17.5 app.js 有 createNewFile() 函数
+  const createFnStart = SRC.indexOf("async function createNewFile");
+  const createFnEnd = SRC.indexOf("\n}", createFnStart);
+  const createFnBody = SRC.slice(createFnStart, createFnEnd);
+  const t17_5a = /async function createNewFile\(\)/.test(SRC);
+  const t17_5b = /confirm\(/.test(createFnBody);
+  const t17_5c = /saveAsJson\(/.test(createFnBody);
+  const t17_5d = /state\.pages\s*=\s*\{[\s\S]{0,300}makePageState\(\)/.test(createFnBody);
+  const t17_5e =
+    /state\.currentFileName\s*=\s*null/.test(createFnBody) &&
+    /state\.xlsxFileName\s*=\s*null/.test(createFnBody) &&
+    /state\.jsonFileName\s*=\s*null/.test(createFnBody) &&
+    /state\.jsonHandleKey\s*=\s*null/.test(createFnBody);
+  const t17_5f = /history\.stack\s*=\s*\[\]/.test(createFnBody);
+  console.log(`  app.js 含 createNewFile 函数: ${t17_5a ? "✓" : "✗"}`);
+  console.log(`  createNewFile 弹 confirm: ${t17_5b ? "✓" : "✗"}`);
+  console.log(`  createNewFile 先 saveAsJson 备份: ${t17_5c ? "✓" : "✗"}`);
+  console.log(`  createNewFile 重置 state.pages: ${t17_5d ? "✓" : "✗"}`);
+  console.log(`  createNewFile 清空 4 个文件名: ${t17_5e ? "✓" : "✗"}`);
+  console.log(`  createNewFile 清空 history: ${t17_5f ? "✓" : "✗"}`);
+  if (!(t17_5a && t17_5b && t17_5c && t17_5d && t17_5e && t17_5f)) allPass = false;
+
+  // 17.6 bindFileEvents 绑定 #file-new 的 click
+  const bindFileBlock = SRC.slice(
+    SRC.indexOf("function bindFileEvents"),
+    SRC.indexOf("function bindListEvents")
+  );
+  const t17_6a = /\$\("#file-new"\)\?\.addEventListener\("click",\s*createNewFile\)/.test(bindFileBlock);
+  console.log(`  bindFileEvents 绑定 #file-new click → createNewFile: ${t17_6a ? "✓" : "✗"}`);
+  if (!t17_6a) allPass = false;
+
+  // 17.7 createNewFile 保留 directoryHandleKey（不清空，让用户授权过的目录继续可用）
+  const t17_7a = /state\.directoryName\s*=\s*null/.test(createFnBody);
+  const t17_7b = !/state\.directoryHandleKey\s*=\s*null/.test(createFnBody);
+  console.log(`  createNewFile 清空 directoryName: ${t17_7a ? "✓" : "✗"}`);
+  console.log(`  createNewFile 保留 directoryHandleKey: ${t17_7b ? "✓" : "✗"}`);
+  if (!(t17_7a && t17_7b)) allPass = false;
+
+  const t17All =
+    t17_1a && t17_1b && t17_1c && t17_1d &&
+    t17_2a && t17_2b && t17_2c &&
+    t17_3a && t17_3b && t17_3c &&
+    t17_4a && t17_4b && t17_4c &&
+    t17_5a && t17_5b && t17_5c && t17_5d && t17_5e && t17_5f &&
+    t17_6a &&
+    t17_7a && t17_7b;
+  console.log("  v16 改动:", t17All ? "PASS" : "FAIL");
+  if (!t17All) allPass = false;
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);
+}
+
 }
 
 main().catch((e) => {
