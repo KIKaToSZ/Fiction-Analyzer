@@ -276,6 +276,16 @@
                 </svg>
                 <span id="fs-sort-label">正序</span>
               </button>
+              <!-- v21：删除中间伏笔后，编号不连续时按此按钮按列表顺序重新连续编号 -->
+              <button id="btn-fs-renumber" class="tool-btn" title="删除伏笔导致编号不连续？按此按钮按列表顺序重新连续编号（1,2,3...）">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M3 7h18" />
+                  <path d="M3 12h18" />
+                  <path d="M3 17h12" />
+                  <path d="M19 17l3 3-3 3" />
+                </svg>
+                <span>重新编号</span>
+              </button>
               <span class="page-toolbar-spacer"></span>
               <span id="fs-count" class="muted page-toolbar-meta">0 条</span>
             </div>
@@ -348,40 +358,91 @@
             </div>
           </section>
 
-          <!-- ===================== 财物详情页（v19） ===================== -->
+          <!-- ===================== 财物详情页（v21：左右双台账） =====================
+               - 左：灵石台账（5 字段：章节号/收支类型/数量/类型/原文描述）
+               - 右：物品台账（6 字段：章节号/物品名称/数量/类型/状态/原文描述）
+               - 工具栏：4 个独立按钮（各台账自己的新增/导入）
+          -->
           <section class="page-view" data-page-view="goods" hidden>
             <div class="page-toolbar">
-              <button id="btn-new-gd" class="tool-btn" title="新增物品">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                <span>新增物品</span>
-              </button>
-              <span class="page-toolbar-spacer"></span>
-              <span id="goods-count" class="muted page-toolbar-meta">0 项</span>
-            </div>
-            <div class="two-cols">
-              <aside class="col col-list">
-                <ul id="goods-list" class="gd-list"></ul>
-                <div id="goods-summary" class="goods-summary"></div>
-              </aside>
-              <div class="resizer resizer-col-list" data-resizer="two-list" title="拖动调整物品列表宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
-                <span class="resizer-reset-hint">双击重置</span>
-              </div>
-              <main class="col col-editor">
-                <div id="goods-editor-empty" class="empty-state">
-                  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M9 12h6M12 9v6" />
+              <span class="page-toolbar-group">
+                <button id="btn-new-lingshi" class="tool-btn" title="新增一条灵石记录">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
                   </svg>
-                  <p>从左侧选一条物品查看，或新增一条</p>
-                  <p class="hint">灵石余额填正负数即可表示收支；类别填"灵石"会自动置顶</p>
-                </div>
-                <article id="goods-editor" class="editor" hidden>
-                  <!-- 由 renderGoodsEditor 动态生成 -->
-                </article>
-              </main>
+                  <span>新增灵石</span>
+                </button>
+                <button id="btn-import-lingshi" class="tool-btn" title="从 xlsx / json 导入灵石台账">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  <span>导入灵石</span>
+                </button>
+              </span>
+              <span class="page-toolbar-divider"></span>
+              <span class="page-toolbar-group">
+                <button id="btn-new-items" class="tool-btn" title="新增一件物品">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  <span>新增物品</span>
+                </button>
+                <button id="btn-import-items" class="tool-btn" title="从 xlsx / json 导入物品台账">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  <span>导入物品</span>
+                </button>
+              </span>
+              <span class="page-toolbar-spacer"></span>
+              <span class="muted page-toolbar-meta"><span id="lingshi-count">0 笔</span> · <span id="items-count">0 件</span></span>
+            </div>
+            <div class="compound-two-cols">
+              <!-- 左：灵石台账 -->
+              <section class="compound-col">
+                <header class="compound-col-header">
+                  <span class="compound-col-title">💎 灵石台账</span>
+                  <span class="muted hint">章节号 / 收支类型 / 数量 / 类型 / 原文描述</span>
+                </header>
+                <aside class="col col-list compound-col-list">
+                  <ul id="lingshi-list" class="ls-list"></ul>
+                  <div id="lingshi-summary" class="lingshi-summary"></div>
+                </aside>
+                <main class="col col-editor compound-col-editor">
+                  <div id="lingshi-editor-empty" class="empty-state">
+                    <p>暂无灵石记录，点上方「+ 新增灵石」添加</p>
+                    <p class="hint">正数=收入 · 负数=支出；类型填"下品灵石/中品/上品"等</p>
+                  </div>
+                  <article id="lingshi-editor" class="editor" hidden>
+                    <!-- 由 renderLingshiEditor 动态生成 -->
+                  </article>
+                </main>
+              </section>
+              <!-- 右：物品台账 -->
+              <section class="compound-col">
+                <header class="compound-col-header">
+                  <span class="compound-col-title">📦 物品台账</span>
+                  <span class="muted hint">章节号 / 物品名称 / 数量 / 类型 / 状态 / 原文描述</span>
+                </header>
+                <aside class="col col-list compound-col-list">
+                  <ul id="items-list" class="it-list"></ul>
+                </aside>
+                <main class="col col-editor compound-col-editor">
+                  <div id="items-editor-empty" class="empty-state">
+                    <p>暂无物品记录，点上方「+ 新增物品」添加</p>
+                    <p class="hint">武器/丹药/法器/功法/材料/符箓等都在此管理</p>
+                  </div>
+                  <article id="items-editor" class="editor" hidden>
+                    <!-- 由 renderItemsEditor 动态生成 -->
+                  </article>
+                </main>
+              </section>
             </div>
           </section>
 
@@ -579,12 +640,86 @@
             </section>
           </div>
 
+          <!-- ========== 灵石台账导入 section ========== -->
+          <div id="import-section-lingshi" class="import-section" data-section-key="lingshi" hidden>
+            <p class="muted hint">
+              从本地 <code>.xlsx</code> / <code>.json</code> 文件导入<strong>灵石台账</strong>。xlsx 需含 <code>章节号 / 收支类型 / 数量 / 类型 / 原文描述</code> 等列，json 是数组格式。也可以直接粘贴 tab / 逗号 / 多空格 / JSON 数组格式文本。
+            </p>
+            <textarea id="import-lingshi-text" rows="5" class="import-text-wide" placeholder="章节号	收支类型	数量	类型	原文描述&#10;3	收入	100	下品灵石	于山中破庙挖得灵石百枚&#10;5	支出	-30	下品灵石	购置疗伤丹药耗灵石三十"></textarea>
+            <div id="import-lingshi-drop" class="import-drop" tabindex="0" role="button" aria-label="拖入或选择灵石台账文件">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <div class="import-drop-title">拖入或选择 .xlsx / .json 文件</div>
+              <div class="import-drop-hint">单文件，含 章节号 / 收支类型 / 数量 / 类型 / 原文描述 列</div>
+              <input id="file-lingshi" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
+            </div>
+            <div id="import-lingshi-file-info" class="import-file-info" hidden>
+              <span class="import-file-name"></span>
+              <button class="link-btn" data-clear-section="lingshi" type="button">清除</button>
+            </div>
+            <div id="import-lingshi-sheet-wrap" class="form-row form-row-sheets" hidden>
+              <label class="check">
+                <span>来源 sheet：</span>
+                <select id="import-lingshi-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
+              </label>
+            </div>
+            <div class="form-row">
+              <label class="check">
+                <input id="import-lingshi-skip-header" type="checkbox" checked />
+                <span>跳过首行表头</span>
+              </label>
+              <span id="import-lingshi-stats" class="muted" aria-live="polite"></span>
+            </div>
+            <div id="import-lingshi-preview" class="import-preview"></div>
+          </div>
+
+          <!-- ========== 物品台账导入 section ========== -->
+          <div id="import-section-items" class="import-section" data-section-key="items" hidden>
+            <p class="muted hint">
+              从本地 <code>.xlsx</code> / <code>.json</code> 文件导入<strong>物品台账</strong>。xlsx 需含 <code>章节号 / 物品名称 / 数量 / 类型 / 状态 / 原文描述</code> 等列，json 是数组格式。也可以直接粘贴 tab / 逗号 / 多空格 / JSON 数组格式文本。
+            </p>
+            <textarea id="import-items-text" rows="5" class="import-text-wide" placeholder="章节号	物品名称	数量	类型	状态	原文描述&#10;2	寒霜剑	1	武器	持有	玄铁重剑，背面刻有「雪」字&#10;4	聚灵丹	5	丹药	使用	服用后灵力回复三成"></textarea>
+            <div id="import-items-drop" class="import-drop" tabindex="0" role="button" aria-label="拖入或选择物品台账文件">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <div class="import-drop-title">拖入或选择 .xlsx / .json 文件</div>
+              <div class="import-drop-hint">单文件，含 章节号 / 物品名称 / 数量 / 类型 / 状态 / 原文描述 列</div>
+              <input id="file-items" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
+            </div>
+            <div id="import-items-file-info" class="import-file-info" hidden>
+              <span class="import-file-name"></span>
+              <button class="link-btn" data-clear-section="items" type="button">清除</button>
+            </div>
+            <div id="import-items-sheet-wrap" class="form-row form-row-sheets" hidden>
+              <label class="check">
+                <span>来源 sheet：</span>
+                <select id="import-items-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
+              </label>
+            </div>
+            <div class="form-row">
+              <label class="check">
+                <input id="import-items-skip-header" type="checkbox" checked />
+                <span>跳过首行表头</span>
+              </label>
+              <span id="import-items-stats" class="muted" aria-live="polite"></span>
+            </div>
+            <div id="import-items-preview" class="import-preview"></div>
+          </div>
+
           <!-- 通用底部按钮 -->
           <div class="form-actions">
             <button class="secondary-btn" data-close>取消</button>
             <button id="btn-import-confirm" class="primary-btn" data-section-key="chapter" disabled>确认导入</button>
             <button id="btn-import-fs-main-confirm" class="primary-btn" data-section-key="fs-main" hidden disabled>确认导入「数据表」</button>
             <button id="btn-import-fs-record-confirm" class="primary-btn" data-section-key="fs-record" hidden disabled>确认导入「履历表」</button>
+            <button id="btn-import-lingshi-confirm" class="primary-btn" data-section-key="lingshi" hidden disabled>确认导入「灵石」</button>
+            <button id="btn-import-items-confirm" class="primary-btn" data-section-key="items" hidden disabled>确认导入「物品」</button>
           </div>
         </div>
       </div>

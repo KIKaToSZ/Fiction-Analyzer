@@ -2821,26 +2821,92 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* ============================================
-   v19：财物详情 (goods)
+   v21：财物详情（左右双台账布局）
+   - .compound-two-cols：两个独立子列（左 灵石 / 右 物品）
+   - .ls-*：灵石列表/条目/编辑样式
+   - .it-*：物品列表/条目/编辑样式
    ============================================ */
-.gd-list {
+
+/* 工具栏分组（多组按钮 + 分隔线） */
+.page-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.page-toolbar-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+  vertical-align: middle;
+}
+
+/* 复合双列布局：左右两列，各列是 list + editor 的垂直布局 */
+.compound-two-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+.compound-col {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+.compound-col:last-child { border-right: none; }
+.compound-col-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.compound-col-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.compound-col-list {
+  flex: 0 0 auto;
+  max-height: 45%;
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+  overflow-y: auto;
+}
+.compound-col-editor {
+  flex: 1 1 auto;
+  border-right: none;
+  border-top: none;
+  overflow-y: auto;
+}
+
+/* 灵石列表 */
+.ls-list {
   list-style: none;
   margin: 0;
   padding: 6px 0;
   flex: 1;
   overflow-y: auto;
 }
-.gd-list:empty::before {
-  content: "暂无物品";
+.ls-list:empty::before {
+  content: "暂无灵石记录";
   display: block;
   text-align: center;
   color: var(--muted);
   font-size: 12px;
   padding: 24px 0;
 }
-.gd-item {
+.ls-item {
   display: grid;
-  grid-template-columns: 64px 1fr auto 24px;
+  grid-template-columns: 56px 44px 60px 1fr 24px;
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
@@ -2848,44 +2914,54 @@ input[type="range"]::-moz-range-thumb {
   border-left: 2px solid transparent;
   transition: background var(--transition), border-color var(--transition);
 }
-.gd-item:hover { background: var(--hover); }
-.gd-item.active {
+.ls-item:hover { background: var(--hover); }
+.ls-item.active {
   background: var(--selected);
   border-left-color: var(--accent);
 }
-.gd-cat {
-  font-size: 11px;
-  font-weight: 600;
+.ls-chapter {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.gd-cat-lingshi {
-  color: #b08533;
-  background: rgba(184, 144, 96, 0.18);
-  padding: 2px 6px;
+.ls-type {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
   border-radius: 8px;
   text-align: center;
 }
-.gd-name {
+.ls-type-in {
+  color: #2c5d3a;
+  background: rgba(76, 122, 74, 0.18);
+}
+.ls-type-out {
+  color: #b57a8a;
+  background: rgba(181, 122, 138, 0.18);
+}
+.ls-qty {
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
   color: var(--text);
+  text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.gd-qty {
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
+.ls-qty-pos { color: #2c5d3a; }
+.ls-qty-neg { color: #b57a8a; }
+.ls-cat {
+  font-size: 11px;
   color: var(--muted);
-  min-width: 50px;
-  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.gd-qty-pos { color: #4a7a4a; }
-.gd-qty-neg { color: #b57a8a; }
-.gd-delete {
+.ls-delete {
   flex-shrink: 0;
   width: 18px;
   height: 18px;
@@ -2899,12 +2975,13 @@ input[type="range"]::-moz-range-thumb {
   transition: opacity var(--transition), color var(--transition);
   padding: 0;
 }
-.gd-item:hover .gd-delete,
-.gd-item.active .gd-delete,
-.gd-delete:focus-visible { opacity: 1; }
-.gd-delete:hover { color: #c0392b; }
+.ls-item:hover .ls-delete,
+.ls-item.active .ls-delete,
+.ls-delete:focus-visible { opacity: 1; }
+.ls-delete:hover { color: #c0392b; }
 
-.goods-summary {
+/* 灵石小计 */
+.lingshi-summary {
   padding: 8px 14px;
   border-top: 1px solid var(--border);
   display: flex;
@@ -2912,13 +2989,125 @@ input[type="range"]::-moz-range-thumb {
   gap: 6px;
   font-size: 11px;
 }
-.goods-summary-pill {
+.lingshi-summary-pill {
   background: var(--selected);
   border-radius: 10px;
   padding: 2px 8px;
   color: var(--text);
   white-space: nowrap;
 }
+.lingshi-summary-pos { color: #2c5d3a; }
+.lingshi-summary-neg { color: #b57a8a; }
+
+/* 物品列表 */
+.it-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  flex: 1;
+  overflow-y: auto;
+}
+.it-list:empty::before {
+  content: "暂无物品记录";
+  display: block;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 24px 0;
+}
+.it-item {
+  display: grid;
+  grid-template-columns: 56px 1fr 36px 80px 60px 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background var(--transition), border-color var(--transition);
+}
+.it-item:hover { background: var(--hover); }
+.it-item.active {
+  background: var(--selected);
+  border-left-color: var(--accent);
+}
+.it-chapter {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.it-name {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.it-qty {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-align: center;
+}
+.it-cat {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.it-status {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 8px;
+  text-align: center;
+  color: var(--text);
+  background: var(--selected);
+}
+.it-status-hold { color: #2c5d3a; background: rgba(76, 122, 74, 0.18); }
+.it-status-used { color: #6a5a2a; background: rgba(184, 144, 96, 0.18); }
+.it-status-lost { color: #b57a8a; background: rgba(181, 122, 138, 0.18); }
+.it-status-gave { color: #6a7a8a; background: rgba(140, 156, 178, 0.18); }
+.it-delete {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity var(--transition), color var(--transition);
+  padding: 0;
+}
+.it-item:hover .it-delete,
+.it-item.active .it-delete,
+.it-delete:focus-visible { opacity: 1; }
+.it-delete:hover { color: #c0392b; }
+
+/* 灵石 / 物品 编辑器：grid 布局适配字段数 */
+.editor-meta-lingshi,
+.editor-meta-items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+  align-items: start;
+}
+.editor-meta-lingshi .meta-field,
+.editor-meta-items .meta-field { min-width: 0; }
+.editor-meta-lingshi .meta-actions,
+.editor-meta-items .meta-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.editor-meta-items .meta-title { grid-column: span 1; }
 
 /* ============================================
    v19：故事脉络 (storyline) — dashboard

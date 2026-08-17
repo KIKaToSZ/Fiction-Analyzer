@@ -10,7 +10,7 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 13;
+  const SCHEMA_VERSION = 14;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
   // 持久化 directory handle 的 key 前缀（完整 key = "dir:" + currentFileName）
@@ -235,39 +235,146 @@
     //  - 物品 / 灵石的台账（手动维护：名称 / 类别 / 数量 / 来源章节 / 备注）
     //  - 灵石条目可在「数量」填入正负数表示收支
     //  - 不与任何 sheet 自动归类（matchName / matchHeaders 都返回 false）——纯用户录入
+    // v21：财物详情改为「复合」类型（compound）
+    //   - tab 入口仍然是「财物详情」(goods)
+    //   - 内部拆分为两个独立子页：灵石台账(lingshi) + 物品台账(items)
+    //   - state.pages 不再存 goods，所有数据在 state.pages.lingshi / state.pages.items
+    //   - 导入时由用户主动选 section（类似伏笔页的 fs-main / fs-record 双 section）
+    //   - 自身无 items/fields/makeItem，渲染时调 renderCompoundGoods 一次性渲染两个子列
     goods: {
       id: "goods",
-      kind: "list",
+      kind: "compound",
       label: "财物详情",
       icon: "💰",
       matchName() { return false; },
       matchHeaders() { return false; },
+      emptyStateHtml() {
+        return `
+          <div class="empty-state-inner">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M9 12h6M12 9v6" />
+            </svg>
+            <p>左侧灵石台账 · 右侧物品台账</p>
+            <p class="hint">灵石用正负数表示收支，物品台账管理装备/丹药/法器等</p>
+          </div>`;
+      },
+    },
+
+    // v21：灵石台账
+    //  - 5 字段：章节号 / 收支类型 / 数量 / 类型 / 原文描述
+    //  - quantity 允许正负数：正数=收入，负数=支出（与「收支类型」字段冗余但方便直接录入）
+    lingshi: {
+      id: "lingshi",
+      kind: "list",
+      label: "灵石台账",
+      icon: "💎",
+      matchName(name) {
+        if (!name) return false;
+        return /灵石|收支|lingshi/i.test(name);
+      },
+      matchHeaders(header) {
+        const norm = (header || []).map((h) =>
+          String(h || "").replace(/\s+/g, "").toLowerCase()
+        );
+        const has = (cands) =>
+          cands.some((c) => norm.some((h) => h.includes(c.toLowerCase())));
+        return has(["灵石", "收支", "余额"]);
+      },
       fields: {
-        name: ["物品名称", "名称", "物品"],
-        category: ["类别", "类型", "分类"],
-        quantity: ["数量", "灵石数", "余额"],
-        sourceCh: ["来源章节", "出处", "获取章节"],
-        note: ["备注", "说明", "来历"],
+        chapter: ["章节号", "章节", "章号"],
+        type: ["收支类型", "收支", "类型"],
+        quantity: ["数量", "灵石数", "余额", "灵石"],
+        category: ["类型", "币种", "灵石类型", "品级"],
+        description: ["原文描述", "描述", "备注", "说明"],
       },
       defaults() {
-        return { name: "", category: "灵石", quantity: 0, sourceCh: "", note: "" };
+        return { chapter: "", type: "收入", quantity: 0, category: "下品灵石", description: "" };
       },
       makeItem(data, sheet) {
         return {
-          id: uid("gd"),
-          name: data.name || "",
-          category: data.category || "灵石",
-          quantity: typeof data.quantity === "number" ? data.quantity : (parseFloat(data.quantity) || 0),
-          sourceCh: String(data.sourceCh ?? "").trim(),
-          note: data.note || "",
+          id: uid("ls"),
+          chapter: String(data.chapter ?? "").trim(),
+          type: data.type === "支出" ? "支出" : "收入",
+          quantity: typeof data.quantity === "number"
+            ? data.quantity
+            : (parseFloat(data.quantity) || 0),
+          category: data.category || "下品灵石",
+          description: data.description || "",
           sheet,
         };
       },
       sortKey(item) {
-        // 按类别排序：灵石置顶、然后按名称字典序
-        const cat = String(item.category || "");
-        if (/灵石/i.test(cat)) return { num: 0, str: cat + "_" + (item.name || "") };
-        return { num: 1, str: cat + "_" + (item.name || "") };
+        // 按章节号排序（parseChapterNo 兼容 "第3章" / "3" 等）
+        return parseChapterNo(item.chapter);
+      },
+      newItemLabel: "新增灵石",
+      newItemToast(sheet, label) {
+        return label ? `已新增灵石（${label}）` : "已新增灵石";
+      },
+      emptyStateHtml() {
+        return `
+          <div class="empty-state-inner">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2">
+              <polygon points="12,2 22,12 12,22 2,12" />
+            </svg>
+            <p>暂无灵石记录，点上方「+ 新增灵石」添加</p>
+            <p class="hint">正数=收入 · 负数=支出；类型填"下品灵石/中品/上品"等</p>
+          </div>`;
+      },
+    },
+
+    // v21：物品台账
+    //  - 6 字段：章节号 / 物品名称 / 数量 / 类型 / 状态 / 原文描述
+    //  - 状态：持有 / 使用 / 丢失 / 赠与 / 出售 等
+    items: {
+      id: "items",
+      kind: "list",
+      label: "物品台账",
+      icon: "📦",
+      matchName(name) {
+        if (!name) return false;
+        return /物品|道具|装备|法器|丹药|材料|items?|goods/i.test(name);
+      },
+      matchHeaders(header) {
+        const norm = (header || []).map((h) =>
+          String(h || "").replace(/\s+/g, "").toLowerCase()
+        );
+        const has = (cands) =>
+          cands.some((c) => norm.some((h) => h.includes(c.toLowerCase())));
+        return (
+          (has(["物品", "道具", "装备", "法器", "丹药"]) || has(["物品名称"])) &&
+          !has(["灵石", "收支", "余额"])
+        );
+      },
+      fields: {
+        chapter: ["章节号", "章节", "章号"],
+        name: ["物品名称", "名称", "物品"],
+        quantity: ["数量"],
+        category: ["类型", "类别", "分类"],
+        status: ["状态"],
+        description: ["原文描述", "描述", "备注", "说明"],
+      },
+      defaults() {
+        return { chapter: "", name: "", quantity: 1, category: "", status: "持有", description: "" };
+      },
+      makeItem(data, sheet) {
+        return {
+          id: uid("it"),
+          chapter: String(data.chapter ?? "").trim(),
+          name: data.name || "",
+          quantity: typeof data.quantity === "number"
+            ? data.quantity
+            : (parseFloat(data.quantity) || 1),
+          category: data.category || "",
+          status: data.status || "持有",
+          description: data.description || "",
+          sheet,
+        };
+      },
+      sortKey(item) {
+        // 按物品名称字典序排序
+        return { num: 0, str: item.name || "" };
       },
       newItemLabel: "新增物品",
       newItemToast(sheet, name) {
@@ -277,11 +384,11 @@
         return `
           <div class="empty-state-inner">
             <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M9 12h6M12 9v6" />
+              <path d="M21 8L12 3 3 8v8l9 5 9-5z" />
+              <path d="M3 8l9 5 9-5" />
             </svg>
-            <p>从左侧选一条物品查看，或新增一条</p>
-            <p class="hint">灵石余额填正负数即可表示收支；类别填"灵石"会自动置顶</p>
+            <p>暂无物品记录，点上方「+ 新增物品」添加</p>
+            <p class="hint">武器/丹药/法器/功法/材料/符箓等都在此管理</p>
           </div>`;
       },
     },
@@ -560,12 +667,15 @@
     pages: {
       chapter: makePageState(),
       foreshadowing: makePageState(),
-      // v19：新增 3 个页面
-      //   - goods / character 是 list 类型（有自己的 items）
+      // v19：storyline / character
+      // v21：goods 拆分为 lingshi + items 两个独立 list
+      //   - lingshi 存灵石台账（5 字段：chapter/type/quantity/category/description）
+      //   - items 存物品台账（6 字段：chapter/name/quantity/category/status/description）
       //   - storyline 是 dashboard 类型（聚合章节数据，无 items）
-      goods: makePageState(),
       storyline: makePageState(),
       character: makePageState(),
+      lingshi: makePageState(),
+      items: makePageState(),
     },
     sheetsRaw: [], // [{name, rows2d, columns, rowCount, ok, page}]
     recentFiles: [],
@@ -612,13 +722,10 @@
           currentItemId: state.pages.foreshadowing.currentItemId,
           records: JSON.parse(JSON.stringify(state.pages.foreshadowing.records || [])),
         },
-        // v19：新增 3 个页面的快照（goods/character 有 items，storyline 无）
-        goods: {
-          sheets: JSON.parse(JSON.stringify(state.pages.goods.sheets || [])),
-          currentSheet: state.pages.goods.currentSheet,
-          items: JSON.parse(JSON.stringify(state.pages.goods.items || [])),
-          currentItemId: state.pages.goods.currentItemId,
-        },
+        // v19/v21：page 快照
+        //   - storyline / character 跟 v19 一致
+        //   - goods 是 compound wrapper，state 不存数据
+        //   - lingshi / items 是 v21 新增的 list
         storyline: {
           sheets: JSON.parse(JSON.stringify(state.pages.storyline.sheets || [])),
           currentSheet: state.pages.storyline.currentSheet,
@@ -648,11 +755,9 @@
         ...makePageState(),
         ...(snap.pages.foreshadowing || {}),
       },
-      // v19：新增 3 个页面（snap 中可能不存在——v18 之前的数据；用 makePageState 兜底）
-      goods: {
-        ...makePageState(),
-        ...(snap.pages.goods || {}),
-      },
+      // v19/v21：page 快照
+      //   - goods 是 compound wrapper，state 不存数据（用 makePageState 兜底）
+      //   - lingshi / items 是 v21 新增
       storyline: {
         ...makePageState(),
         ...(snap.pages.storyline || {}),
@@ -660,6 +765,14 @@
       character: {
         ...makePageState(),
         ...(snap.pages.character || {}),
+      },
+      lingshi: {
+        ...makePageState(),
+        ...(snap.pages.lingshi || {}),
+      },
+      items: {
+        ...makePageState(),
+        ...(snap.pages.items || {}),
       },
     };
     state.sheetsRaw = snap.sheetsRaw || [];
@@ -1040,6 +1153,59 @@
         }
       }
       state.schema = 13;
+      // v21：goods 拆分（schema 13 → 14）
+      //  - 旧 goods.items 按 category 分到 lingshi / items
+      //  - 旧 item: {id, name, category, quantity, sourceCh, note, sheet}
+      //    - category 含"灵石" → lingshi
+      //    - 其他 → items
+      //  - 字段重命名：
+      //    - sourceCh → chapter
+      //    - note → description
+      //    - type: quantity < 0 ? "支出" : "收入"（启发式）
+      //    - status: "持有"（默认）
+      {
+        const oldGoods = state.pages.goods;
+        if (oldGoods && Array.isArray(oldGoods.items) && oldGoods.items.length > 0) {
+          const lingshiItems = [];
+          const itemItems = [];
+          for (const old of oldGoods.items) {
+            const cat = String(old.category || "");
+            const isLingshi = /灵石/i.test(cat);
+            const qty = typeof old.quantity === "number"
+              ? old.quantity
+              : (parseFloat(old.quantity) || 0);
+            const base = {
+              id: old.id || (isLingshi ? uid("ls") : uid("it")),
+              chapter: String(old.sourceCh ?? "").trim(),
+              quantity: qty,
+              category: cat,
+              description: old.note || "",
+              sheet: old.sheet,
+            };
+            if (isLingshi) {
+              lingshiItems.push({
+                ...base,
+                type: qty < 0 ? "支出" : "收入",
+              });
+            } else {
+              itemItems.push({
+                ...base,
+                name: old.name || "",
+                status: old.status || "持有",
+              });
+            }
+          }
+          if (!state.pages.lingshi) state.pages.lingshi = makePageState();
+          if (!state.pages.items) state.pages.items = makePageState();
+          state.pages.lingshi.items = lingshiItems;
+          state.pages.lingshi.currentItemId = lingshiItems[0]?.id || null;
+          state.pages.items.items = itemItems;
+          state.pages.items.currentItemId = itemItems[0]?.id || null;
+        }
+        // 不管有没有数据，goods 都不再是 page 状态
+        delete state.pages.goods;
+      }
+      state.schema = 14;
       if (Array.isArray(data.sheetsRaw)) {
         state.sheetsRaw = data.sheetsRaw;
       }
@@ -2026,18 +2192,31 @@
        - 角色详情 (character)：list 类型，2 列布局
      ============================================================ */
 
-  // —— 通用 list 渲染辅助（goods / character 共用） ——
+  // —— 通用 list 渲染辅助（lingshi / items / character 共用） ——
   // 根据 sortKey 比较函数排序
-  function getSortedGoodsItems() {
-    const p = state.pages.goods;
-    const def = PAGES.goods;
+  function getSortedLingshiItems() {
+    const p = state.pages.lingshi;
+    const def = PAGES.lingshi;
+    if (!p || !def) return [];
     const arr = p.items.slice();
     arr.sort((a, b) => {
       const ka = def.sortKey(a);
       const kb = def.sortKey(b);
-      // goods 的 sortKey 已经是 {num, str} 复合 key，走 compareChapterNo
-      const cmp = compareChapterNo(ka, kb);
-      return cmp;
+      return compareChapterNo(ka, kb);
+    });
+    return arr;
+  }
+  function getSortedItemsItems() {
+    const p = state.pages.items;
+    const def = PAGES.items;
+    if (!p || !def) return [];
+    const arr = p.items.slice();
+    arr.sort((a, b) => {
+      const ka = def.sortKey(a);
+      const kb = def.sortKey(b);
+      // items 的 sortKey 是 {num, str}，按名字字典序
+      if (ka.num !== kb.num) return ka.num - kb.num;
+      return (ka.str || "").localeCompare(kb.str || "", "zh-CN");
     });
     return arr;
   }
@@ -2060,110 +2239,138 @@
     return arr;
   }
 
-  // —— 财物详情 ——
-  function renderGoodsList() {
-    const list = $("#goods-list");
+  // —— 通用：删除指定 page 的某 item（goods tab 下的子 page 用） ——
+  // deleteCurrentItem 用 curItem() 走 state.currentPage，对 compound 类型的 goods 不适用
+  function deleteItemFromPage(pid, id) {
+    const p = state.pages[pid];
+    const def = PAGES[pid];
+    if (!p || !def) return;
+    const it = p.items.find((x) => x.id === id);
+    if (!it) return;
+    const label = it.name || it.chapter || it.category || "(无标题)";
+    if (!confirm(`确定删除${def.label}「${label}」？`)) return;
+    p.items = p.items.filter((x) => x.id !== id);
+    if (p.currentItemId === id) p.currentItemId = null;
+    save();
+    pushHistory();
+    renderAll();
+    toast("已删除");
+  }
+
+  // —— 灵石台账 ——
+  function renderLingshiList() {
+    const list = $("#lingshi-list");
     if (!list) return;
-    const p = state.pages.goods;
-    const items = getSortedGoodsItems();
-    // 类别汇总（用于列表底部小计）
-    const totals = {};
+    const p = state.pages.lingshi;
+    const items = getSortedLingshiItems();
+    // 收支汇总
+    let total = 0, posCount = 0, negCount = 0;
     for (const it of items) {
-      const cat = String(it.category || "未分类").trim() || "未分类";
-      totals[cat] = (totals[cat] || 0) + (Number(it.quantity) || 0);
+      const q = Number(it.quantity) || 0;
+      total += q;
+      if (q > 0) posCount++;
+      else if (q < 0) negCount++;
     }
-    const summary = Object.keys(totals).length > 0
-      ? Object.entries(totals)
-          .map(([cat, n]) => `<span class="goods-summary-pill">${escapeHtml(cat)}：<b>${n >= 0 ? "+" : ""}${n}</b></span>`)
-          .join("")
-      : `<span class="muted">尚无数据</span>`;
     list.innerHTML = items.length === 0
       ? ""
       : items
           .map((it) => {
             const active = it.id === p.currentItemId ? "active" : "";
             const qty = Number(it.quantity) || 0;
-            const qtyClass = qty > 0 ? "goods-qty-pos" : qty < 0 ? "goods-qty-neg" : "";
-            const isLingshi = /灵石/i.test(String(it.category || ""));
+            const qtyClass = qty > 0 ? "ls-qty-pos" : qty < 0 ? "ls-qty-neg" : "";
+            const type = it.type === "支出" ? "支出" : "收入";
+            const typeClass = type === "支出" ? "ls-type-out" : "ls-type-in";
             return `
-            <li class="gd-item ${active}" data-id="${escapeHtml(it.id)}">
-              <span class="gd-cat ${isLingshi ? "gd-cat-lingshi" : ""}">${escapeHtml(it.category || "未分类")}</span>
-              <span class="gd-name">${escapeHtml(it.name || "（无名称）")}</span>
-              <span class="gd-qty ${qtyClass}">${qty >= 0 ? "+" : ""}${qty}</span>
-              <button class="gd-delete" data-id="${escapeHtml(it.id)}" title="删除该物品" aria-label="删除该物品" type="button">×</button>
+            <li class="ls-item ${active}" data-id="${escapeHtml(it.id)}">
+              <span class="ls-chapter muted" title="章节号">${escapeHtml(it.chapter || "—")}</span>
+              <span class="ls-type ${typeClass}">${escapeHtml(type)}</span>
+              <span class="ls-qty ${qtyClass}">${qty >= 0 ? "+" : ""}${qty}</span>
+              <span class="ls-cat muted" title="灵石类型">${escapeHtml(it.category || "—")}</span>
+              <button class="ls-delete" data-id="${escapeHtml(it.id)}" title="删除该条记录" aria-label="删除该条记录" type="button">×</button>
             </li>`;
           })
           .join("");
-    // 列表底部小计
-    const sumEl = $("#goods-summary");
-    if (sumEl) sumEl.innerHTML = summary;
-    const count = $("#goods-count");
-    if (count) count.textContent = `${items.length} 项`;
+    // 底部小计
+    const sumEl = $("#lingshi-summary");
+    if (sumEl) {
+      if (items.length === 0) {
+        sumEl.innerHTML = `<span class="muted">尚无数据</span>`;
+      } else {
+        sumEl.innerHTML = `
+          <span class="lingshi-summary-pill">余额：<b>${total >= 0 ? "+" : ""}${total}</b></span>
+          <span class="lingshi-summary-pill lingshi-summary-pos">收入 <b>${posCount}</b> 笔</span>
+          <span class="lingshi-summary-pill lingshi-summary-neg">支出 <b>${negCount}</b> 笔</span>`;
+      }
+    }
+    const count = $("#lingshi-count");
+    if (count) count.textContent = `${items.length} 笔`;
   }
 
-  function renderGoodsEditor() {
-    const it = curItem();
-    const empty = $("#goods-editor-empty");
-    const editor = $("#goods-editor");
+  function renderLingshiEditor() {
+    const p = state.pages.lingshi;
+    const it = p ? p.items.find((x) => x.id === p.currentItemId) : null;
+    const empty = $("#lingshi-editor-empty");
+    const editor = $("#lingshi-editor");
     if (!empty || !editor) return;
     if (!it) {
       empty.hidden = false;
       editor.hidden = true;
-      empty.innerHTML = PAGES.goods.emptyStateHtml();
+      empty.innerHTML = PAGES.lingshi.emptyStateHtml();
       return;
     }
     empty.hidden = true;
     editor.hidden = false;
     const qty = Number(it.quantity) || 0;
     editor.innerHTML = `
-      <div class="editor-meta">
+      <div class="editor-meta editor-meta-lingshi">
         <div class="meta-field">
-          <label>物品名称</label>
-          <input id="gd-name" type="text" value="${escapeHtml(it.name || "")}" placeholder="如：九幽玄铁、寒霜剑" />
+          <label>章节号</label>
+          <input id="ls-chapter" type="text" value="${escapeHtml(it.chapter || "")}" placeholder="如：第3章" />
         </div>
         <div class="meta-field">
-          <label>类别</label>
-          <input id="gd-category" type="text" value="${escapeHtml(it.category || "")}" placeholder="如：灵石 / 武器 / 丹药" list="gd-cat-suggestions" />
-          <datalist id="gd-cat-suggestions">
-            <option value="灵石"></option>
-            <option value="武器"></option>
-            <option value="丹药"></option>
-            <option value="法器"></option>
-            <option value="功法"></option>
-            <option value="符箓"></option>
-            <option value="材料"></option>
-          </datalist>
+          <label>收支类型</label>
+          <select id="ls-type">
+            <option value="收入" ${it.type !== "支出" ? "selected" : ""}>收入</option>
+            <option value="支出" ${it.type === "支出" ? "selected" : ""}>支出</option>
+          </select>
         </div>
         <div class="meta-field">
           <label>数量 <span class="muted hint">（正负数表示收支）</span></label>
-          <input id="gd-quantity" type="number" step="any" value="${qty}" />
+          <input id="ls-quantity" type="number" step="any" value="${qty}" />
         </div>
         <div class="meta-field">
-          <label>来源章节</label>
-          <input id="gd-sourceCh" type="text" value="${escapeHtml(it.sourceCh || "")}" placeholder="如：第3章" />
+          <label>类型 <span class="muted hint">（下品/中品/上品灵石）</span></label>
+          <input id="ls-category" type="text" value="${escapeHtml(it.category || "")}" placeholder="如：下品灵石" list="ls-cat-suggestions" />
+          <datalist id="ls-cat-suggestions">
+            <option value="下品灵石"></option>
+            <option value="中品灵石"></option>
+            <option value="上品灵石"></option>
+            <option value="极品灵石"></option>
+          </datalist>
         </div>
         <div class="meta-actions">
-          <button id="gd-save" class="primary-btn">保存</button>
-          <button id="gd-delete" class="danger-btn">删除</button>
+          <button id="ls-save" class="primary-btn">保存</button>
+          <button id="ls-delete" class="danger-btn">删除</button>
         </div>
       </div>
       <div class="editor-body">
-        <label class="body-label">备注 / 来历</label>
-        <textarea id="gd-note" placeholder="物品的来历、用途、相关情节…">${escapeHtml(it.note || "")}</textarea>
+        <label class="body-label">原文描述</label>
+        <textarea id="ls-description" placeholder="灵石收支的原文出处、原因、相关情节…">${escapeHtml(it.description || "")}</textarea>
         <div class="body-stats">
           <div class="stats-left">
-            <span id="gd-word-count" class="muted">0 字</span>
-            <span id="gd-save-status" class="muted"></span>
+            <span id="ls-word-count" class="muted">0 字</span>
+            <span id="ls-save-status" class="muted"></span>
           </div>
-          <span id="gd-file-path" class="muted file-path" title=""></span>
+          <span id="lingshi-file-path" class="muted file-path" title=""></span>
         </div>
       </div>`;
-    bindGoodsEditorEvents();
+    bindLingshiEditorEvents();
     updateFilePathDisplay();
   }
 
-  function bindGoodsEditorEvents() {
-    const it = curItem();
+  function bindLingshiEditorEvents() {
+    const p = state.pages.lingshi;
+    const it = p ? p.items.find((x) => x.id === p.currentItemId) : null;
     if (!it) return;
     const wire = (id, prop, transform) => {
       const el = $("#" + id);
@@ -2172,30 +2379,37 @@
         let v = el.value;
         if (transform) v = transform(v);
         it[prop] = v;
-        // 即时更新列表显示
-        if (prop === "name" || prop === "category" || prop === "quantity") {
-          renderGoodsList();
+        if (prop === "quantity" || prop === "type" || prop === "category" || prop === "chapter") {
+          renderLingshiList();
         }
-        if (id === "gd-note") {
-          const wc = $("#gd-word-count");
-          if (wc) wc.textContent = `${charCount(it.note)} 字`;
+        if (id === "ls-description") {
+          const wc = $("#ls-word-count");
+          if (wc) wc.textContent = `${charCount(it.description)} 字`;
         }
-        // 自动保存
         save();
       });
     };
-    wire("gd-name", "name");
-    wire("gd-category", "category");
-    wire("gd-quantity", "quantity", (v) => parseFloat(v) || 0);
-    wire("gd-sourceCh", "sourceCh");
-    wire("gd-note", "note");
+    wire("ls-chapter", "chapter");
+    wire("ls-category", "category");
+    wire("ls-quantity", "quantity", (v) => parseFloat(v) || 0);
+    wire("ls-description", "description");
+
+    // 收支类型 select
+    const typeSel = $("#ls-type");
+    if (typeSel) {
+      typeSel.addEventListener("change", () => {
+        it.type = typeSel.value === "支出" ? "支出" : "收入";
+        renderLingshiList();
+        save();
+      });
+    }
 
     // 初始字数
-    const wc = $("#gd-word-count");
-    if (wc) wc.textContent = `${charCount(it.note)} 字`;
+    const wc = $("#ls-word-count");
+    if (wc) wc.textContent = `${charCount(it.description)} 字`;
 
     // 保存按钮
-    const saveBtn = $("#gd-save");
+    const saveBtn = $("#ls-save");
     if (saveBtn) {
       saveBtn.addEventListener("click", () => {
         save();
@@ -2204,14 +2418,184 @@
         toast("已保存");
       });
     }
-    const delBtn = $("#gd-delete");
+    const delBtn = $("#ls-delete");
     if (delBtn) {
       delBtn.addEventListener("click", () => {
-        if (confirm(`确定要删除「${it.name || "该物品"}」吗？`)) {
-          deleteCurrentItem();
-        }
+        deleteItemFromPage("lingshi", it.id);
       });
     }
+  }
+
+  // —— 物品台账 ——
+  function renderItemsList() {
+    const list = $("#items-list");
+    if (!list) return;
+    const p = state.pages.items;
+    const items = getSortedItemsItems();
+    list.innerHTML = items.length === 0
+      ? ""
+      : items
+          .map((it) => {
+            const active = it.id === p.currentItemId ? "active" : "";
+            const qty = Number(it.quantity) || 0;
+            const status = it.status || "持有";
+            const statusClass =
+              status === "丢失" ? "it-status-lost"
+              : status === "使用" ? "it-status-used"
+              : status === "赠与" || status === "出售" ? "it-status-gave"
+              : "it-status-hold";
+            return `
+            <li class="it-item ${active}" data-id="${escapeHtml(it.id)}">
+              <span class="it-chapter muted" title="章节号">${escapeHtml(it.chapter || "—")}</span>
+              <span class="it-name">${escapeHtml(it.name || "（无名）")}</span>
+              <span class="it-qty">×${qty}</span>
+              <span class="it-cat muted" title="类型">${escapeHtml(it.category || "—")}</span>
+              <span class="it-status ${statusClass}">${escapeHtml(status)}</span>
+              <button class="it-delete" data-id="${escapeHtml(it.id)}" title="删除该物品" aria-label="删除该物品" type="button">×</button>
+            </li>`;
+          })
+          .join("");
+    const count = $("#items-count");
+    if (count) count.textContent = `${items.length} 件`;
+  }
+
+  function renderItemsEditor() {
+    const p = state.pages.items;
+    const it = p ? p.items.find((x) => x.id === p.currentItemId) : null;
+    const empty = $("#items-editor-empty");
+    const editor = $("#items-editor");
+    if (!empty || !editor) return;
+    if (!it) {
+      empty.hidden = false;
+      editor.hidden = true;
+      empty.innerHTML = PAGES.items.emptyStateHtml();
+      return;
+    }
+    empty.hidden = true;
+    editor.hidden = false;
+    const qty = Number(it.quantity) || 1;
+    editor.innerHTML = `
+      <div class="editor-meta editor-meta-items">
+        <div class="meta-field">
+          <label>章节号</label>
+          <input id="it-chapter" type="text" value="${escapeHtml(it.chapter || "")}" placeholder="如：第3章" />
+        </div>
+        <div class="meta-field meta-title">
+          <label>物品名称</label>
+          <input id="it-name" type="text" value="${escapeHtml(it.name || "")}" placeholder="如：九幽玄铁、寒霜剑" />
+        </div>
+        <div class="meta-field">
+          <label>数量</label>
+          <input id="it-quantity" type="number" min="0" step="1" value="${qty}" />
+        </div>
+        <div class="meta-field">
+          <label>类型</label>
+          <input id="it-category" type="text" value="${escapeHtml(it.category || "")}" placeholder="如：武器 / 丹药 / 法器" list="it-cat-suggestions" />
+          <datalist id="it-cat-suggestions">
+            <option value="武器"></option>
+            <option value="丹药"></option>
+            <option value="法器"></option>
+            <option value="功法"></option>
+            <option value="符箓"></option>
+            <option value="材料"></option>
+            <option value="服饰"></option>
+          </datalist>
+        </div>
+        <div class="meta-field">
+          <label>状态</label>
+          <select id="it-status">
+            <option value="持有" ${it.status !== "使用" && it.status !== "丢失" && it.status !== "赠与" && it.status !== "出售" ? "selected" : ""}>持有</option>
+            <option value="使用" ${it.status === "使用" ? "selected" : ""}>使用</option>
+            <option value="丢失" ${it.status === "丢失" ? "selected" : ""}>丢失</option>
+            <option value="赠与" ${it.status === "赠与" ? "selected" : ""}>赠与</option>
+            <option value="出售" ${it.status === "出售" ? "selected" : ""}>出售</option>
+          </select>
+        </div>
+        <div class="meta-actions">
+          <button id="it-save" class="primary-btn">保存</button>
+          <button id="it-delete" class="danger-btn">删除</button>
+        </div>
+      </div>
+      <div class="editor-body">
+        <label class="body-label">原文描述</label>
+        <textarea id="it-description" placeholder="物品的来历、用途、相关情节…">${escapeHtml(it.description || "")}</textarea>
+        <div class="body-stats">
+          <div class="stats-left">
+            <span id="it-word-count" class="muted">0 字</span>
+            <span id="it-save-status" class="muted"></span>
+          </div>
+          <span id="items-file-path" class="muted file-path" title=""></span>
+        </div>
+      </div>`;
+    bindItemsEditorEvents();
+    updateFilePathDisplay();
+  }
+
+  function bindItemsEditorEvents() {
+    const p = state.pages.items;
+    const it = p ? p.items.find((x) => x.id === p.currentItemId) : null;
+    if (!it) return;
+    const wire = (id, prop, transform) => {
+      const el = $("#" + id);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        let v = el.value;
+        if (transform) v = transform(v);
+        it[prop] = v;
+        if (prop === "name" || prop === "category" || prop === "quantity" || prop === "chapter" || prop === "status") {
+          renderItemsList();
+        }
+        if (id === "it-description") {
+          const wc = $("#it-word-count");
+          if (wc) wc.textContent = `${charCount(it.description)} 字`;
+        }
+        save();
+      });
+    };
+    wire("it-chapter", "chapter");
+    wire("it-name", "name");
+    wire("it-category", "category");
+    wire("it-quantity", "quantity", (v) => Math.max(0, parseInt(v, 10) || 0));
+    wire("it-description", "description");
+
+    // 状态 select
+    const statusSel = $("#it-status");
+    if (statusSel) {
+      statusSel.addEventListener("change", () => {
+        it.status = statusSel.value || "持有";
+        renderItemsList();
+        save();
+      });
+    }
+
+    // 初始字数
+    const wc = $("#it-word-count");
+    if (wc) wc.textContent = `${charCount(it.description)} 字`;
+
+    // 保存按钮
+    const saveBtn = $("#it-save");
+    if (saveBtn) {
+      saveBtn.addEventListener("click", () => {
+        save();
+        pushHistory();
+        saveAsJson();
+        toast("已保存");
+      });
+    }
+    const delBtn = $("#it-delete");
+    if (delBtn) {
+      delBtn.addEventListener("click", () => {
+        deleteItemFromPage("items", it.id);
+      });
+    }
+  }
+
+  // —— 复合入口：goods tab 一次性渲染 lingshi + items ——
+  function renderCompoundGoods() {
+    renderLingshiList();
+    renderLingshiEditor();
+    renderItemsList();
+    renderItemsEditor();
   }
 
   // —— 故事脉络 (dashboard) ——
@@ -2880,8 +3264,8 @@
       renderFsList();
       renderFsEditor();
     } else if (state.currentPage === "goods") {
-      renderGoodsList();
-      renderGoodsEditor();
+      // v21：goods 是 compound，渲染时调 renderCompoundGoods 一次性渲染 lingshi + items
+      renderCompoundGoods();
     } else if (state.currentPage === "storyline") {
       renderStorylineDashboard();
     } else if (state.currentPage === "character") {
@@ -3765,15 +4149,21 @@
     toast("已删除");
   }
 
-  function addNewItem() {
-    const p = curPage();
-    const def = curPageDef();
+  // v21：通用 addNewItemInPage(pid)
+  //  - 由 addNewItem 调用（pid = state.currentPage）
+  //  - 也可被工具栏的独立按钮直接调用（如 goods tab 下的"新增灵石"/"新增物品"按钮）
+  //  - storyLine 是 dashboard 类型，没有 makeItem/defaults，调用前应避免
+  function addNewItemInPage(pid) {
+    if (!pid) pid = state.currentPage;
+    const p = state.pages[pid];
+    const def = PAGES[pid];
+    if (!p || !def || !def.defaults || !def.makeItem) return;
     const targetSheet =
       p.currentSheet || (p.sheets[0] && p.sheets[0].name) || null;
     const data = def.defaults();
-    if (state.currentPage === "chapter") {
+    if (pid === "chapter") {
       data.no = nextNoInCurrentSheet();
-    } else if (state.currentPage === "foreshadowing") {
+    } else if (pid === "foreshadowing") {
       // v19：伏笔编号 fsNo 自动生成——
       //   1) 取当前 sheet 内最大编号 +1（数字部分）
       //   2) 检测现有数据的"格式模板"（前缀 + 数字宽度），
@@ -3791,8 +4181,7 @@
       const fmt = detectFsNoFormat(sheetList);
       data.fsNo = formatFsNoByFormat(nextNum, fmt);
     }
-    // v19：goods / character 直接用 defaults()，不需要额外编号
-    // （剧情脉络 storyline 是 dashboard 类型，没有 items，addNewItem 不应被调用）
+    // lingshi / items / character 直接用 defaults()，不需要额外编号
     const it = def.makeItem(data, targetSheet);
     p.items.push(it);
     p.currentItemId = it.id;
@@ -3802,26 +4191,62 @@
     setTimeout(() => {
       // focus 第一个可输入字段
       const focusSel =
-        state.currentPage === "chapter"
-          ? "#ch-title"
-          : state.currentPage === "foreshadowing"
-            ? "#fs-name"
-            : state.currentPage === "goods"
-              ? "#gd-name"
-              : state.currentPage === "character"
-                ? "#ch2-name"
-                : null;
+        pid === "chapter" ? "#ch-title"
+        : pid === "foreshadowing" ? "#fs-name"
+        : pid === "lingshi" ? "#ls-chapter"
+        : pid === "items" ? "#it-chapter"
+        : pid === "character" ? "#ch2-name"
+        : null;
       if (focusSel) {
         const el = $(focusSel);
         if (el) el.focus();
       }
     }, 50);
-    // v19：goods 用 name、character 用 name 作为 toast 显示
+    // toast 文案：foreshadowing 用 fsNo，lingshi 用「类型+数量」，其他用 name
     let displayKey = data.no;
-    if (state.currentPage === "foreshadowing") displayKey = data.fsNo || data.no;
-    else if (state.currentPage === "goods") displayKey = data.name;
-    else if (state.currentPage === "character") displayKey = data.name;
+    if (pid === "foreshadowing") displayKey = data.fsNo || data.no;
+    else if (pid === "lingshi") displayKey = `${data.type} ${data.quantity}`;
+    else if (data.name) displayKey = data.name;
     toast(def.newItemToast(targetSheet, displayKey));
+  }
+
+  function addNewItem() {
+    addNewItemInPage(state.currentPage);
+  }
+
+  // v21：伏笔重新编号
+  //  - 用途：删除中间的伏笔后，后续 fsNo 不连续（如 1/2/4/5），点此按钮让列表按 sortKey 排序后重排为 1/2/3/4
+  //  - 沿用 detectFsNoFormat 检测的格式模板（FS-001/FS-002... → 新编号也是 FS-001/FS-002...）
+  //  - 走 ui.fsSort 的当前方向（正序/倒序），与列表显示顺序一致
+  //  - 会 pushHistory + saveAsJson，撤销可恢复
+  function renumberForeshadowing() {
+    const p = state.pages.foreshadowing;
+    if (!p || !Array.isArray(p.items) || p.items.length === 0) {
+      toast("当前没有伏笔，无需重新编号", "info", 1500);
+      return;
+    }
+    if (!confirm(`确定按当前列表顺序重新连续编号 ${p.items.length} 条伏笔吗？\n这会改写所有伏笔的编号，撤销可恢复。`)) {
+      return;
+    }
+    // 按 sortKey 排序（沿用列表渲染的顺序）
+    const sortDir = state.ui.fsSort === "desc" ? -1 : 1;
+    const sorted = p.items.slice().sort((a, b) => {
+      const ka = PAGES.foreshadowing.sortKey(a);
+      const kb = PAGES.foreshadowing.sortKey(b);
+      if (ka.num !== kb.num) return (ka.num - kb.num) * sortDir;
+      return ((ka.str || "").localeCompare(kb.str || "", "zh-CN")) * sortDir;
+    });
+    // 检测格式，沿用 detectFsNoFormat
+    const fmt = detectFsNoFormat(p.items);
+    let n = 1;
+    for (const it of sorted) {
+      it.fsNo = formatFsNoByFormat(n, fmt);
+      n++;
+    }
+    pushHistory();
+    saveAsJson();
+    renderAll();
+    toast(`已重新编号 ${sorted.length} 条伏笔`, "success", 1500);
   }
 
   /* ============================================================
@@ -3887,6 +4312,46 @@
       allowTargetPage: false,
       isRecord: true,
     },
+    // v21：灵石台账导入
+    lingshi: {
+      key: "lingshi",
+      pid: "lingshi",
+      table: "items",
+      containerId: "import-section-lingshi",
+      dropId: "import-lingshi-drop",
+      fileInputId: "file-lingshi",
+      textId: "import-lingshi-text",
+      sheetWrapId: "import-lingshi-sheet-wrap",
+      sheetSelectId: "import-lingshi-sheet-select",
+      skipHeaderId: "import-lingshi-skip-header",
+      statsId: "import-lingshi-stats",
+      previewId: "import-lingshi-preview",
+      fileInfoId: "import-lingshi-file-info",
+      clearSel: '[data-clear-section="lingshi"]',
+      confirmId: "btn-import-lingshi-confirm",
+      allowTargetPage: false,
+      isRecord: false,
+    },
+    // v21：物品台账导入
+    items: {
+      key: "items",
+      pid: "items",
+      table: "items",
+      containerId: "import-section-items",
+      dropId: "import-items-drop",
+      fileInputId: "file-items",
+      textId: "import-items-text",
+      sheetWrapId: "import-items-sheet-wrap",
+      sheetSelectId: "import-items-sheet-select",
+      skipHeaderId: "import-items-skip-header",
+      statsId: "import-items-stats",
+      previewId: "import-items-preview",
+      fileInfoId: "import-items-file-info",
+      clearSel: '[data-clear-section="items"]',
+      confirmId: "btn-import-items-confirm",
+      allowTargetPage: false,
+      isRecord: false,
+    },
   };
 
   // 每个 section 的运行时状态
@@ -3894,6 +4359,9 @@
     chapter: { allSheets: null, currentSheet: null, targetPage: null, allSheetsTarget: null },
     "fs-main": { allSheets: null, currentSheet: null, targetPage: "foreshadowing", allSheetsTarget: null },
     "fs-record": { allSheets: null, currentSheet: null, targetPage: "foreshadowing", allSheetsTarget: null },
+    // v21：lingshi / items 各自独立的导入 state
+    lingshi: { allSheets: null, currentSheet: null, targetPage: "lingshi", allSheetsTarget: null },
+    items: { allSheets: null, currentSheet: null, targetPage: "items", allSheetsTarget: null },
   };
 
   function getImportFieldsDef(sectionKey) {
@@ -3914,33 +4382,51 @@
     return PAGES[sec.pid];
   }
 
+  // v21：按 sections 列表打开导入弹窗
+  //  - 给 #btn-import 用（按 state.currentPage 自动选）
+  //  - 也给 goods tab 的"导入灵石"/"导入物品"按钮用（直接传 ["lingshi"] / ["items"]）
+  function openImportModalWithSections(sectionIds) {
+    for (const k of Object.keys(IMPORT_SECTIONS)) {
+      const sec = IMPORT_SECTIONS[k];
+      const container = $("#" + sec.containerId);
+      if (!container) continue;
+      const visible = sectionIds.includes(k);
+      container.hidden = !visible;
+      if (visible) resetImportSection(k);
+      else {
+        importState[k].allSheets = null;
+        importState[k].currentSheet = null;
+        importState[k].targetPage = null;
+      }
+    }
+    // 底部按钮显隐
+    for (const k of Object.keys(IMPORT_SECTIONS)) {
+      const btn = $("#" + IMPORT_SECTIONS[k].confirmId);
+      if (btn) btn.hidden = !sectionIds.includes(k);
+    }
+    showModal("modal-import");
+  }
+
   function bindImportEvents() {
-    // 打开弹窗：按当前页面显示对应 section
-    $("#btn-import").addEventListener("click", () => {
+    // 主入口 #btn-import：按 state.currentPage 显示对应 section
+    //  - chapter → [chapter]
+    //  - foreshadowing → [fs-main, fs-record]
+    //  - goods → [lingshi, items]（v21：compound 拆双 section）
+    $("#btn-import")?.addEventListener("click", () => {
       const pid = state.currentPage;
-      // 章节 → 单 section；伏笔 → 双 section
-      const sectionIds = pid === "foreshadowing"
-        ? ["fs-main", "fs-record"]
-        : ["chapter"];
-      for (const k of Object.keys(IMPORT_SECTIONS)) {
-        const sec = IMPORT_SECTIONS[k];
-        const container = $("#" + sec.containerId);
-        if (!container) continue;
-        const visible = sectionIds.includes(k);
-        container.hidden = !visible;
-        if (visible) resetImportSection(k);
-        else {
-          importState[k].allSheets = null;
-          importState[k].currentSheet = null;
-          importState[k].targetPage = null;
-        }
-      }
-      // 底部按钮显隐
-      for (const k of Object.keys(IMPORT_SECTIONS)) {
-        const btn = $("#" + IMPORT_SECTIONS[k].confirmId);
-        if (btn) btn.hidden = !sectionIds.includes(k);
-      }
-      showModal("modal-import");
+      let sectionIds;
+      if (pid === "foreshadowing") sectionIds = ["fs-main", "fs-record"];
+      else if (pid === "goods") sectionIds = ["lingshi", "items"];
+      else sectionIds = ["chapter"];
+      openImportModalWithSections(sectionIds);
+    });
+
+    // v21：goods tab 的独立导入按钮（直接打开弹窗并锁定到对应 section）
+    $("#btn-import-lingshi")?.addEventListener("click", () => {
+      openImportModalWithSections(["lingshi"]);
+    });
+    $("#btn-import-items")?.addEventListener("click", () => {
+      openImportModalWithSections(["items"]);
     });
 
     // 通用：每个 section 绑拖拽 / 选择 / 文本输入 / sheet 切换
@@ -4934,43 +5420,36 @@
 
   function bindListEvents() {
     // 事件委托 - 所有 list 视图共用
-    // 列表项 class：.ch-item / .fs-item / .gd-item / .ch2-item
-    // 删除按钮：.ch-delete / .fs-delete / .gd-delete / .ch2-delete
+    // v21：goods 拆为 lingshi + items，各自独立 list/editor，删除走 deleteItemFromPage
+    // 列表项 class：.ch-item / .fs-item / .ls-item / .it-item / .ch2-item
+    // 删除按钮：.ch-delete / .fs-delete / .ls-delete / .it-delete / .ch2-delete
     const chapterList = $("#chapter-list");
     const fsList = $("#fs-list");
-    const goodsList = $("#goods-list");
+    const lingshiList = $("#lingshi-list");
+    const itemsList = $("#items-list");
     const characterList = $("#character-list");
-    const onClick = (e) => {
+
+    // 章节 / 伏笔 / 角色 的「统一切换」处理（依赖 state.currentPage）
+    //   - 切前 saveCurrentItem 落盘
+    //   - 设 curPage().currentItemId
+    const onMainClick = (e) => {
       // 章节列表的"删除"叉号优先处理，阻止冒泡（避免触发选中）
       if (e.target.closest(".ch-delete")) {
         e.stopPropagation();
         const id = e.target.closest(".ch-delete").dataset.id;
         if (!id) return;
-        // 先选中该项（让 deleteCurrentItem 找到 curItem），再删
         curPage().currentItemId = id;
         deleteCurrentItem();
         return;
       }
-      // v16：伏笔列表的"删除"叉号，行为和章节一致
       if (e.target.closest(".fs-delete")) {
         e.stopPropagation();
         const id = e.target.closest(".fs-delete").dataset.id;
         if (!id) return;
-        // 先选中该项（让 deleteCurrentItem 找到 curItem），再删
         curPage().currentItemId = id;
         deleteCurrentItem();
         return;
       }
-      // v19：财物详情列表的"删除"叉号
-      if (e.target.closest(".gd-delete")) {
-        e.stopPropagation();
-        const id = e.target.closest(".gd-delete").dataset.id;
-        if (!id) return;
-        curPage().currentItemId = id;
-        deleteCurrentItem();
-        return;
-      }
-      // v19：角色详情列表的"删除"叉号
       if (e.target.closest(".ch2-delete")) {
         e.stopPropagation();
         const id = e.target.closest(".ch2-delete").dataset.id;
@@ -4979,16 +5458,10 @@
         deleteCurrentItem();
         return;
       }
-      const item = e.target.closest(".ch-item, .fs-item, .gd-item, .ch2-item");
+      const item = e.target.closest(".ch-item, .fs-item, .ch2-item");
       if (!item) return;
-      // 切到同一条则不做事（避免无谓的 history 抖动）
       if (curPage().currentItemId === item.dataset.id) return;
-      // v7：切章节前先保存当前编辑器的输入到 item（防止未保存内容丢失）
-      // v17：伏笔页只在编辑态（fsEditing）才需要保存；查看态切伏笔无意义也不该写入
-      // v19：伏笔页切伏笔——只有 dirty 才 saveCurrentItem() 落盘 + 入 undo 栈；
-      //      无论是否 dirty 都退出编辑态（fsEditing=false），避免带着 edit 态进新伏笔
-      // v19：goods / character 切条目时也走 saveCurrentItem() 落盘
-      if (state.currentPage === "chapter" || state.currentPage === "goods" || state.currentPage === "character") {
+      if (state.currentPage === "chapter" || state.currentPage === "character") {
         try { saveCurrentItem(); } catch (_) {}
       } else if (state.currentPage === "foreshadowing" && state.ui.fsEditing) {
         try {
@@ -4996,26 +5469,57 @@
             saveCurrentItem();
           }
         } catch (_) {}
-        // 切走必退出编辑态（无论是否 dirty；无变化也直接退出再切换）
         state.ui.fsEditing = false;
       }
       curPage().currentItemId = item.dataset.id;
       save();
       renderCurrentPage();
     };
-    if (chapterList) chapterList.addEventListener("click", onClick);
-    if (fsList) fsList.addEventListener("click", onClick);
-    if (goodsList) goodsList.addEventListener("click", onClick);
-    if (characterList) characterList.addEventListener("click", onClick);
+
+    // 灵石 / 物品 的「子 page」处理（不走 curPage，currentPage 仍是 "goods"）
+    //   - 直接设 state.pages[pid].currentItemId
+    //   - 删除走 deleteItemFromPage
+    const onSubListClick = (pid, renderPair) => (e) => {
+      if (e.target.closest(".ls-delete") || e.target.closest(".it-delete")) {
+        e.stopPropagation();
+        const btn = e.target.closest(".ls-delete") || e.target.closest(".it-delete");
+        const id = btn.dataset.id;
+        if (!id) return;
+        deleteItemFromPage(pid, id);
+        return;
+      }
+      const item = e.target.closest(".ls-item, .it-item");
+      if (!item) return;
+      const p = state.pages[pid];
+      if (!p) return;
+      if (p.currentItemId === item.dataset.id) return;
+      p.currentItemId = item.dataset.id;
+      save();
+      renderPair();
+    };
+
+    if (chapterList) chapterList.addEventListener("click", onMainClick);
+    if (fsList) fsList.addEventListener("click", onMainClick);
+    if (characterList) characterList.addEventListener("click", onMainClick);
+    if (lingshiList) lingshiList.addEventListener("click", onSubListClick("lingshi", () => {
+      renderLingshiList();
+      renderLingshiEditor();
+    }));
+    if (itemsList) itemsList.addEventListener("click", onSubListClick("items", () => {
+      renderItemsList();
+      renderItemsEditor();
+    }));
   }
 
   function bindEditorButtons() {
     // 章节页：新增 / 导入 / 排序
     $("#btn-new")?.addEventListener("click", addNewItem);
     $("#btn-new-fs")?.addEventListener("click", addNewItem);
-    // v19：goods / character 各自的新增按钮（共用 addNewItem）
-    $("#btn-new-gd")?.addEventListener("click", addNewItem);
-    $("#btn-new-ch2")?.addEventListener("click", addNewItem);
+    // v21：goods 拆 lingshi + items，各自独立"新增"按钮，指定 pid
+    $("#btn-new-lingshi")?.addEventListener("click", () => addNewItemInPage("lingshi"));
+    $("#btn-new-items")?.addEventListener("click", () => addNewItemInPage("items"));
+    // 角色详情用 addNewItemInPage
+    $("#btn-new-ch2")?.addEventListener("click", () => addNewItemInPage("character"));
     // 故事脉络（storyline）没有新增按钮——dashboard 类型
     // 编辑器按钮是动态生成的，用事件委托
     document.addEventListener("click", (e) => {
@@ -5048,6 +5552,10 @@
       state.ui.fsSort = state.ui.fsSort === "asc" ? "desc" : "asc";
       save();
       renderFsList();
+    });
+    // v21：伏笔页"重新编号"——按当前列表顺序重排 fsNo 为 1,2,3...
+    $("#btn-fs-renumber")?.addEventListener("click", () => {
+      renumberForeshadowing();
     });
     // v18：伏笔页状态筛选（全部 / 未回收 / 部分回收 / 已回收）
     const segFsStatus = $("#seg-fs-status");

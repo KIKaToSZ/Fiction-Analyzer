@@ -1510,8 +1510,8 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("\n测试 15：v14（伏笔管理页双表拆分 + 4 列头 + 履历列表 + 跳转高亮）");
 
   // 15.1 schema 升到 11（v14 时代）；v15 改后 schema 升到 12；v19 升到 13
-  const t15_1a = /const SCHEMA_VERSION\s*=\s*1[123];/.test(SRC);
-  console.log(`  SCHEMA_VERSION = 11/12/13: ${t15_1a ? "✓" : "✗"}`);
+  const t15_1a = /const SCHEMA_VERSION\s*=\s*1[1234];/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 11/12/13/14: ${t15_1a ? "✓" : "✗"}`);
   if (!t15_1a) allPass = false;
 
   // 15.12 之前需要 CSS 文本(用局部变量,顶层没有 CSS 变量)
@@ -1667,8 +1667,8 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("\n测试 16：v15（伏笔主表精简为 3 字段 - 伏笔编号/伏笔名称/状态）");
 
   // 16.1 SCHEMA_VERSION = 12/13（v15 是 12，v19 升到 13）
-  const t16_1a = /const SCHEMA_VERSION\s*=\s*(12|13);/.test(SRC);
-  console.log(`  SCHEMA_VERSION = 12/13: ${t16_1a ? "✓" : "✗"}`);
+  const t16_1a = /const SCHEMA_VERSION\s*=\s*(12|13|14);/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 12/13/14: ${t16_1a ? "✓" : "✗"}`);
   if (!t16_1a) allPass = false;
 
   // 16.2 PAGES.foreshadowing.fields 只含 3 个键：fsNo / name / status
@@ -2309,8 +2309,8 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   }
 
   // 20.4 SCHEMA_VERSION = 13
-  const t20_4a = /const SCHEMA_VERSION\s*=\s*13;/.test(SRC);
-  console.log(`  SCHEMA_VERSION = 13: ${t20_4a ? "✓" : "✗"}`);
+  const t20_4a = /const SCHEMA_VERSION\s*=\s*14;/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 14: ${t20_4a ? "✓" : "✗"}`);
   if (!t20_4a) allPass = false;
 
   // 20.5 PAGES 注册表有 5 个页面
@@ -2326,22 +2326,22 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  PAGES.character: ${t20_5e ? "✓" : "✗"}`);
   if (!(t20_5a && t20_5b && t20_5c && t20_5d && t20_5e)) allPass = false;
 
-  // 20.6 PAGES.goods 字段：name / category / quantity / sourceCh / note
-  const goodsBlock = (() => {
-    const start = SRC.indexOf("goods: {");
-    const end = SRC.indexOf("storyline: {");
+  // 20.6 (v21 适配) PAGES.lingshi 5 字段：chapter / type / quantity / category / description
+  const lsBlock = (() => {
+    const start = SRC.indexOf("lingshi: {");
+    const end = SRC.indexOf("items: {");
     return start > 0 && end > start ? SRC.slice(start, end) : "";
   })();
-  const t20_6a = /fields:\s*\{[\s\S]*?name:\s*\[/.test(goodsBlock);
-  const t20_6b = /fields:\s*\{[\s\S]*?category:\s*\[/.test(goodsBlock);
-  const t20_6c = /fields:\s*\{[\s\S]*?quantity:\s*\[/.test(goodsBlock);
-  const t20_6d = /fields:\s*\{[\s\S]*?sourceCh:\s*\[/.test(goodsBlock);
-  const t20_6e = /fields:\s*\{[\s\S]*?note:\s*\[/.test(goodsBlock);
-  console.log(`  PAGES.goods.fields.name: ${t20_6a ? "✓" : "✗"}`);
-  console.log(`  PAGES.goods.fields.category: ${t20_6b ? "✓" : "✗"}`);
-  console.log(`  PAGES.goods.fields.quantity: ${t20_6c ? "✓" : "✗"}`);
-  console.log(`  PAGES.goods.fields.sourceCh: ${t20_6d ? "✓" : "✗"}`);
-  console.log(`  PAGES.goods.fields.note: ${t20_6e ? "✓" : "✗"}`);
+  const t20_6a = /fields:\s*\{[\s\S]*?chapter:\s*\[/.test(lsBlock);
+  const t20_6b = /fields:\s*\{[\s\S]*?type:\s*\[/.test(lsBlock);
+  const t20_6c = /fields:\s*\{[\s\S]*?quantity:\s*\[/.test(lsBlock);
+  const t20_6d = /fields:\s*\{[\s\S]*?category:\s*\[/.test(lsBlock);
+  const t20_6e = /fields:\s*\{[\s\S]*?description:\s*\[/.test(lsBlock);
+  console.log(`  PAGES.lingshi.fields.chapter: ${t20_6a ? "✓" : "✗"}`);
+  console.log(`  PAGES.lingshi.fields.type: ${t20_6b ? "✓" : "✗"}`);
+  console.log(`  PAGES.lingshi.fields.quantity: ${t20_6c ? "✓" : "✗"}`);
+  console.log(`  PAGES.lingshi.fields.category: ${t20_6d ? "✓" : "✗"}`);
+  console.log(`  PAGES.lingshi.fields.description: ${t20_6e ? "✓" : "✗"}`);
   if (!(t20_6a && t20_6b && t20_6c && t20_6d && t20_6e)) allPass = false;
 
   // 20.7 PAGES.character 字段：name / role / description / firstCh
@@ -2364,42 +2364,44 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  PAGES.storyline kind: "dashboard": ${t20_8a ? "✓" : "✗"}`);
   if (!t20_8a) allPass = false;
 
-  // 20.9 state.pages 包含 5 个页面
+  // 20.9 (v21 适配) state.pages: lingshi + items（无 goods）
   const t20_9a = /state\s*=\s*\{[\s\S]{0,800}?pages:\s*\{[\s\S]*?chapter:\s*makePageState\(\)/.test(SRC);
   const t20_9b = /pages:\s*\{[\s\S]*?foreshadowing:\s*makePageState\(\)/.test(SRC);
-  const t20_9c = /pages:\s*\{[\s\S]*?goods:\s*makePageState\(\)/.test(SRC);
-  const t20_9d = /pages:\s*\{[\s\S]*?storyline:\s*makePageState\(\)/.test(SRC);
+  const t20_9c = /pages:\s*\{[\s\S]*?lingshi:\s*makePageState\(\)/.test(SRC);
+  const t20_9d = /pages:\s*\{[\s\S]*?items:\s*makePageState\(\)/.test(SRC);
   const t20_9e = /pages:\s*\{[\s\S]*?character:\s*makePageState\(\)/.test(SRC);
   console.log(`  state.pages.chapter: ${t20_9a ? "✓" : "✗"}`);
   console.log(`  state.pages.foreshadowing: ${t20_9b ? "✓" : "✗"}`);
-  console.log(`  state.pages.goods: ${t20_9c ? "✓" : "✗"}`);
-  console.log(`  state.pages.storyline: ${t20_9d ? "✓" : "✗"}`);
+  console.log(`  state.pages.lingshi: ${t20_9c ? "✓" : "✗"}`);
+  console.log(`  state.pages.items: ${t20_9d ? "✓" : "✗"}`);
   console.log(`  state.pages.character: ${t20_9e ? "✓" : "✗"}`);
   if (!(t20_9a && t20_9b && t20_9c && t20_9d && t20_9e)) allPass = false;
 
-  // 20.10 snapshotState / applySnapshot 处理新页面
-  const t20_10a = /snapshotState[\s\S]*?pages:\s*\{[\s\S]*?goods:/.test(SRC);
-  const t20_10b = /snapshotState[\s\S]*?pages:\s*\{[\s\S]*?storyline:/.test(SRC);
+  // 20.10 (v21 适配) snapshotState / applySnapshot 处理 lingshi+items
+  const t20_10a = /snapshotState[\s\S]*?pages:\s*\{[\s\S]*?lingshi:/.test(SRC);
+  const t20_10b = /snapshotState[\s\S]*?pages:\s*\{[\s\S]*?items:/.test(SRC);
   const t20_10c = /snapshotState[\s\S]*?pages:\s*\{[\s\S]*?character:/.test(SRC);
-  const t20_10d = /applySnapshot[\s\S]*?goods:\s*\{/.test(SRC);
-  const t20_10e = /applySnapshot[\s\S]*?storyline:\s*\{/.test(SRC);
+  const t20_10d = /applySnapshot[\s\S]*?lingshi:\s*\{/.test(SRC);
+  const t20_10e = /applySnapshot[\s\S]*?items:\s*\{/.test(SRC);
   const t20_10f = /applySnapshot[\s\S]*?character:\s*\{/.test(SRC);
-  console.log(`  snapshotState 含 goods: ${t20_10a ? "✓" : "✗"}`);
-  console.log(`  snapshotState 含 storyline: ${t20_10b ? "✓" : "✗"}`);
+  console.log(`  snapshotState 含 lingshi: ${t20_10a ? "✓" : "✗"}`);
+  console.log(`  snapshotState 含 items: ${t20_10b ? "✓" : "✗"}`);
   console.log(`  snapshotState 含 character: ${t20_10c ? "✓" : "✗"}`);
-  console.log(`  applySnapshot 含 goods: ${t20_10d ? "✓" : "✗"}`);
-  console.log(`  applySnapshot 含 storyline: ${t20_10e ? "✓" : "✗"}`);
+  console.log(`  applySnapshot 含 lingshi: ${t20_10d ? "✓" : "✗"}`);
+  console.log(`  applySnapshot 含 items: ${t20_10e ? "✓" : "✗"}`);
   console.log(`  applySnapshot 含 character: ${t20_10f ? "✓" : "✗"}`);
   if (!(t20_10a && t20_10b && t20_10c && t20_10d && t20_10e && t20_10f)) allPass = false;
 
-  // 20.11 load() 迁移补 3 个 page state（schema 12 → 13）
-  const t20_11a = /for\s*\(\s*const\s+pid\s+of\s*\[\s*"goods"\s*,\s*"storyline"\s*,\s*"character"\s*\][\s\S]*?state\.pages\[pid\]\s*=\s*makePageState\(\)/.test(SRC);
-  const t20_11b = /state\.schema\s*=\s*13/.test(SRC);
-  console.log(`  load() 给 3 个新 page 补 state: ${t20_11a ? "✓" : "✗"}`);
-  console.log(`  load() 把 schema 升到 13: ${t20_11b ? "✓" : "✗"}`);
-  if (!(t20_11a && t20_11b)) allPass = false;
+  // 20.11 (v21 适配) load() 把 schema 升到 14，迁 goods→lingshi+items
+  const t20_11a = /state\.schema\s*=\s*14/.test(SRC);
+  const t20_11b = /delete\s+state\.pages\.goods/.test(SRC) || /state\.pages\.lingshi\s*=/.test(SRC);
+  const t20_11c = /灵石/.test(SRC) && /state\.pages\.lingshi\.items\.push/.test(SRC) || /lingshi/.test(SRC) && /state\.pages\.lingshi\s*=\s*makePageState/.test(SRC);
+  console.log(`  load() 把 schema 升到 14: ${t20_11a ? "✓" : "✗"}`);
+  console.log(`  load() 迁 goods: ${t20_11b ? "✓" : "✗"}`);
+  console.log(`  load() 创建 lingshi+items: ${t20_11c ? "✓" : "✗"}`);
+  if (!(t20_11a && t20_11b && t20_11c)) allPass = false;
 
-  // 20.12 renderCurrentPage 通用分发（按 view 显隐 + 按 page 调对应 render）
+  // 20.12 (v21 适配) renderCurrentPage 通用分发
   const rcpStart = SRC.indexOf("function renderCurrentPage");
   const rcpEnd = rcpStart > 0 ? SRC.indexOf("function renderAll", rcpStart) : -1;
   const rcpBlock = rcpStart > 0 && rcpEnd > rcpStart ? SRC.slice(rcpStart, rcpEnd) : "";
@@ -2407,111 +2409,117 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   const t20_12b = /state\.currentPage\s*===\s*"goods"/.test(rcpBlock);
   const t20_12c = /state\.currentPage\s*===\s*"storyline"/.test(rcpBlock);
   const t20_12d = /state\.currentPage\s*===\s*"character"/.test(rcpBlock);
-  const t20_12e = /renderGoodsList\(\)/.test(rcpBlock);
+  const t20_12e = /renderCompoundGoods\(\)/.test(rcpBlock);
   const t20_12f = /renderStorylineDashboard\(\)/.test(rcpBlock);
   const t20_12g = /renderCharacterList\(\)/.test(rcpBlock);
   console.log(`  renderCurrentPage 通用循环 page-view 显隐: ${t20_12a ? "✓" : "✗"}`);
   console.log(`  renderCurrentPage 路由到 goods: ${t20_12b ? "✓" : "✗"}`);
   console.log(`  renderCurrentPage 路由到 storyline: ${t20_12c ? "✓" : "✗"}`);
   console.log(`  renderCurrentPage 路由到 character: ${t20_12d ? "✓" : "✗"}`);
-  console.log(`  renderCurrentPage 调 renderGoodsList: ${t20_12e ? "✓" : "✗"}`);
+  console.log(`  renderCurrentPage 调 renderCompoundGoods: ${t20_12e ? "✓" : "✗"}`);
   console.log(`  renderCurrentPage 调 renderStorylineDashboard: ${t20_12f ? "✓" : "✗"}`);
   console.log(`  renderCurrentPage 调 renderCharacterList: ${t20_12g ? "✓" : "✗"}`);
   if (!(t20_12a && t20_12b && t20_12c && t20_12d && t20_12e && t20_12f && t20_12g)) allPass = false;
 
-  // 20.13 3 个新页面的 render 函数存在
-  const t20_13a = /function renderGoodsList\(\)/.test(SRC);
-  const t20_13b = /function renderGoodsEditor\(\)/.test(SRC);
-  const t20_13c = /function renderStorylineDashboard\(\)/.test(SRC);
-  const t20_13d = /function renderCharacterList\(\)/.test(SRC);
-  const t20_13e = /function renderCharacterEditor\(\)/.test(SRC);
-  console.log(`  renderGoodsList 函数: ${t20_13a ? "✓" : "✗"}`);
-  console.log(`  renderGoodsEditor 函数: ${t20_13b ? "✓" : "✗"}`);
-  console.log(`  renderStorylineDashboard 函数: ${t20_13c ? "✓" : "✗"}`);
-  console.log(`  renderCharacterList 函数: ${t20_13d ? "✓" : "✗"}`);
-  console.log(`  renderCharacterEditor 函数: ${t20_13e ? "✓" : "✗"}`);
-  if (!(t20_13a && t20_13b && t20_13c && t20_13d && t20_13e)) allPass = false;
+  // 20.13 (v21 适配) render 函数：lingshi+items compound 渲染
+  const t20_13a = /function renderLingshiList\(\)/.test(SRC);
+  const t20_13b = /function renderLingshiEditor\(\)/.test(SRC);
+  const t20_13c = /function renderItemsList\(\)/.test(SRC);
+  const t20_13d = /function renderItemsEditor\(\)/.test(SRC);
+  const t20_13e = /function renderCompoundGoods\(\)/.test(SRC);
+  const t20_13f = /function renderCharacterList\(\)/.test(SRC);
+  console.log(`  renderLingshiList 函数: ${t20_13a ? "✓" : "✗"}`);
+  console.log(`  renderLingshiEditor 函数: ${t20_13b ? "✓" : "✗"}`);
+  console.log(`  renderItemsList 函数: ${t20_13c ? "✓" : "✗"}`);
+  console.log(`  renderItemsEditor 函数: ${t20_13d ? "✓" : "✗"}`);
+  console.log(`  renderCompoundGoods 函数: ${t20_13e ? "✓" : "✗"}`);
+  console.log(`  renderCharacterList 函数: ${t20_13f ? "✓" : "✗"}`);
+  if (!(t20_13a && t20_13b && t20_13c && t20_13d && t20_13e && t20_13f)) allPass = false;
 
-  // 20.14 index.html 含 5 个 page-view
+  // 20.14 (v21 适配) index.html 含 5 个 page-view（goods 仍是其中一个但走 compound）
   const t20_14a = (html.match(/data-page-view="/g) || []).length === 5;
   const t20_14b = /data-page-view="goods"/.test(html);
   const t20_14c = /data-page-view="storyline"/.test(html);
   const t20_14d = /data-page-view="character"/.test(html);
-  const t20_14e = /id="goods-list"/.test(html);
-  const t20_14f = /id="goods-editor"/.test(html);
-  const t20_14g = /id="goods-editor-empty"/.test(html);
-  const t20_14h = /id="storyline-dashboard"/.test(html);
-  const t20_14i = /id="character-list"/.test(html);
-  const t20_14j = /id="character-editor"/.test(html);
-  const t20_14k = /id="character-editor-empty"/.test(html);
-  const t20_14l = /id="btn-new-gd"/.test(html);
-  const t20_14m = /id="btn-new-ch2"/.test(html);
+  const t20_14e = /id="lingshi-list"/.test(html);
+  const t20_14f = /id="lingshi-editor"/.test(html);
+  const t20_14g = /id="items-list"/.test(html);
+  const t20_14h = /id="items-editor"/.test(html);
+  const t20_14i = /id="storyline-dashboard"/.test(html);
+  const t20_14j = /id="character-list"/.test(html);
+  const t20_14k = /id="character-editor"/.test(html);
+  const t20_14l = /id="btn-new-lingshi"/.test(html);
+  const t20_14m = /id="btn-new-items"/.test(html);
   console.log(`  index.html 有 5 个 page-view: ${t20_14a ? "✓" : "✗"}`);
   console.log(`  data-page-view="goods": ${t20_14b ? "✓" : "✗"}`);
   console.log(`  data-page-view="storyline": ${t20_14c ? "✓" : "✗"}`);
   console.log(`  data-page-view="character": ${t20_14d ? "✓" : "✗"}`);
-  console.log(`  #goods-list: ${t20_14e ? "✓" : "✗"}`);
-  console.log(`  #goods-editor: ${t20_14f ? "✓" : "✗"}`);
-  console.log(`  #goods-editor-empty: ${t20_14g ? "✓" : "✗"}`);
-  console.log(`  #storyline-dashboard: ${t20_14h ? "✓" : "✗"}`);
-  console.log(`  #character-list: ${t20_14i ? "✓" : "✗"}`);
-  console.log(`  #character-editor: ${t20_14j ? "✓" : "✗"}`);
-  console.log(`  #character-editor-empty: ${t20_14k ? "✓" : "✗"}`);
-  console.log(`  #btn-new-gd: ${t20_14l ? "✓" : "✗"}`);
-  console.log(`  #btn-new-ch2: ${t20_14m ? "✓" : "✗"}`);
+  console.log(`  #lingshi-list: ${t20_14e ? "✓" : "✗"}`);
+  console.log(`  #lingshi-editor: ${t20_14f ? "✓" : "✗"}`);
+  console.log(`  #items-list: ${t20_14g ? "✓" : "✗"}`);
+  console.log(`  #items-editor: ${t20_14h ? "✓" : "✗"}`);
+  console.log(`  #storyline-dashboard: ${t20_14i ? "✓" : "✗"}`);
+  console.log(`  #character-list: ${t20_14j ? "✓" : "✗"}`);
+  console.log(`  #character-editor: ${t20_14k ? "✓" : "✗"}`);
+  console.log(`  #btn-new-lingshi: ${t20_14l ? "✓" : "✗"}`);
+  console.log(`  #btn-new-items: ${t20_14m ? "✓" : "✗"}`);
   if (!(t20_14a && t20_14b && t20_14c && t20_14d && t20_14e && t20_14f && t20_14g && t20_14h && t20_14i && t20_14j && t20_14k && t20_14l && t20_14m)) allPass = false;
 
-  // 20.15 bindListEvents 处理 gd-delete / ch2-delete
+  // 20.15 (v21 适配) bindListEvents 处理 ls/it/ch2-delete
   const bindListStart = SRC.indexOf("function bindListEvents");
   const bindListEnd = bindListStart > 0 ? SRC.indexOf("function bindEditorButtons", bindListStart) : -1;
   const bindListBlock20 = bindListStart > 0 && bindListEnd > bindListStart ? SRC.slice(bindListStart, bindListEnd) : "";
-  const t20_15a = /\$\("#goods-list"\)/.test(bindListBlock20);
-  const t20_15b = /\$\("#character-list"\)/.test(bindListBlock20);
-  const t20_15c = /e\.target\.closest\("\.gd-delete"\)/.test(bindListBlock20);
+  const t20_15a = /\$\("#lingshi-list"\)/.test(bindListBlock20);
+  const t20_15b = /\$\("#items-list"\)/.test(bindListBlock20);
+  const t20_15c = /\$\("#character-list"\)/.test(bindListBlock20);
   const t20_15d = /e\.target\.closest\("\.ch2-delete"\)/.test(bindListBlock20);
-  const t20_15e = /gd-item, .fs-item, .gd-item, .ch2-item/.test(bindListBlock20) || /\.ch-item, \.fs-item, \.gd-item, \.ch2-item/.test(bindListBlock20);
-  console.log(`  bindListEvents 绑 #goods-list: ${t20_15a ? "✓" : "✗"}`);
-  console.log(`  bindListEvents 绑 #character-list: ${t20_15b ? "✓" : "✗"}`);
-  console.log(`  bindListEvents 处理 .gd-delete: ${t20_15c ? "✓" : "✗"}`);
+  const t20_15e = /\.ls-item|\.it-item/.test(bindListBlock20);
+  console.log(`  bindListEvents 绑 #lingshi-list: ${t20_15a ? "✓" : "✗"}`);
+  console.log(`  bindListEvents 绑 #items-list: ${t20_15b ? "✓" : "✗"}`);
+  console.log(`  bindListEvents 绑 #character-list: ${t20_15c ? "✓" : "✗"}`);
   console.log(`  bindListEvents 处理 .ch2-delete: ${t20_15d ? "✓" : "✗"}`);
-  console.log(`  bindListEvents 选择器含 .gd-item / .ch2-item: ${t20_15e ? "✓" : "✗"}`);
+  console.log(`  bindListEvents 含 .ls-item/.it-item: ${t20_15e ? "✓" : "✗"}`);
   if (!(t20_15a && t20_15b && t20_15c && t20_15d && t20_15e)) allPass = false;
 
-  // 20.16 bindEditorButtons 绑新增按钮
+  // 20.16 (v21 适配) bindEditorButtons 绑新增按钮：lingshi/items/ch2
   const bindEdStart = SRC.indexOf("function bindEditorButtons");
   const bindEdEnd = bindEdStart > 0 ? SRC.indexOf("function", bindEdStart + 30) : -1;
   const bindEdBlock = bindEdStart > 0 && bindEdEnd > bindEdStart ? SRC.slice(bindEdStart, bindEdEnd) : "";
-  const t20_16a = /\$\("#btn-new-gd"\)\?\.addEventListener\("click",\s*addNewItem\)/.test(bindEdBlock);
-  const t20_16b = /\$\("#btn-new-ch2"\)\?\.addEventListener\("click",\s*addNewItem\)/.test(bindEdBlock);
-  console.log(`  bindEditorButtons 绑 #btn-new-gd: ${t20_16a ? "✓" : "✗"}`);
-  console.log(`  bindEditorButtons 绑 #btn-new-ch2: ${t20_16b ? "✓" : "✗"}`);
-  if (!(t20_16a && t20_16b)) allPass = false;
+  const t20_16a = /\$\("#btn-new-lingshi"\)/.test(bindEdBlock);
+  const t20_16b = /\$\("#btn-new-items"\)/.test(bindEdBlock);
+  const t20_16c = /\$\("#btn-new-ch2"\)/.test(bindEdBlock);
+  const t20_16d = /\$\("#btn-fs-renumber"\)/.test(bindEdBlock);
+  console.log(`  bindEditorButtons 绑 #btn-new-lingshi: ${t20_16a ? "✓" : "✗"}`);
+  console.log(`  bindEditorButtons 绑 #btn-new-items: ${t20_16b ? "✓" : "✗"}`);
+  console.log(`  bindEditorButtons 绑 #btn-new-ch2: ${t20_16c ? "✓" : "✗"}`);
+  console.log(`  bindEditorButtons 绑 #btn-fs-renumber: ${t20_16d ? "✓" : "✗"}`);
+  if (!(t20_16a && t20_16b && t20_16c && t20_16d)) allPass = false;
 
-  // 20.17 CSS 包含 v19 新样式
-  const t20_17a = /\.gd-list/.test(_css);
-  const t20_17b = /\.gd-item/.test(_css);
-  const t20_17c = /\.gd-delete/.test(_css);
-  const t20_17d = /\.gd-cat-lingshi/.test(_css);
-  const t20_17e = /\.goods-summary/.test(_css);
-  const t20_17f = /\.storyline-dashboard/.test(_css);
-  const t20_17g = /\.storyline-head/.test(_css);
-  const t20_17h = /\.storyline-stat/.test(_css);
-  const t20_17i = /\.storyline-timeline/.test(_css);
-  const t20_17j = /\.storyline-row/.test(_css);
+  // 20.17 (v21 适配) CSS：lingshi+items compound + storyline + character
+  const t20_17a = /\.compound-two-cols/.test(_css);
+  const t20_17b = /\.ls-list/.test(_css);
+  const t20_17c = /\.ls-item/.test(_css);
+  const t20_17d = /\.ls-qty-pos/.test(_css);
+  const t20_17e = /\.lingshi-summary/.test(_css);
+  const t20_17f = /\.it-list/.test(_css);
+  const t20_17g = /\.it-item/.test(_css);
+  const t20_17h = /\.it-status-hold/.test(_css);
+  const t20_17i = /\.storyline-dashboard/.test(_css);
+  const t20_17j = /\.storyline-timeline/.test(_css);
   const t20_17k = /\.ch2-list/.test(_css);
   const t20_17l = /\.ch2-item/.test(_css);
   const t20_17m = /\.ch2-delete/.test(_css);
   const t20_17n = /\.ch2-role-main/.test(_css);
-  console.log(`  CSS .gd-list: ${t20_17a ? "✓" : "✗"}`);
-  console.log(`  CSS .gd-item: ${t20_17b ? "✓" : "✗"}`);
-  console.log(`  CSS .gd-delete: ${t20_17c ? "✓" : "✗"}`);
-  console.log(`  CSS .gd-cat-lingshi: ${t20_17d ? "✓" : "✗"}`);
-  console.log(`  CSS .goods-summary: ${t20_17e ? "✓" : "✗"}`);
-  console.log(`  CSS .storyline-dashboard: ${t20_17f ? "✓" : "✗"}`);
-  console.log(`  CSS .storyline-head: ${t20_17g ? "✓" : "✗"}`);
-  console.log(`  CSS .storyline-stat: ${t20_17h ? "✓" : "✗"}`);
-  console.log(`  CSS .storyline-timeline: ${t20_17i ? "✓" : "✗"}`);
-  console.log(`  CSS .storyline-row: ${t20_17j ? "✓" : "✗"}`);
+  console.log(`  CSS .compound-two-cols: ${t20_17a ? "✓" : "✗"}`);
+  console.log(`  CSS .ls-list: ${t20_17b ? "✓" : "✗"}`);
+  console.log(`  CSS .ls-item: ${t20_17c ? "✓" : "✗"}`);
+  console.log(`  CSS .ls-qty-pos: ${t20_17d ? "✓" : "✗"}`);
+  console.log(`  CSS .lingshi-summary: ${t20_17e ? "✓" : "✗"}`);
+  console.log(`  CSS .it-list: ${t20_17f ? "✓" : "✗"}`);
+  console.log(`  CSS .it-item: ${t20_17g ? "✓" : "✗"}`);
+  console.log(`  CSS .it-status-hold: ${t20_17h ? "✓" : "✗"}`);
+  console.log(`  CSS .storyline-dashboard: ${t20_17i ? "✓" : "✗"}`);
+  console.log(`  CSS .storyline-timeline: ${t20_17j ? "✓" : "✗"}`);
   console.log(`  CSS .ch2-list: ${t20_17k ? "✓" : "✗"}`);
   console.log(`  CSS .ch2-item: ${t20_17l ? "✓" : "✗"}`);
   console.log(`  CSS .ch2-delete: ${t20_17m ? "✓" : "✗"}`);
@@ -2533,10 +2541,184 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     t20_13a && t20_13b && t20_13c && t20_13d && t20_13e &&
     t20_14a && t20_14b && t20_14c && t20_14d && t20_14e && t20_14f && t20_14g && t20_14h && t20_14i && t20_14j && t20_14k && t20_14l && t20_14m &&
     t20_15a && t20_15b && t20_15c && t20_15d && t20_15e &&
-    t20_16a && t20_16b &&
+    t20_16a && t20_16b && t20_16c && t20_16d &&
     t20_17a && t20_17b && t20_17c && t20_17d && t20_17e && t20_17f && t20_17g && t20_17h && t20_17i && t20_17j && t20_17k && t20_17l && t20_17m && t20_17n;
-  console.log("  v19 改动:", t20All ? "PASS" : "FAIL");
+  console.log("  v19+v21 compound 改动:", t20All ? "PASS" : "FAIL");
   if (!t20All) allPass = false;
+
+
+  // ============================================================
+  // 测试 21：v21（伏笔重新编号 + 财物tab拆双台账+双导入）
+  // ============================================================
+  console.log("\n测试 21：v21（伏笔重新编号 + 灵石+物品双台账+双导入）");
+
+  // 21.1 renumberForeshadowing 函数存在 + 调 detectFsNoFormat + formatFsNoByFormat
+  const t21_1a = /function renumberForeshadowing\(\)/.test(SRC);
+  const t21_1b = /detectFsNoFormat\(p\.items\)/.test(SRC) || /detectFsNoFormat\(.*items.*\)/.test(SRC);
+  const t21_1c = /formatFsNoByFormat\(n, fmt\)/.test(SRC) || /formatFsNoByFormat\(.*\)/.test(SRC);
+  const t21_1d = /pushHistory\(\)/.test(SRC.match(/function renumberForeshadowing[\s\S]*?\n  \}/)[0]);
+  const t21_1e = /saveAsJson\(\)/.test(SRC.match(/function renumberForeshadowing[\s\S]*?\n  \}/)[0]);
+  console.log(`  renumberForeshadowing 函数: ${t21_1a ? "✓" : "✗"}`);
+  console.log(`  内含 detectFsNoFormat: ${t21_1b ? "✓" : "✗"}`);
+  console.log(`  内含 formatFsNoByFormat: ${t21_1c ? "✓" : "✗"}`);
+  console.log(`  内含 pushHistory: ${t21_1d ? "✓" : "✗"}`);
+  console.log(`  内含 saveAsJson: ${t21_1e ? "✓" : "✗"}`);
+  if (!(t21_1a && t21_1b && t21_1c && t21_1d && t21_1e)) allPass = false;
+
+  // 21.2 重新编号行为模拟（用 detect+format 验证 1,2,4,5 → 1,2,3,4）
+  const t21_2_cases = [];
+  if (helperSrc && fmtSrc) {
+    const detect21 = new Function(`${helperSrc[0]}\nreturn detectFsNoFormat;`)();
+    const fmtize21 = new Function(`${fmtSrc[0]}\nreturn formatFsNoByFormat;`)();
+    // 模拟 4 条编号 1,2,4,5 的伏笔（按 sortKey 排序后重排）
+    const items21 = [
+      { fsNo: "1", name: "甲" },
+      { fsNo: "2", name: "乙" },
+      { fsNo: "4", name: "丙" },
+      { fsNo: "5", name: "丁" },
+    ];
+    const fmt21 = detect21(items21);
+    t21_2_cases.push(fmt21 && fmt21.prefix === "" && fmt21.padWidth === 1); // 纯数字格式
+    const renum = items21.map((it, i) => fmtize21(i + 1, fmt21));
+    t21_2_cases.push(renum[0] === "1");
+    t21_2_cases.push(renum[1] === "2");
+    t21_2_cases.push(renum[2] === "3"); // 旧 4 → 新 3
+    t21_2_cases.push(renum[3] === "4"); // 旧 5 → 新 4
+    // FS-001/FS-002/FS-004/FS-005 → FS-001/FS-002/FS-003/FS-004
+    const itemsFs = [
+      { fsNo: "FS-001" },
+      { fsNo: "FS-002" },
+      { fsNo: "FS-004" },
+      { fsNo: "FS-005" },
+    ];
+    const fmtFs = detect21(itemsFs);
+    t21_2_cases.push(fmtFs && fmtFs.prefix === "FS-" && fmtFs.padWidth === 3);
+    const renumFs = itemsFs.map((it, i) => fmtize21(i + 1, fmtFs));
+    t21_2_cases.push(renumFs[0] === "FS-001");
+    t21_2_cases.push(renumFs[2] === "FS-003");
+    t21_2_cases.push(renumFs[3] === "FS-004");
+  } else {
+    t21_2_cases.push(false, false, false, false, false, false, false, false, false, false);
+  }
+  console.log(`  detect 纯数字 1,2,4,5 → prefix="", pad=1: ${t21_2_cases[0] ? "✓" : "✗"}`);
+  console.log(`  renum 1,2,4,5 → "1": ${t21_2_cases[1] ? "✓" : "✗"}`);
+  console.log(`  renum 1,2,4,5 → "2": ${t21_2_cases[2] ? "✓" : "✗"}`);
+  console.log(`  renum 1,2,4,5 → "3": ${t21_2_cases[3] ? "✓" : "✗"}`);
+  console.log(`  renum 1,2,4,5 → "4": ${t21_2_cases[4] ? "✓" : "✗"}`);
+  console.log(`  detect FS-001/002/004/005 → "FS-", pad=3: ${t21_2_cases[5] ? "✓" : "✗"}`);
+  console.log(`  renum FS-001: ${t21_2_cases[6] ? "✓" : "✗"}`);
+  console.log(`  renum FS-003: ${t21_2_cases[7] ? "✓" : "✗"}`);
+  console.log(`  renum FS-004: ${t21_2_cases[8] ? "✓" : "✗"}`);
+  if (!t21_2_cases.every(Boolean)) allPass = false;
+
+  // 21.3 PAGES.items 6 字段
+  const itBlock = (() => {
+    const start = SRC.indexOf("items: {");
+    const end = SRC.indexOf("storyline: {");
+    return start > 0 && end > start ? SRC.slice(start, end) : "";
+  })();
+  const t21_3a = /fields:\s*\{[\s\S]*?chapter:\s*\[/.test(itBlock);
+  const t21_3b = /fields:\s*\{[\s\S]*?name:\s*\[/.test(itBlock);
+  const t21_3c = /fields:\s*\{[\s\S]*?quantity:\s*\[/.test(itBlock);
+  const t21_3d = /fields:\s*\{[\s\S]*?category:\s*\[/.test(itBlock);
+  const t21_3e = /fields:\s*\{[\s\S]*?status:\s*\[/.test(itBlock);
+  const t21_3f = /fields:\s*\{[\s\S]*?description:\s*\[/.test(itBlock);
+  console.log(`  PAGES.items.fields.chapter: ${t21_3a ? "✓" : "✗"}`);
+  console.log(`  PAGES.items.fields.name: ${t21_3b ? "✓" : "✗"}`);
+  console.log(`  PAGES.items.fields.quantity: ${t21_3c ? "✓" : "✗"}`);
+  console.log(`  PAGES.items.fields.category: ${t21_3d ? "✓" : "✗"}`);
+  console.log(`  PAGES.items.fields.status: ${t21_3e ? "✓" : "✗"}`);
+  console.log(`  PAGES.items.fields.description: ${t21_3f ? "✓" : "✗"}`);
+  if (!(t21_3a && t21_3b && t21_3c && t21_3d && t21_3e && t21_3f)) allPass = false;
+
+  // 21.4 PAGES.goods 是 compound（无 fields/makeItem）
+  const goodsCompoundBlock = (() => {
+    const start = SRC.indexOf("goods: {");
+    const end = SRC.indexOf("lingshi: {");
+    return start > 0 && end > start ? SRC.slice(start, end) : "";
+  })();
+  const t21_4a = /goods:\s*\{[\s\S]{0,200}?kind:\s*"compound"/.test(goodsCompoundBlock);
+  const t21_4b = /matchName\(\)\s*\{\s*return\s*false;\s*\}/.test(goodsCompoundBlock) || /matchName\(\)\s*\{\s*return\s*false/.test(goodsCompoundBlock);
+  console.log(`  PAGES.goods kind="compound": ${t21_4a ? "✓" : "✗"}`);
+  console.log(`  PAGES.goods.matchName return false: ${t21_4b ? "✓" : "✗"}`);
+  if (!(t21_4a && t21_4b)) allPass = false;
+
+  // 21.5 通用 addNewItemInPage(pid) + deleteItemFromPage(pid, id) 辅助函数
+  const t21_5a = /function addNewItemInPage\(pid\)/.test(SRC);
+  const t21_5b = /function deleteItemFromPage\(pid, id\)/.test(SRC);
+  console.log(`  addNewItemInPage(pid) 函数: ${t21_5a ? "✓" : "✗"}`);
+  console.log(`  deleteItemFromPage(pid, id) 函数: ${t21_5b ? "✓" : "✗"}`);
+  if (!(t21_5a && t21_5b)) allPass = false;
+
+  // 21.6 IMPORT_SECTIONS 包含 lingshi + items
+  const importBlock = (() => {
+    const start = SRC.indexOf("const IMPORT_SECTIONS");
+    const end = start > 0 ? SRC.indexOf("const ", start + 30) : -1;
+    return start > 0 && end > start ? SRC.slice(start, end) : "";
+  })();
+  const t21_6a = /lingshi:\s*\{/.test(importBlock);
+  const t21_6b = /items:\s*\{/.test(importBlock);
+  const t21_6c = /"fs-main"/.test(importBlock);
+  console.log(`  IMPORT_SECTIONS.lingshi: ${t21_6a ? "✓" : "✗"}`);
+  console.log(`  IMPORT_SECTIONS.items: ${t21_6b ? "✓" : "✗"}`);
+  console.log(`  IMPORT_SECTIONS.fs-main（v14 已有）: ${t21_6c ? "✓" : "✗"}`);
+  if (!(t21_6a && t21_6b && t21_6c)) allPass = false;
+
+  // 21.7 openImportModalWithSections(sections) 辅助函数
+  const t21_7a = /function openImportModalWithSections\(sectionIds?\)/.test(SRC);
+  const t21_7b = /btn-import-lingshi.*addEventListener/.test(SRC) || /#btn-import-lingshi/.test(SRC);
+  const t21_7c = /#btn-import-items/.test(SRC);
+  console.log(`  openImportModalWithSections 函数: ${t21_7a ? "✓" : "✗"}`);
+  console.log(`  #btn-import-lingshi 事件绑定: ${t21_7b ? "✓" : "✗"}`);
+  console.log(`  #btn-import-items 事件绑定: ${t21_7c ? "✓" : "✗"}`);
+  if (!(t21_7a && t21_7b && t21_7c)) allPass = false;
+
+  // 21.8 index.html 新按钮 + 导入 section
+  const t21_8a = /id="btn-fs-renumber"/.test(html);
+  const t21_8b = /id="btn-import-lingshi"/.test(html);
+  const t21_8c = /id="btn-import-items"/.test(html);
+  const t21_8d = /id="import-section-lingshi"/.test(html);
+  const t21_8e = /id="import-section-items"/.test(html);
+  const t21_8f = /id="btn-import-lingshi-confirm"/.test(html);
+  const t21_8g = /id="btn-import-items-confirm"/.test(html);
+  console.log(`  #btn-fs-renumber 按钮: ${t21_8a ? "✓" : "✗"}`);
+  console.log(`  #btn-import-lingshi 按钮: ${t21_8b ? "✓" : "✗"}`);
+  console.log(`  #btn-import-items 按钮: ${t21_8c ? "✓" : "✗"}`);
+  console.log(`  #import-section-lingshi: ${t21_8d ? "✓" : "✗"}`);
+  console.log(`  #import-section-items: ${t21_8e ? "✓" : "✗"}`);
+  console.log(`  #btn-import-lingshi-confirm: ${t21_8f ? "✓" : "✗"}`);
+  console.log(`  #btn-import-items-confirm: ${t21_8g ? "✓" : "✗"}`);
+  if (!(t21_8a && t21_8b && t21_8c && t21_8d && t21_8e && t21_8f && t21_8g)) allPass = false;
+
+  // 21.9 CSS 新类：ls-status-it + lingshi-summary pill
+  const t21_9a = /\.ls-item[\s\S]{0,200}?display:\s*grid/.test(_css);
+  const t21_9b = /\.it-item[\s\S]{0,200}?display:\s*grid/.test(_css);
+  const t21_9c = /\.ls-qty-pos/.test(_css);
+  const t21_9d = /\.ls-qty-neg/.test(_css);
+  const t21_9e = /\.it-status-hold/.test(_css) || /\.it-status/.test(_css);
+  const t21_9f = /\.lingshi-summary-pill/.test(_css);
+  const t21_9g = /\.compound-two-cols/.test(_css);
+  console.log(`  CSS .ls-list 网格布局: ${t21_9a ? "✓" : "✗"}`);
+  console.log(`  CSS .it-list 网格布局: ${t21_9b ? "✓" : "✗"}`);
+  console.log(`  CSS .ls-qty-pos: ${t21_9c ? "✓" : "✗"}`);
+  console.log(`  CSS .ls-qty-neg: ${t21_9d ? "✓" : "✗"}`);
+  console.log(`  CSS .it-status: ${t21_9e ? "✓" : "✗"}`);
+  console.log(`  CSS .lingshi-summary-pill: ${t21_9f ? "✓" : "✗"}`);
+  console.log(`  CSS .compound-two-cols: ${t21_9g ? "✓" : "✗"}`);
+  if (!(t21_9a && t21_9b && t21_9c && t21_9d && t21_9e && t21_9f && t21_9g)) allPass = false;
+
+  const t21All =
+    t21_1a && t21_1b && t21_1c && t21_1d && t21_1e &&
+    t21_2_cases.every(Boolean) &&
+    t21_3a && t21_3b && t21_3c && t21_3d && t21_3e && t21_3f &&
+    t21_4a && t21_4b &&
+    t21_5a && t21_5b &&
+    t21_6a && t21_6b && t21_6c &&
+    t21_7a && t21_7b && t21_7c &&
+    t21_8a && t21_8b && t21_8c && t21_8d && t21_8e && t21_8f && t21_8g &&
+    t21_9a && t21_9b && t21_9c && t21_9d && t21_9e && t21_9f && t21_9g;
+  console.log("  v21 改动:", t21All ? "PASS" : "FAIL");
+  if (!t21All) allPass = false;
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);
