@@ -2720,6 +2720,58 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v21 改动:", t21All ? "PASS" : "FAIL");
   if (!t21All) allPass = false;
 
+  // —— v22 测试: goods tab 渲染防御 (修复 v21 引入的 tab 消失 + 整个界面无法交互 bug) ——
+  console.log("\n测试 22：v21 修复 goods tab 崩溃（state.pages.goods 兜底 + renderNavTabs 防御）");
+  const t22_1 = /const PAGES = \{[\s\S]*?goods: \{[\s\S]*?kind: "compound"/.test(SRC);
+  console.log(`  PAGES.goods 是 compound: ${t22_1 ? "✓" : "✗"}`);
+  if (!t22_1) allPass = false;
+
+  // 默认 state.pages 必须包含 goods（防止 init 渲染时 state.pages["goods"] 是 undefined）
+  // 匹配模式: pages: { ... goods: makePageState() ... }
+  const t22_2 = /pages:\s*\{[\s\S]*?goods:\s*makePageState\(\)/.test(SRC);
+  console.log(`  state.pages 默认初始化含 goods: makePageState(): ${t22_2 ? "✓" : "✗"}`);
+  if (!t22_2) allPass = false;
+
+  // renderNavTabs 必须有 state.pages[pid] 防御
+  // 匹配模式: const p = state.pages[pid] || { items: [] };
+  const t22_3 = /const p = state\.pages\[pid\][^;]*\|\|\s*\{\s*items:\s*\[\]\s*\}/.test(SRC);
+  console.log(`  renderNavTabs 含 p = state.pages[pid] || { items: [] } 防御: ${t22_3 ? "✓" : "✗"}`);
+  if (!t22_3) allPass = false;
+
+  // 必须有 count 防御
+  const t22_4 = /const count = p\.items \? p\.items\.length : 0/.test(SRC);
+  console.log(`  renderNavTabs count 防御 (p.items ? length : 0): ${t22_4 ? "✓" : "✗"}`);
+  if (!t22_4) allPass = false;
+
+  // 行为验证: 模拟 renderNavTabs 遍历 7 个 PAGE_IDS 算 count, 不应该 throw
+  // PAGES 顶层 key 提取: 找 PAGES 块里所有顶层 key (id: "xxx" 模式)
+  const pagesBlockMatch = SRC.match(/const PAGES = \{([\s\S]*?)\n  \};/);
+  // 改用更宽松的提取: 找所有 id: "xxx" 顶层出现 (在 PAGES 块里)
+  const pageIds = [];
+  if (pagesBlockMatch) {
+    const block = pagesBlockMatch[1];
+    const idRe = /^    (\w+): \{\s*\n\s*id: "(\w+)"/gm;
+    let m;
+    while ((m = idRe.exec(block)) !== null) pageIds.push(m[2]);
+  }
+  const t22_5 = pageIds.length === 7 && pageIds.includes("chapter") && pageIds.includes("foreshadowing") && pageIds.includes("goods") && pageIds.includes("lingshi") && pageIds.includes("items") && pageIds.includes("storyline") && pageIds.includes("character");
+  console.log(`  PAGES 注册表含 7 个页面 (含 goods): ${t22_5 ? "✓ ([" + pageIds.join(", ") + "])" : "✗ (实际 " + pageIds.length + ": [" + pageIds.join(", ") + "])"}`);
+  if (!t22_5) allPass = false;
+
+  // 验证 goods 在 PAGES 注册表里有 icon 和 label
+  const t22_6 = /goods: \{\s*\n\s*id: "goods",[\s\S]*?icon:/m.test(SRC) && /goods: \{\s*\n\s*id: "goods",[\s\S]*?label:/m.test(SRC);
+  console.log(`  PAGES.goods 有 icon + label: ${t22_6 ? "✓" : "✗"}`);
+  if (!t22_6) allPass = false;
+
+  // 验证 init default state 包含 goods (在 pages: { ... } 块里)
+  const t22_7 = /pages:\s*\{[\s\S]*?goods:\s*makePageState\(\)/.test(SRC);
+  console.log(`  init default pages: { ... goods: makePageState() ... } 存在: ${t22_7 ? "✓" : "✗"}`);
+  if (!t22_7) allPass = false;
+
+  const t22All = t22_1 && t22_2 && t22_3 && t22_4 && t22_5 && t22_6 && t22_7;
+  console.log("  v22 修复:", t22All ? "PASS" : "FAIL");
+  if (!t22All) allPass = false;
+
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);
 }

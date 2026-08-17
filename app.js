@@ -674,6 +674,10 @@
       //   - storyline 是 dashboard 类型（聚合章节数据，无 items）
       storyline: makePageState(),
       character: makePageState(),
+      // v21 修复：goods 是 compound wrapper (kind: "compound"), 不存数据, 但 state.pages
+      // 必须有这个 key, 否则 renderNavTabs 在 pid="goods" 时访问 .items 会 TypeError
+      // （PAGES 含 goods, 但 init 默认 state.pages 不含 → 首次访问 throw → tab 消失）
+      goods: makePageState(),
       lingshi: makePageState(),
       items: makePageState(),
     },
@@ -1942,8 +1946,11 @@
     }
     wrap.innerHTML = PAGE_IDS.map((pid) => {
       const def = PAGES[pid];
-      const p = state.pages[pid];
-      const count = p.items.length;
+      // v21 修复：防御 state.pages[pid] 缺失（goods 是 compound, load 迁移末尾会 delete；
+      // 首次访问无 localStorage 时 load() 在 try 开头就 throw, catch 后走默认 state,
+      // 默认 state.pages 可能不含某个 PAGES 项）
+      const p = state.pages[pid] || { items: [] };
+      const count = p.items ? p.items.length : 0;
       const active = pid === state.currentPage ? "active" : "";
       return `<button class="nav-tab ${active}" data-page="${pid}" role="tab" aria-selected="${pid === state.currentPage}"><span class="nav-tab-icon">${def.icon}</span><span class="nav-tab-label">${escapeHtml(def.label)}</span><span class="nav-tab-count">${count}</span></button>`;
     }).join("");
