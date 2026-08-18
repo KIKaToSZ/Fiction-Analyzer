@@ -1531,17 +1531,18 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  PAGES.foreshadowing 含 recordDefaults: ${t15_2e ? "✓" : "✗"}`);
   if (!(t15_2a && t15_2b && t15_2c && t15_2d && t15_2e)) allPass = false;
 
-  // 15.3 主表 item 结构用 fsNo + name + status（不再有 setup/notes/payoff）
+  // 15.3 主表 item 结构用 fsNo + name + status（v15 之后无 setup/notes/payoff）
+  //       v23 重新引入 setup/payoff 给「铺设章节」「回收章节」字段用，v30 再次移除
   const t15_3a = /it\.fsNo\s*=/.test(SRC) || /item\.fsNo/.test(SRC);
   const t15_3b = /state\.pages\.foreshadowing\.items/.test(SRC) || /pages\.foreshadowing\s*\?\s*\.\s*items/.test(SRC);
-  // v23 重新引入 it.setup / it.payoff（grid 模式 detail 区有「铺设章节」「回收章节」字段）
-  const hasFsSetup = /it\.setup\s*=/.test(SRC);
-  const hasFsPayoff = /it\.payoff\s*=/.test(SRC);
+  // v30：主表不再写 it.setup / it.payoff（伏笔详情区已删「铺设章节」「回收章节」字段）
+  const noFsSetup = !/it\.setup\s*=/.test(SRC);
+  const noFsPayoff = !/it\.payoff\s*=/.test(SRC);
   console.log(`  item.fsNo 字段存在: ${t15_3a ? "✓" : "✗"}`);
   console.log(`  pages.foreshadowing.items 访问: ${t15_3b ? "✓" : "✗"}`);
-  console.log(`  item.setup 字段已重新引入 (v23 grid detail): ${hasFsSetup ? "✓" : "✗"}`);
-  console.log(`  item.payoff 字段已重新引入 (v23 grid detail): ${hasFsPayoff ? "✓" : "✗"}`);
-  if (!(t15_3a && t15_3b && hasFsSetup && hasFsPayoff)) allPass = false;
+  console.log(`  item.setup 字段已彻底移除 (v30): ${noFsSetup ? "✓" : "✗"}`);
+  console.log(`  item.payoff 字段已彻底移除 (v30): ${noFsPayoff ? "✓" : "✗"}`);
+  if (!(t15_3a && t15_3b && noFsSetup && noFsPayoff)) allPass = false;
 
   // 15.4 IMPORT_SECTIONS 包含 fs-main 和 fs-record
   const t15_4a = /IMPORT_SECTIONS\s*=\s*\{/.test(SRC);
@@ -1663,7 +1664,7 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  index.html #import-fs-record-drop: ${t15_13d ? "✓" : "✗"}`);
   if (!(t15_13a && t15_13b && t15_13c && t15_13d)) allPass = false;
 
-  const t15All = t15_1a && t15_2a && t15_2b && t15_2c && t15_2d && t15_2e && t15_3a && t15_3b && hasFsSetup && hasFsPayoff && t15_4a && t15_4b && t15_4c && t15_4d && t15_5a && t15_5b && t15_5c && t15_6a && t15_6b && t15_6c && t15_6d && t15_7a && t15_7b && t15_7c && t15_7d && t15_7e && t15_8a && t15_8b && t15_8c && t15_8d && t15_8e && t15_8f && t15_9a && t15_9b && t15_9c && t15_10a && t15_10b && t15_11a && t15_11b && t15_12a && t15_12b && t15_12c && t15_12d && t15_12e && t15_12f && t15_12g && t15_12h && t15_13a && t15_13b && t15_13c && t15_13d;
+  const t15All = t15_1a && t15_2a && t15_2b && t15_2c && t15_2d && t15_2e && t15_3a && t15_3b && noFsSetup && noFsPayoff && t15_4a && t15_4b && t15_4c && t15_4d && t15_5a && t15_5b && t15_5c && t15_6a && t15_6b && t15_6c && t15_6d && t15_7a && t15_7b && t15_7c && t15_7d && t15_7e && t15_8a && t15_8b && t15_8c && t15_8d && t15_8e && t15_8f && t15_9a && t15_9b && t15_9c && t15_10a && t15_10b && t15_11a && t15_11b && t15_12a && t15_12b && t15_12c && t15_12d && t15_12e && t15_12f && t15_12g && t15_12h && t15_13a && t15_13b && t15_13c && t15_13d;
   console.log("  v14 改动:", t15All ? "PASS" : "FAIL");
   if (!t15All) allPass = false;
 
@@ -2851,8 +2852,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!(t23_10a && t23_10b)) allPass = false;
 
   // 23.11 bindFsEditorEvents 监听 setup/payoff/notes 输入
-  const t23_11 = /\[fsFsno, fsName, fsStatus, fsSetup, fsPayoff, fsNotes\]\.forEach/.test(SRC);
-  console.log(`  bindFsEditorEvents 监听 fsSetup/fsPayoff/fsNotes: ${t23_11 ? "✓" : "✗"}`);
+  //   v30：v23 引入的 setup/payoff/notes 监听数组已精简成 [fsFsno, fsName, fsStatus]
+  const t23_11 = !/\[fsFsno, fsName, fsStatus, fsSetup, fsPayoff, fsNotes\]\.forEach/.test(SRC);
+  console.log(`  bindFsEditorEvents 已删 fsSetup/fsPayoff/fsNotes 监听 (v30): ${t23_11 ? "✓" : "✗"}`);
   if (!t23_11) allPass = false;
 
   // 23.12 删伏笔时清 fsExpandedId
@@ -3596,6 +3598,66 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     && renderActiveAndBorder && borderSelected;
   console.log("  v29 改动:", t29All ? "PASS" : "FAIL");
   if (!t29All) allPass = false;
+
+  // ===== v30: 移除主表 setup/payoff/notes + 修复滚动 =====
+  //   1) 伏笔详情区移除【铺设章节】【回收章节】【备注 / 详情】三部分
+  //   2) .fs-grid 加 align-content: start → 1 个 item 不再被拉伸填充满界面
+  //     （.page-view 实际上 v29 已有 flex: 1，但 fs-grid align-content 没设时
+  //      1 个 item 仍被 stretch 到 grid 容器高度，看起来"填充满界面"）
+  //   3) 综合：50 个伏笔能纵向滚动、1 个 item 不再填充满界面、40 个 item 展开能看到内容
+  console.log("\n测试 30：v30 - 移除主表三字段 + 修复滚动/填充满界面");
+
+  // 30.1 UI 层已删「铺设章节」「回收章节」「备注 / 详情」（HTML label 标签 + input/textarea 元素）
+  //     注：PAGES.foreshadowing.fields.setup 同义词数组里仍保留「铺设章节」作为导入兼容词（v12 设计），
+  //         这不是 UI 标签，所以 v30 不动；只验证 <label> 标签和 form 元素已彻底移除
+  const noSetupLabel = !/<label[^>]*>[\s\S]{0,40}铺设章节/.test(appText);
+  const noPayoffLabel = !/<label[^>]*>[\s\S]{0,40}回收章节/.test(appText);
+  const noNotesLabel = !/<label[^>]*>[\s\S]{0,40}备注\s*\/\s*详情/.test(appText);
+  const noFsSetupInput = !/id="fs-setup"/.test(appText);
+  const noFsPayoffInput = !/id="fs-payoff"/.test(appText);
+  const noFsNotesTa = !/id="fs-notes"/.test(appText);
+  console.log(`  渲染区已删「铺设章节」label: ${noSetupLabel ? "✓" : "✗"}`);
+  console.log(`  渲染区已删「回收章节」label: ${noPayoffLabel ? "✓" : "✗"}`);
+  console.log(`  渲染区已删「备注 / 详情」label: ${noNotesLabel ? "✓" : "✗"}`);
+  console.log(`  渲染区已删 fs-setup input: ${noFsSetupInput ? "✓" : "✗"}`);
+  console.log(`  渲染区已删 fs-payoff input: ${noFsPayoffInput ? "✓" : "✗"}`);
+  console.log(`  渲染区已删 fs-notes textarea: ${noFsNotesTa ? "✓" : "✗"}`);
+  if (!(noSetupLabel && noPayoffLabel && noNotesLabel && noFsSetupInput && noFsPayoffInput && noFsNotesTa)) allPass = false;
+
+  // 30.2 bindFsEditorEvents 不再写 it.notes
+  const noItNotesAssign = !/it\.notes\s*=/.test(appText);
+  console.log(`  bindFsEditorEvents 已删 it.notes 赋值: ${noItNotesAssign ? "✓" : "✗"}`);
+  if (!noItNotesAssign) allPass = false;
+
+  // 30.3 搜索 primaryKeys 精简为 [name, fsNo, status]
+  const primaryKeysClean = /pid === "chapter"\s*\?\s*\[\s*"title",\s*"no",\s*"content"\s*\]\s*:\s*\[\s*"name",\s*"fsNo",\s*"status"\s*\]/.test(appText);
+  console.log(`  搜索 primaryKeys 精简为 [name, fsNo, status]: ${primaryKeysClean ? "✓" : "✗"}`);
+  if (!primaryKeysClean) allPass = false;
+
+  // 30.4 CSS .fs-form-row 已清理（不再有任何 HTML 元素使用）
+  const noFsFormRowCss = !/\.fs-form-row\s*\{/.test(cssText);
+  console.log(`  CSS .fs-form-row 已清理: ${noFsFormRowCss ? "✓" : "✗"}`);
+  if (!noFsFormRowCss) allPass = false;
+
+  // 30.5 .fs-grid 加 align-content: start（关键：1 个 item 不被拉伸填充满界面）
+  const fsGridAlignContent = /\.fs-grid\s*\{[\s\S]{0,800}align-content:\s*start/.test(cssText);
+  console.log(`  CSS: .fs-grid align-content: start (v30 修复 1 个 item 填充满界面): ${fsGridAlignContent ? "✓" : "✗"}`);
+  if (!fsGridAlignContent) allPass = false;
+
+  // 30.6 验证 .page-view 仍有 flex 链路（v29 已加 flex: 1 + min-width: 0 + min-height: 0）
+  //     这是 50 个伏笔能滚动的关键；v30 没动 page-view 但确认意图清楚
+  const pageViewFlex = /\.page-view\s*\{[\s\S]{0,500}flex:\s*1(?=[\s;}])/.test(cssText);
+  console.log(`  CSS: .page-view flex: 1 仍存在 (v29 已有, v30 复用): ${pageViewFlex ? "✓" : "✗"}`);
+  if (!pageViewFlex) allPass = false;
+
+  const t30All = noSetupLabel && noPayoffLabel && noNotesLabel && noFsSetupInput && noFsPayoffInput && noFsNotesTa
+    && noItNotesAssign
+    && primaryKeysClean
+    && noFsFormRowCss
+    && fsGridAlignContent
+    && pageViewFlex;
+  console.log("  v30 改动:", t30All ? "PASS" : "FAIL");
+  if (!t30All) allPass = false;
 
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

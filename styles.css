@@ -489,6 +489,9 @@ textarea {
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+  /* v30：flex: 1 (= 1 1 0%) 让 page-view 占满 main-area 剩余高度
+     —— 关键：之前虽然写了 flex:1 但没让 fs-grid 真正撑满（v29 那次缺 min-width:0 时 grid 被水平撑开）
+     —— 现在补全 flex column 链路：page-view 占满 → fs-grid flex:1 撑满 → 内容超出 grid 高度时出滚动条 */
   flex: 1;
   overflow: hidden;
 }
@@ -2144,14 +2147,6 @@ input[type="range"]::-moz-range-thumb {
 .editor-meta-fs .meta-actions-last {
   align-self: end;
 }
-
-.fs-form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
 @media (max-width: 700px) {
   .editor-meta-fs {
     grid-template-columns: 1fr 1fr;
@@ -2159,9 +2154,6 @@ input[type="range"]::-moz-range-thumb {
   .editor-meta-fs .meta-actions {
     grid-column: 1 / -1;
     justify-content: flex-end;
-  }
-  .fs-form-row {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -3386,6 +3378,10 @@ input[type="range"]::-moz-range-thumb {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* v30：align-content: start 阻止 grid track 被 stretch 到容器高度
+     —— CSS Grid 默认 align-content: stretch，剩 1 个 item 时会被拉伸到 grid 容器高度（填充满界面）
+     —— 加 start 后 track 高度 = max-content（item 自然高度），空状态和 1 个 item 都不再被拉伸 */
+  align-content: start;
   /* 滚动条跟主题色统一（webkit 系） */
   scrollbar-width: thin;
   scrollbar-color: var(--border, #e2d6c4) transparent;
@@ -3631,18 +3627,6 @@ input[type="range"]::-moz-range-thumb {
   background: var(--readonly-bg, rgba(0, 0, 0, 0.02));
   color: var(--muted, #6a5a4a);
   cursor: default;
-}
-
-.fs-form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-@media (max-width: 700px) {
-  .fs-detail-row { grid-template-columns: 1fr 1fr; }
-  .fs-detail-row .meta-actions { grid-column: 1 / -1; justify-content: flex-end; }
-  .fs-form-row { grid-template-columns: 1fr; }
 }
 
 /* 覆盖旧的 .fs-list / .fs-list-row 样式——grid 模式下不显示 */

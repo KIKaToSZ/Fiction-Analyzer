@@ -2133,7 +2133,7 @@
 
   // v23：渲染展开卡片的 detail 区域（完整编辑器）
   //   - 内容结构 = 原来的 renderFsEditor 内部，但放进 .fs-card-detail 容器
-  //   - 包含：伏笔编号/名称/状态 + 铺设/回收章节 + 备注 + 履历 + 编辑/完成/删除按钮
+  //   - 包含：伏笔编号/名称/状态 + 履历 + 编辑按钮
   //   - 编辑/查看态切换：state.ui.fsEditing 仍然控制；UI 改为 inline 按钮（不再独立放工具栏）
   function renderFsCardDetail(itemId) {
     const detail = $(`.fs-card-detail[data-detail-for="${CSS.escape(itemId)}"]`);
@@ -2181,18 +2181,6 @@
         </div>
       </div>
       <div class="fs-detail-body ${mainClass}">
-        <div class="fs-form-row">
-          <div class="meta-field">
-            <label>铺设章节</label>
-            <input id="fs-setup" type="text" ${readonlyAttr} value="${escapeHtml(item.setup || "")}" placeholder="如：第三章、第12章" />
-          </div>
-          <div class="meta-field">
-            <label>回收章节</label>
-            <input id="fs-payoff" type="text" ${readonlyAttr} value="${escapeHtml(item.payoff || "")}" placeholder="如：第二十章、第45章" />
-          </div>
-        </div>
-        <label class="body-label">备注 / 详情</label>
-        <textarea id="fs-notes" ${readonlyAttr} placeholder="伏笔的具体内容、提示、相关情节等…">${escapeHtml(item.notes || "")}</textarea>
         <div class="fs-records-section">
           <div class="fs-records-header">
             <span class="fs-records-title">📋 伏笔履历</span>
@@ -3167,17 +3155,10 @@
     const fsFsno = $("#fs-fsno");
     const fsName = $("#fs-name");
     const fsStatus = $("#fs-status");
-    // v23：grid 模式下，新增铺设章节/回收章节/备注 三个字段
-    const fsSetup = $("#fs-setup");
-    const fsPayoff = $("#fs-payoff");
-    const fsNotes = $("#fs-notes");
     const syncMeta = () => {
       it.fsNo = String(fsFsno?.value ?? it.fsNo ?? "").trim();
       it.name = fsName?.value ?? it.name;
       it.status = fsStatus?.value ?? it.status;
-      it.setup = fsSetup?.value ?? it.setup;
-      it.payoff = fsPayoff?.value ?? it.payoff;
-      it.notes = fsNotes?.value ?? it.notes;
       // v23：grid 模式下，同步当前卡片的 head 显示
       //   v27：head 已删 fs-col 系列的 fsNo 列（伏笔编号不再展示在 head），只剩 name + status
       const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
@@ -3195,19 +3176,10 @@
       }
       debouncedPushHistory();
     };
-    [fsFsno, fsName, fsStatus, fsSetup, fsPayoff, fsNotes].forEach((el) => {
+    [fsFsno, fsName, fsStatus].forEach((el) => {
       el?.addEventListener("input", syncMeta);
       el?.addEventListener("change", syncMeta);
     });
-    // v23：备注字数统计（实时显示给用户）—— grid 模式才有
-    if (fsNotes) {
-      const updateWordCount = () => {
-        // 找 detail 区域内的 .fs-detail-body 容器（保留 stats-left id 占位）
-        // 当前实现：直接更新 stats-left
-        // 不强制显示；如有需要后续可加
-      };
-      fsNotes.addEventListener("input", updateWordCount);
-    }
     // v19：编辑/查看态切换
     //  - 切回查看态时：先检查内容是否真的变了（isFsEditorDirty），
     //    有变化才调 saveCurrentItem() 落盘 + 入 undo 栈；
@@ -6570,7 +6542,7 @@
         const fields = def.fields;
         const primaryKeys = pid === "chapter"
           ? ["title", "no", "content"]
-          : ["name", "no", "setup", "payoff", "status", "notes"];
+          : ["name", "fsNo", "status"];
         let titleHit = null;
         const contentSnippets = []; // 多个 content 命中
         let matchedField = null;
@@ -6587,7 +6559,7 @@
               if (!matchedField) matchedField = label;
             }
           } else {
-            // 长字段（content / notes / setup / payoff）：每个命中位置都生成一条结果
+            // 长字段（content）：每个命中位置都生成一条结果
             const occs = findAllOccurrences(strVal, query);
             occs.forEach((pos, occIdx) => {
               const snip = buildSnippet(strVal, query, occIdx);
