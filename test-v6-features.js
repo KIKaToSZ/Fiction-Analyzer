@@ -2855,14 +2855,153 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  CSS .fs-grid 三列布局: ${t23_13 ? "✓" : "✗"}`);
   if (!t23_13) allPass = false;
 
-  // 23.14 CSS .fs-item.expanded 占满整行
-  const t23_14 = /\.fs-item\.expanded[\s\S]*?grid-column:\s*1\s*\/\s*-1/.test(_css);
-  console.log(`  CSS .fs-item.expanded 占满整行: ${t23_14 ? "✓" : "✗"}`);
+  // 23.14 CSS .fs-item.expanded（v23 占满整行；v24 起撤销 - 不再 grid-column: 1/-1）
+  //   - 用 .match 拿 .fs-item.expanded 第一个 { ... } 块内容，再检查是否含 grid-column: 1 / -1
+  //   - v24 期望：这个块里**不**应再有 grid-column: 1 / -1
+  const _expandedBlockMatch = _css.match(/\.fs-item\.expanded\s*\{[^}]*\}/);
+  const _expandedBlock = _expandedBlockMatch ? _expandedBlockMatch[0] : "";
+  const t23_14 = !/grid-column:\s*1\s*\/\s*-1/.test(_expandedBlock);
+  console.log(`  v24 撤销 .fs-item.expanded 的 grid-column: 1/-1: ${t23_14 ? "✓" : "✗"}`);
   if (!t23_14) allPass = false;
 
   const t23All = t23_1a && t23_1b && t23_2 && t23_3 && t23_4 && t23_5a && t23_5b && t23_6 && t23_7a && t23_7b && t23_8 && t23_9 && t23_10a && t23_10b && t23_11 && t23_12 && t23_13 && t23_14;
   console.log("  v23 改动:", t23All ? "PASS" : "FAIL");
   if (!t23All) allPass = false;
+
+  // —— v24 测试: 1) 伏笔只纵向展开; 2) 灵石/物品左右互换; 3) 灵石 stats 在台账上方 + 物品未使用 top5; 4) 详情抽屉 + 取消选中 ——
+  console.log("\n测试 24：v24（伏笔只纵向展开 + 财物左右互换 + 统计顶部 + 物品 top5 + 详情抽屉）");
+
+  // 24.1 CSS：.fs-item.expanded 不再有 grid-column: 1 / -1（只纵向展开）
+  const t24_1 = !/grid-column:\s*1\s*\/\s*-1/.test(_expandedBlock);
+  console.log(`  CSS .fs-item.expanded 不再 grid-column: 1/-1: ${t24_1 ? "✓" : "✗"}`);
+  if (!t24_1) allPass = false;
+
+  // 24.2 CSS：.compound-col-editor 有抽屉样式（max-height: 0 + open: 60vh）
+  const _lsDrawerBlock = (() => {
+    const m = _css.match(/\.compound-col-editor\s*\{[^}]*\}/);
+    return m ? m[0] : "";
+  })();
+  const t24_2a = /max-height:\s*0/.test(_lsDrawerBlock);
+  const t24_2b = /\.compound-col-editor\.open\s*\{[^}]*max-height:\s*60vh/.test(_css);
+  console.log(`  CSS .compound-col-editor 默认 max-height: 0: ${t24_2a ? "✓" : "✗"}`);
+  if (!t24_2a) allPass = false;
+  console.log(`  CSS .compound-col-editor.open max-height: 60vh: ${t24_2b ? "✓" : "✗"}`);
+  if (!t24_2b) allPass = false;
+
+  // 24.3 CSS：.compound-col-stats 样式（统计/排行区）
+  const t24_3 = /\.compound-col-stats\s*\{/.test(_css);
+  console.log(`  CSS .compound-col-stats 存在: ${t24_3 ? "✓" : "✗"}`);
+  if (!t24_3) allPass = false;
+
+  // 24.4 CSS：.it-top5-* 样式
+  const t24_4a = /\.it-top5-list\s*\{/.test(_css);
+  const t24_4b = /\.it-top5-item\s*\{/.test(_css);
+  const t24_4c = /\.it-top5-rank\s*\{/.test(_css);
+  console.log(`  CSS .it-top5-list 存在: ${t24_4a ? "✓" : "✗"}`);
+  if (!t24_4a) allPass = false;
+  console.log(`  CSS .it-top5-item 存在: ${t24_4b ? "✓" : "✗"}`);
+  if (!t24_4b) allPass = false;
+  console.log(`  CSS .it-top5-rank 存在: ${t24_4c ? "✓" : "✗"}`);
+  if (!t24_4c) allPass = false;
+
+  // 24.5 index.html：物品台账在左，灵石台账在右
+  const _v24html = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
+  const _allSections = [..._v24html.matchAll(/<section class="compound-col">([\s\S]*?)<\/section>/g)];
+  const t24_5a = _allSections.length >= 2 && /物品台账/.test(_allSections[0][1]) && !/灵石台账/.test(_allSections[0][1]);
+  const t24_5b = _allSections.length >= 2 && /灵石台账/.test(_allSections[1][1]) && !/物品台账/.test(_allSections[1][1]);
+  console.log(`  index.html 第一个 col-section 是物品台账: ${t24_5a ? "✓" : "✗"}`);
+  if (!t24_5a) allPass = false;
+  console.log(`  index.html 第二个 col-section 是灵石台账: ${t24_5b ? "✓" : "✗"}`);
+  if (!t24_5b) allPass = false;
+
+  // 24.6 index.html：#items-top5 区域
+  const t24_6 = /id="items-top5"\s+class="compound-col-stats"/.test(_v24html);
+  console.log(`  index.html #items-top5 存在: ${t24_6 ? "✓" : "✗"}`);
+  if (!t24_6) allPass = false;
+
+  // 24.7 index.html：#lingshi-summary 改为 compound-col-stats
+  const t24_7 = /id="lingshi-summary"\s+class="compound-col-stats"/.test(_v24html);
+  console.log(`  index.html #lingshi-summary 是 compound-col-stats: ${t24_7 ? "✓" : "✗"}`);
+  if (!t24_7) allPass = false;
+
+  // 24.8 index.html：#lingshi-summary 移到 header 之前（灵石 col 内）
+  // 复用 _allSections[1]（灵石台账 section 内容）
+  const _lsBlock = _allSections.length >= 2 ? _allSections[1][1] : "";
+  const _lsSummaryPos = _lsBlock.indexOf("id=\"lingshi-summary\"");
+  const _lsHeaderPos = _lsBlock.indexOf("compound-col-header");
+  const t24_8 = _lsSummaryPos > -1 && _lsHeaderPos > -1 && _lsSummaryPos < _lsHeaderPos;
+  console.log(`  #lingshi-summary 在 header 之前: ${t24_8 ? "✓" : "✗"}`);
+  if (!t24_8) allPass = false;
+
+  // 24.9 index.html：工具栏按钮顺序 — 物品组在灵石组之前
+  const _toolbar = _v24html.match(/<div class="page-toolbar"[^>]*>([\s\S]*?)<\/div>\s*<div class="compound-two-cols">/);
+  const t24_9 = _toolbar && /btn-new-items/.test(_toolbar[1].split("btn-new-lingshi")[0]) && /btn-new-lingshi/.test(_toolbar[1]);
+  console.log(`  工具栏 btn-new-items 在 btn-new-lingshi 之前: ${t24_9 ? "✓" : "✗"}`);
+  if (!t24_9) allPass = false;
+
+  // 24.10 app.js：renderLingshiSummary 单独函数
+  const t24_10 = /function renderLingshiSummary\(\)\s*\{/.test(SRC);
+  console.log(`  app.js renderLingshiSummary 函数: ${t24_10 ? "✓" : "✗"}`);
+  if (!t24_10) allPass = false;
+
+  // 24.11 app.js：renderItemsTop5 函数
+  const t24_11 = /function renderItemsTop5\(\)\s*\{/.test(SRC);
+  console.log(`  app.js renderItemsTop5 函数: ${t24_11 ? "✓" : "✗"}`);
+  if (!t24_11) allPass = false;
+
+  // 24.12 app.js：renderItemsTop5 用 parseChapterNo + 差值排序
+  const t24_12a = /parseChapterNo\(it\.chapter\)\.num/.test(SRC) || /parseChapterNo\(ch\.no\)\.num/.test(SRC);
+  const t24_12b = /b\.gap\s*-\s*a\.gap/.test(SRC);
+  console.log(`  renderItemsTop5 用 parseChapterNo 取章节号: ${t24_12a ? "✓" : "✗"}`);
+  if (!t24_12a) allPass = false;
+  console.log(`  renderItemsTop5 按 gap 降序: ${t24_12b ? "✓" : "✗"}`);
+  if (!t24_12b) allPass = false;
+
+  // 24.13 app.js：renderItemsTop5 筛选 status === "持有" 且 lastChNo < latestChNo
+  const t24_13a = /status !== "持有"/.test(SRC);
+  const t24_13b = /info\.lastChNo >= latestChNo/.test(SRC);
+  console.log(`  renderItemsTop5 排除非"持有"状态: ${t24_13a ? "✓" : "✗"}`);
+  if (!t24_13a) allPass = false;
+  console.log(`  renderItemsTop5 排除最后提及 == 最新章节: ${t24_13b ? "✓" : "✗"}`);
+  if (!t24_13b) allPass = false;
+
+  // 24.14 app.js：renderLingshiEditor / renderItemsEditor 加 .open class（抽屉）
+  const t24_14a = /drawer\.classList\.add\("open"\)/.test(SRC);
+  const t24_14b = /drawer\.classList\.remove\("open"\)/.test(SRC);
+  console.log(`  editor 抽屉 .open 打开: ${t24_14a ? "✓" : "✗"}`);
+  if (!t24_14a) allPass = false;
+  console.log(`  editor 抽屉 .open 关闭: ${t24_14b ? "✓" : "✗"}`);
+  if (!t24_14b) allPass = false;
+
+  // 24.15 app.js：onSubListClick 再次点同一条时 currentItemId = null
+  const t24_15 = /p\.currentItemId === item\.dataset\.id\)\s*\{[\s\S]*?p\.currentItemId = null/.test(SRC);
+  console.log(`  onSubListClick 再次点击 = 取消选中: ${t24_15 ? "✓" : "✗"}`);
+  if (!t24_15) allPass = false;
+
+  // 24.16 app.js：renderCompoundGoods 调 renderLingshiSummary + renderItemsTop5
+  const t24_16a = /renderLingshiSummary\(\)/.test(SRC);
+  const t24_16b = /renderItemsTop5\(\)/.test(SRC);
+  console.log(`  renderCompoundGoods 调 renderLingshiSummary: ${t24_16a ? "✓" : "✗"}`);
+  if (!t24_16a) allPass = false;
+  console.log(`  renderCompoundGoods 调 renderItemsTop5: ${t24_16b ? "✓" : "✗"}`);
+  if (!t24_16b) allPass = false;
+
+  // 24.17 app.js：deleteItemFromPage 删当前选中时清 .open 抽屉
+  const t24_17 = /drawer\.classList\.remove\("open"\)/.test(SRC);
+  console.log(`  deleteItemFromPage 清抽屉: ${t24_17 ? "✓" : "✗"}`);
+  if (!t24_17) allPass = false;
+
+  // 24.18 app.js：renderLingshiList 不再渲染 summary（让位给 renderLingshiSummary）
+  //   - 检查 renderLingshiList 函数体内不含 #lingshi-summary 操作
+  const _renderLsListBody = SRC.match(/function renderLingshiList\(\)\s*\{([\s\S]*?)\n  \}/);
+  const t24_18 = _renderLsListBody && !/lingshi-summary/.test(_renderLsListBody[1]);
+  console.log(`  renderLingshiList 不再含 lingshi-summary 操作: ${t24_18 ? "✓" : "✗"}`);
+  if (!t24_18) allPass = false;
+
+  const t24All = t24_1 && t24_2a && t24_2b && t24_3 && t24_4a && t24_4b && t24_4c && t24_5a && t24_5b && t24_6 && t24_7 && t24_8 && t24_9 && t24_10 && t24_11 && t24_12a && t24_12b && t24_13a && t24_13b && t24_14a && t24_14b && t24_15 && t24_16a && t24_16b && t24_17 && t24_18;
+  console.log("  v24 改动:", t24All ? "PASS" : "FAIL");
+  if (!t24All) allPass = false;
+
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);

@@ -308,24 +308,6 @@
           <section class="page-view" data-page-view="goods" hidden>
             <div class="page-toolbar">
               <span class="page-toolbar-group">
-                <button id="btn-new-lingshi" class="tool-btn" title="新增一条灵石记录">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  <span>新增灵石</span>
-                </button>
-                <button id="btn-import-lingshi" class="tool-btn" title="从 xlsx / json 导入灵石台账">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                  <span>导入灵石</span>
-                </button>
-              </span>
-              <span class="page-toolbar-divider"></span>
-              <span class="page-toolbar-group">
                 <button id="btn-new-items" class="tool-btn" title="新增一件物品">
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
                     <line x1="12" y1="5" x2="12" y2="19" />
@@ -342,32 +324,33 @@
                   <span>导入物品</span>
                 </button>
               </span>
+              <span class="page-toolbar-divider"></span>
+              <span class="page-toolbar-group">
+                <button id="btn-new-lingshi" class="tool-btn" title="新增一条灵石记录">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  <span>新增灵石</span>
+                </button>
+                <button id="btn-import-lingshi" class="tool-btn" title="从 xlsx / json 导入灵石台账">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  <span>导入灵石</span>
+                </button>
+              </span>
               <span class="page-toolbar-spacer"></span>
               <span class="muted page-toolbar-meta"><span id="lingshi-count">0 笔</span> · <span id="items-count">0 件</span></span>
             </div>
             <div class="compound-two-cols">
-              <!-- 左：灵石台账 -->
+              <!-- v24：左 = 物品台账；右 = 灵石台账（位置互换） -->
+              <!-- 左：物品台账 -->
               <section class="compound-col">
-                <header class="compound-col-header">
-                  <span class="compound-col-title">💎 灵石台账</span>
-                  <span class="muted hint">章节号 / 收支类型 / 数量 / 类型 / 原文描述</span>
-                </header>
-                <aside class="col col-list compound-col-list">
-                  <ul id="lingshi-list" class="ls-list"></ul>
-                  <div id="lingshi-summary" class="lingshi-summary"></div>
-                </aside>
-                <main class="col col-editor compound-col-editor">
-                  <div id="lingshi-editor-empty" class="empty-state">
-                    <p>暂无灵石记录，点上方「+ 新增灵石」添加</p>
-                    <p class="hint">正数=收入 · 负数=支出；类型填"下品灵石/中品/上品"等</p>
-                  </div>
-                  <article id="lingshi-editor" class="editor" hidden>
-                    <!-- 由 renderLingshiEditor 动态生成 -->
-                  </article>
-                </main>
-              </section>
-              <!-- 右：物品台账 -->
-              <section class="compound-col">
+                <!-- v24：物品未使用 top5 显示在台账标题上方 -->
+                <div id="items-top5" class="compound-col-stats"></div>
                 <header class="compound-col-header">
                   <span class="compound-col-title">📦 物品台账</span>
                   <span class="muted hint">章节号 / 物品名称 / 数量 / 类型 / 状态 / 原文描述</span>
@@ -382,6 +365,27 @@
                   </div>
                   <article id="items-editor" class="editor" hidden>
                     <!-- 由 renderItemsEditor 动态生成 -->
+                  </article>
+                </main>
+              </section>
+              <!-- 右：灵石台账 -->
+              <section class="compound-col">
+                <!-- v24：灵石小计（数量统计）显示在台账标题上方 -->
+                <div id="lingshi-summary" class="compound-col-stats"></div>
+                <header class="compound-col-header">
+                  <span class="compound-col-title">💎 灵石台账</span>
+                  <span class="muted hint">章节号 / 收支类型 / 数量 / 类型 / 原文描述</span>
+                </header>
+                <aside class="col col-list compound-col-list">
+                  <ul id="lingshi-list" class="ls-list"></ul>
+                </aside>
+                <main class="col col-editor compound-col-editor">
+                  <div id="lingshi-editor-empty" class="empty-state">
+                    <p>暂无灵石记录，点上方「+ 新增灵石」添加</p>
+                    <p class="hint">正数=收入 · 负数=支出；类型填"下品灵石/中品/上品"等</p>
+                  </div>
+                  <article id="lingshi-editor" class="editor" hidden>
+                    <!-- 由 renderLingshiEditor 动态生成 -->
                   </article>
                 </main>
               </section>

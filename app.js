@@ -2401,7 +2401,18 @@
     const label = it.name || it.chapter || it.category || "(无标题)";
     if (!confirm(`确定删除${def.label}「${label}」？`)) return;
     p.items = p.items.filter((x) => x.id !== id);
-    if (p.currentItemId === id) p.currentItemId = null;
+    if (p.currentItemId === id) {
+      p.currentItemId = null;
+      // v24：抽屉式 — 同步关抽屉
+      if (state.currentPage === "goods") {
+        const editorId = pid === "lingshi" ? "lingshi-editor" : pid === "items" ? "items-editor" : null;
+        if (editorId) {
+          const editor = document.getElementById(editorId);
+          const drawer = editor ? editor.closest(".compound-col-editor") : null;
+          if (drawer) drawer.classList.remove("open");
+        }
+      }
+    }
     save();
     pushHistory();
     renderAll();
@@ -2409,19 +2420,12 @@
   }
 
   // —— 灵石台账 ——
+  // v24：summary 改成 renderLingshiSummary 单独渲染（台账标题上方），本函数只负责列表本身
   function renderLingshiList() {
     const list = $("#lingshi-list");
     if (!list) return;
     const p = state.pages.lingshi;
     const items = getSortedLingshiItems();
-    // 收支汇总
-    let total = 0, posCount = 0, negCount = 0;
-    for (const it of items) {
-      const q = Number(it.quantity) || 0;
-      total += q;
-      if (q > 0) posCount++;
-      else if (q < 0) negCount++;
-    }
     list.innerHTML = items.length === 0
       ? ""
       : items
@@ -2441,20 +2445,31 @@
             </li>`;
           })
           .join("");
-    // 底部小计
-    const sumEl = $("#lingshi-summary");
-    if (sumEl) {
-      if (items.length === 0) {
-        sumEl.innerHTML = `<span class="muted">尚无数据</span>`;
-      } else {
-        sumEl.innerHTML = `
-          <span class="lingshi-summary-pill">余额：<b>${total >= 0 ? "+" : ""}${total}</b></span>
-          <span class="lingshi-summary-pill lingshi-summary-pos">收入 <b>${posCount}</b> 笔</span>
-          <span class="lingshi-summary-pill lingshi-summary-neg">支出 <b>${negCount}</b> 笔</span>`;
-      }
-    }
     const count = $("#lingshi-count");
     if (count) count.textContent = `${items.length} 笔`;
+  }
+
+  // v24：灵石小计（v21 在列表底部；v24 移到台账标题上方 .compound-col-stats 区域）
+  function renderLingshiSummary() {
+    const sumEl = $("#lingshi-summary");
+    if (!sumEl) return;
+    const items = state.pages.lingshi.items;
+    if (!items || items.length === 0) {
+      sumEl.innerHTML = `<span class="stat-title">收支</span><span class="stat-empty">尚无数据</span>`;
+      return;
+    }
+    let total = 0, posCount = 0, negCount = 0;
+    for (const it of items) {
+      const q = Number(it.quantity) || 0;
+      total += q;
+      if (q > 0) posCount++;
+      else if (q < 0) negCount++;
+    }
+    sumEl.innerHTML = `
+      <span class="stat-title">收支</span>
+      <span class="lingshi-summary-pill">余额：<b>${total >= 0 ? "+" : ""}${total}</b></span>
+      <span class="lingshi-summary-pill lingshi-summary-pos">收入 <b>${posCount}</b> 笔</span>
+      <span class="lingshi-summary-pill lingshi-summary-neg">支出 <b>${negCount}</b> 笔</span>`;
   }
 
   function renderLingshiEditor() {
@@ -2462,15 +2477,19 @@
     const it = p ? p.items.find((x) => x.id === p.currentItemId) : null;
     const empty = $("#lingshi-editor-empty");
     const editor = $("#lingshi-editor");
+    // v24：抽屉式 — outer .compound-col-editor 加/去 .open 类
+    const drawer = editor ? editor.closest(".compound-col-editor") : null;
     if (!empty || !editor) return;
     if (!it) {
       empty.hidden = false;
       editor.hidden = true;
+      if (drawer) drawer.classList.remove("open");
       empty.innerHTML = PAGES.lingshi.emptyStateHtml();
       return;
     }
     empty.hidden = true;
     editor.hidden = false;
+    if (drawer) drawer.classList.add("open");
     const qty = Number(it.quantity) || 0;
     editor.innerHTML = `
       <div class="editor-meta editor-meta-lingshi">
@@ -2615,15 +2634,19 @@
     const it = p ? p.items.find((x) => x.id === p.currentItemId) : null;
     const empty = $("#items-editor-empty");
     const editor = $("#items-editor");
+    // v24：抽屉式 — outer .compound-col-editor 加/去 .open 类
+    const drawer = editor ? editor.closest(".compound-col-editor") : null;
     if (!empty || !editor) return;
     if (!it) {
       empty.hidden = false;
       editor.hidden = true;
+      if (drawer) drawer.classList.remove("open");
       empty.innerHTML = PAGES.items.emptyStateHtml();
       return;
     }
     empty.hidden = true;
     editor.hidden = false;
+    if (drawer) drawer.classList.add("open");
     const qty = Number(it.quantity) || 1;
     editor.innerHTML = `
       <div class="editor-meta editor-meta-items">
@@ -2741,10 +2764,67 @@
     }
   }
 
+  // v24：物品未使用 top5 — 同一物品 name 分组取最新一条，
+  //   若该条 status === "持有" 且最后提及章节 < 当前最新章节则入选
+  //   按「最新章节 - 最后提及章节」差值降序排前 5
+  function renderItemsTop5() {
+    const top5 = $("#items-top5");
+    if (!top5) return;
+    const items = (state.pages.items && state.pages.items.items) || [];
+    // 当前最新章节号
+    const chItems = (state.pages.chapter && state.pages.chapter.items) || [];
+    let latestChNo = -Infinity;
+    for (const ch of chItems) {
+      const n = parseChapterNo(ch.no).num;
+      if (Number.isFinite(n) && n > latestChNo) latestChNo = n;
+    }
+    if (!Number.isFinite(latestChNo)) {
+      // 没有章节数据时，不显示排名
+      top5.innerHTML = `<span class="stat-title">未使用 top5</span><span class="stat-empty">暂无章节信息</span>`;
+      return;
+    }
+    // 按 name 分组：记录每个 name 的最后一条（按 chapter 数字最大）
+    const byName = new Map();
+    for (const it of items) {
+      const name = (it.name || "").trim();
+      if (!name) continue;
+      const chNo = parseChapterNo(it.chapter).num;
+      if (!Number.isFinite(chNo)) continue;
+      const cur = byName.get(name);
+      if (!cur || chNo > cur.lastChNo) {
+        byName.set(name, { lastChNo: chNo, lastItem: it });
+      }
+    }
+    // 筛选 status === "持有" 且 最后提及章节 < 最新章节
+    const candidates = [];
+    for (const [name, info] of byName.entries()) {
+      const status = info.lastItem.status || "持有";
+      if (status !== "持有") continue;
+      if (info.lastChNo >= latestChNo) continue;
+      candidates.push({ name, lastChNo: info.lastChNo, gap: latestChNo - info.lastChNo });
+    }
+    candidates.sort((a, b) => b.gap - a.gap);
+    const top = candidates.slice(0, 5);
+    if (top.length === 0) {
+      top5.innerHTML = `<span class="stat-title">未使用 top5</span><span class="stat-empty">尚无数据</span>`;
+      return;
+    }
+    const lis = top.map((c, i) => `
+      <li class="it-top5-item" title="最后一次提及：第${c.lastChNo}章">
+        <span class="it-top5-rank">#${i + 1}</span>
+        <span class="it-top5-name">${escapeHtml(c.name)}</span>
+        <span class="it-top5-gap">差 ${c.gap} 章</span>
+      </li>`).join("");
+    top5.innerHTML = `<span class="stat-title">未使用 top5</span><ul class="it-top5-list">${lis}</ul>`;
+  }
+
   // —— 复合入口：goods tab 一次性渲染 lingshi + items ——
+  // v24：加 renderLingshiSummary（顶栏小计）+ renderItemsTop5（未使用排名）
   function renderCompoundGoods() {
+    renderLingshiSummary();
     renderLingshiList();
     renderLingshiEditor();
+    renderItemsTop5();
     renderItemsList();
     renderItemsEditor();
   }
@@ -5680,6 +5760,7 @@
     // 灵石 / 物品 的「子 page」处理（不走 curPage，currentPage 仍是 "goods"）
     //   - 直接设 state.pages[pid].currentItemId
     //   - 删除走 deleteItemFromPage
+    //   - v24：再次点同一条时取消选中（currentItemId = null，抽屉收起）
     const onSubListClick = (pid, renderPair) => (e) => {
       if (e.target.closest(".ls-delete") || e.target.closest(".it-delete")) {
         e.stopPropagation();
@@ -5693,7 +5774,13 @@
       if (!item) return;
       const p = state.pages[pid];
       if (!p) return;
-      if (p.currentItemId === item.dataset.id) return;
+      // v24：点同一条 = 取消选中
+      if (p.currentItemId === item.dataset.id) {
+        p.currentItemId = null;
+        save();
+        renderPair();
+        return;
+      }
       p.currentItemId = item.dataset.id;
       save();
       renderPair();
