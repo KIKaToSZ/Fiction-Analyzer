@@ -2052,24 +2052,12 @@ input[type="range"]::-moz-range-thumb {
   padding: 24px 0;
 }
 
-.fs-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  cursor: pointer;
-  border-left: 2px solid transparent;
-  transition: background var(--transition), border-color var(--transition);
-}
-
-.fs-item:hover {
-  background: var(--hover);
-}
-
-.fs-item.active {
-  background: var(--selected);
-  border-left-color: var(--accent);
-}
+/* v23 改造后 .fs-item 转为 grid 卡片容器。
+   - 旧的列表行样式（行内 flex + 8px 14px padding + 2px 左 border + transition）已全部删除
+   - 旧 hover 规则（hover 态用 --hover 背景）已删除；hover 视觉由新版 .fs-item:hover 提供（border 高亮 + 弱阴影）
+   - 旧 active 规则（selected 背景 + 左 border 强调）已删除
+     —— 选中态视觉完全由 .border-selected 工具类提供（border 高亮 + 无 box-shadow + 无 background）
+   - 卡片样式见 3426 行 .fs-item；head 三段布局见 3457 行 .fs-card-head */
 
 .fs-no {
   flex-shrink: 0;
@@ -2081,9 +2069,8 @@ input[type="range"]::-moz-range-thumb {
   font-variant-numeric: tabular-nums;
 }
 
-.fs-item.active .fs-no {
-  color: var(--accent);
-}
+/* v23 改造后 .fs-item 内部不再有 .fs-no 元素（缩略标题改用 .fs-col-fsno）
+   —— 旧版 active 时 fs-no 变强调色规则已删除（选中态视觉统一由 .border-selected 工具类提供） */
 
 .fs-name {
   flex: 1;
@@ -3392,7 +3379,20 @@ input[type="range"]::-moz-range-thumb {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   padding: 12px 0;
+  /* v29：让 grid 在 flex column 父容器里撑满剩余空间并支持滚动
+     - flex: 1 1 auto  → 占满 page-toolbar/seg 之后的剩余高度
+     - min-height: 0  → 关键！flex 子元素默认 min-height: auto，会让 grid 撑爆父容器
+     - overflow-y: auto → 内容超出可视区时显示纵向滚动条 */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* 滚动条跟主题色统一（webkit 系） */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border, #e2d6c4) transparent;
 }
+.fs-grid::-webkit-scrollbar { width: 8px; }
+.fs-grid::-webkit-scrollbar-thumb { background: var(--border, #e2d6c4); border-radius: 4px; }
+.fs-grid::-webkit-scrollbar-track { background: transparent; }
 @media (max-width: 1279px) {
   .fs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -3461,6 +3461,11 @@ input[type="range"]::-moz-range-thumb {
   padding: 10px 12px;
   user-select: none;
   min-width: 0;
+  /* v29：显式 width:100% 确保 head 横向填充满 .fs-item 卡片容器
+     （之前 .fs-item 残留 v23 前的 padding:8px 14px 会把 head 挤在内部，
+     删掉旧 .fs-item 后这里再加 100% 双保险，避免任何 flex column 布局变化导致 head 收缩） */
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .fs-item .fs-cell {

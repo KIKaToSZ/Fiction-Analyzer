@@ -3530,6 +3530,73 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v28 改动:", t28All ? "PASS" : "FAIL");
   if (!t28All) allPass = false;
 
+  // ===== v29: 三个 UI bug 修复 =====
+  // 29.1 已删 v23 前的 .fs-item 列表行样式（display:flex; align-items:center; padding:8px 14px; border-left:2px solid transparent; transition）
+  //     —— 旧样式覆盖新 .fs-item 卡片容器，导致 head 被双重 padding 挤窄 + active 有 background
+  const oldFsItemBlock = /\.fs-item\s*\{\s*display:\s*flex;\s*align-items:\s*center;\s*gap:\s*8px;\s*padding:\s*8px 14px;\s*cursor:\s*pointer;\s*border-left:\s*2px solid transparent;/.test(cssText);
+  console.log(`  CSS: 已删 v23 前的 .fs-item 列表行块 (v29): ${oldFsItemBlock ? "✗ 还存在" : "✓"}`);
+  if (oldFsItemBlock) allPass = false;
+
+  // 29.2 已删 v23 前的 .fs-item:hover { background: var(--hover); }
+  const oldFsItemHover = /\.fs-item:hover\s*\{\s*background:\s*var\(--hover\)/.test(cssText);
+  console.log(`  CSS: 已删 v23 前的 .fs-item:hover background (v29): ${oldFsItemHover ? "✗ 还存在" : "✓"}`);
+  if (oldFsItemHover) allPass = false;
+
+  // 29.3 已删 v23 前的 .fs-item.active { background: var(--selected); border-left-color: var(--accent); }
+  const oldFsItemActive = /\.fs-item\.active\s*\{\s*background:\s*var\(--selected\)/.test(cssText);
+  console.log(`  CSS: 已删 v23 前的 .fs-item.active background (v29): ${oldFsItemActive ? "✗ 还存在" : "✓"}`);
+  if (oldFsItemActive) allPass = false;
+
+  // 29.4 已删 v23 前的 .fs-item.active .fs-no { color: var(--accent); }
+  const oldFsNoActive = /\.fs-item\.active\s+\.fs-no\s*\{/.test(cssText);
+  console.log(`  CSS: 已删 v23 前的 .fs-item.active .fs-no (v29): ${oldFsNoActive ? "✗ 还存在" : "✓"}`);
+  if (oldFsNoActive) allPass = false;
+
+  // 29.5 新 .fs-item 卡片容器（v23+）仍在
+  const newFsItem = /\.fs-item\s*\{[\s\S]{0,500}display:\s*flex;\s*flex-direction:\s*column;\s*border:\s*1px solid\s+var\(--border/.test(cssText);
+  console.log(`  CSS: 新 .fs-item 卡片容器仍存在 (v23+): ${newFsItem ? "✓" : "✗"}`);
+  if (!newFsItem) allPass = false;
+
+  // 29.6 新 .fs-item.active 不含 background（仅描边选中态）
+  const activeNoBg = /\.fs-item\.active\s*\{[^}]*\}/.test(cssText) && !/\.fs-item\.active\s*\{[^}]*background/.test(cssText);
+  console.log(`  CSS: .fs-item.active 不含 background（仅描边选中态）: ${activeNoBg ? "✓" : "✗"}`);
+  if (!activeNoBg) allPass = false;
+
+  // 29.7 .fs-grid 加 flex: 1 1 auto / min-height: 0 / overflow-y: auto
+  const fsGridFlex = /\.fs-grid\s*\{[\s\S]{0,500}flex:\s*1 1 auto/.test(cssText);
+  const fsGridMinH = /\.fs-grid\s*\{[\s\S]{0,500}min-height:\s*0/.test(cssText);
+  const fsGridOverflow = /\.fs-grid\s*\{[\s\S]{0,500}overflow-y:\s*auto/.test(cssText);
+  console.log(`  CSS: .fs-grid flex: 1 1 auto: ${fsGridFlex ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-grid min-height: 0: ${fsGridMinH ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-grid overflow-y: auto: ${fsGridOverflow ? "✓" : "✗"}`);
+  if (!(fsGridFlex && fsGridMinH && fsGridOverflow)) allPass = false;
+
+  // 29.8 .fs-card-head 加 width: 100% 显式横向填充满
+  const headWidth100 = /\.fs-card-head\s*\{[\s\S]{0,400}width:\s*100%/.test(cssText);
+  const headBoxSizing = /\.fs-card-head\s*\{[\s\S]{0,400}box-sizing:\s*border-box/.test(cssText);
+  console.log(`  CSS: .fs-card-head width: 100%: ${headWidth100 ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-card-head box-sizing: border-box: ${headBoxSizing ? "✓" : "✗"}`);
+  if (!(headWidth100 && headBoxSizing)) allPass = false;
+
+  // 29.9 renderFsList 同时加 .active + .border-selected
+  // 用 [\s\S]{0,300} 跨过模板字符串里的嵌套引号（"expanded"/"active border-selected"）
+  const renderActiveAndBorder = /class="fs-item[\s\S]{0,300}active\s+border-selected[\s\S]{0,30}\}"/.test(appText);
+  console.log(`  JS: renderFsList 加 .active + .border-selected 工具类: ${renderActiveAndBorder ? "✓" : "✗"}`);
+  if (!renderActiveAndBorder) allPass = false;
+
+  // 29.10 .border-selected 工具类
+  const borderSelected = /\.border-selected\s*\{[^}]*border-color:[^}]*!important[^}]*box-shadow:\s*none\s*!important/.test(cssText);
+  console.log(`  CSS: .border-selected 工具类: ${borderSelected ? "✓" : "✗"}`);
+  if (!borderSelected) allPass = false;
+
+  const t29All = !oldFsItemBlock && !oldFsItemHover && !oldFsItemActive && !oldFsNoActive
+    && newFsItem && activeNoBg
+    && fsGridFlex && fsGridMinH && fsGridOverflow
+    && headWidth100 && headBoxSizing
+    && renderActiveAndBorder && borderSelected;
+  console.log("  v29 改动:", t29All ? "PASS" : "FAIL");
+  if (!t29All) allPass = false;
+
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);
