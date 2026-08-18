@@ -298,6 +298,11 @@
             </div>
             <!-- v23：三列多行网格容器（替代原来的「左列表+右详情」双栏） -->
             <div class="fs-grid" id="fs-grid"></div>
+            <!-- v31：详情改右侧抽屉（不再用 in-place 展开）
+                 - 抽屉里 = 伏笔编号/名称/状态 + 履历 + 编辑/完成编辑 + 关闭
+                 - 遮罩 = 背景半透明 + 点击关闭 -->
+            <div id="fs-drawer-mask" class="fs-drawer-mask" hidden></div>
+            <aside id="fs-drawer" class="fs-drawer" hidden></aside>
           </section>
 
           <!-- ===================== 财物详情页（v21：左右双台账） =====================

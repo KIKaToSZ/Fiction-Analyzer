@@ -1509,9 +1509,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   // ============================================================
   console.log("\n测试 15：v14（伏笔管理页双表拆分 + 4 列头 + 履历列表 + 跳转高亮）");
 
-  // 15.1 schema 升到 11（v14 时代）；v15 改后 schema 升到 12；v19 升到 13
-  const t15_1a = /const SCHEMA_VERSION\s*=\s*1[1234];/.test(SRC);
-  console.log(`  SCHEMA_VERSION = 11/12/13/14: ${t15_1a ? "✓" : "✗"}`);
+  // 15.1 schema 升到 11（v14 时代）；v15 改后 schema 升到 12；v19 升到 13；v31 升到 15
+  const t15_1a = /const SCHEMA_VERSION\s*=\s*1[12345];/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 11/12/13/14/15: ${t15_1a ? "✓" : "✗"}`);
   if (!t15_1a) allPass = false;
 
   // 15.12 之前需要 CSS 文本(用局部变量,顶层没有 CSS 变量)
@@ -1673,9 +1673,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   // ============================================================
   console.log("\n测试 16：v15（伏笔主表精简为 3 字段 - 伏笔编号/伏笔名称/状态）");
 
-  // 16.1 SCHEMA_VERSION = 12/13（v15 是 12，v19 升到 13）
-  const t16_1a = /const SCHEMA_VERSION\s*=\s*(12|13|14);/.test(SRC);
-  console.log(`  SCHEMA_VERSION = 12/13/14: ${t16_1a ? "✓" : "✗"}`);
+  // 16.1 SCHEMA_VERSION = 12/13/14/15（v15 是 12，v19 升到 13，v31 升到 15）
+  const t16_1a = /const SCHEMA_VERSION\s*=\s*(12|13|14|15);/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 12/13/14/15: ${t16_1a ? "✓" : "✗"}`);
   if (!t16_1a) allPass = false;
 
   // 16.2 PAGES.foreshadowing.fields 只含 3 个键：fsNo / name / status
@@ -2317,9 +2317,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     allPass = false;
   }
 
-  // 20.4 SCHEMA_VERSION = 13
-  const t20_4a = /const SCHEMA_VERSION\s*=\s*14;/.test(SRC);
-  console.log(`  SCHEMA_VERSION = 14: ${t20_4a ? "✓" : "✗"}`);
+  // 20.4 SCHEMA_VERSION = 14（v20）；v31 升到 15
+  const t20_4a = /const SCHEMA_VERSION\s*=\s*(14|15);/.test(SRC);
+  console.log(`  SCHEMA_VERSION = 14/15: ${t20_4a ? "✓" : "✗"}`);
   if (!t20_4a) allPass = false;
 
   // 20.5 PAGES 注册表有 5 个页面
@@ -2827,21 +2827,21 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  renderFsList 用 <article class="fs-item">: ${t23_6 ? "✓" : "✗"}`);
   if (!t23_6) allPass = false;
 
-  // 23.7 state.ui.fsExpandedId 默认值
-  const t23_7a = /fsExpandedId:\s*null/.test(SRC);
-  const t23_7b = /if \(state\.ui\.fsExpandedId === undefined\) state\.ui\.fsExpandedId = null;/.test(SRC);
-  console.log(`  state.ui 默认含 fsExpandedId: null: ${t23_7a ? "✓" : "✗"}`);
-  console.log(`  load 兜底补 fsExpandedId: ${t23_7b ? "✓" : "✗"}`);
+  // 23.7 state.ui.fsDrawerId 默认值（v31 改用抽屉替代原地展开）
+  const t23_7a = /fsDrawerId:\s*null/.test(SRC);
+  const t23_7b = /if \(state\.ui\.fsDrawerId === undefined\)/.test(SRC);
+  console.log(`  state.ui 默认含 fsDrawerId: null (v31): ${t23_7a ? "✓" : "✗"}`);
+  console.log(`  load 兜底补 fsDrawerId (v31): ${t23_7b ? "✓" : "✗"}`);
   if (!(t23_7a && t23_7b)) allPass = false;
 
-  // 23.8 renderFsCardDetail 函数存在
-  const t23_8 = /function renderFsCardDetail\(itemId\)/.test(SRC);
-  console.log(`  renderFsCardDetail 函数: ${t23_8 ? "✓" : "✗"}`);
+  // 23.8 renderFsDrawer 函数存在（v31 替代 renderFsCardDetail）
+  const t23_8 = /function renderFsDrawer\(\)/.test(SRC);
+  console.log(`  renderFsDrawer 函数 (v31 替代 renderFsCardDetail): ${t23_8 ? "✓" : "✗"}`);
   if (!t23_8) allPass = false;
 
-  // 23.9 addNewItemInPage 在伏笔时设 fsExpandedId
-  const t23_9 = /pid === "foreshadowing"[\s\S]*?state\.ui\.fsExpandedId = it\.id;[\s\S]*?state\.ui\.fsEditing = true;/.test(SRC);
-  console.log(`  新增伏笔自动展开+编辑态: ${t23_9 ? "✓" : "✗"}`);
+  // 23.9 addNewItemInPage 在伏笔时设 fsDrawerId（v31）
+  const t23_9 = /pid === "foreshadowing"[\s\S]*?state\.ui\.fsDrawerId = it\.id;[\s\S]*?state\.ui\.fsEditing = true;/.test(SRC);
+  console.log(`  新增伏笔自动打开抽屉+编辑态: ${t23_9 ? "✓" : "✗"}`);
   if (!t23_9) allPass = false;
 
   // 23.10 bindListEvents 的伏笔点击用 onFsClick（v26 改：整张 .fs-item 命中即触发）
@@ -2857,23 +2857,20 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  bindFsEditorEvents 已删 fsSetup/fsPayoff/fsNotes 监听 (v30): ${t23_11 ? "✓" : "✗"}`);
   if (!t23_11) allPass = false;
 
-  // 23.12 删伏笔时清 fsExpandedId
-  const t23_12 = /state\.ui\.fsExpandedId === it\.id\)[\s\S]*?state\.ui\.fsExpandedId = null;/.test(SRC);
-  console.log(`  deleteCurrentItem 清 fsExpandedId: ${t23_12 ? "✓" : "✗"}`);
+  // 23.12 删伏笔时清 fsDrawerId（v31）
+  const t23_12 = /state\.ui\.fsDrawerId === it\.id\)[\s\S]*?state\.ui\.fsDrawerId = null;/.test(SRC);
+  console.log(`  deleteCurrentItem 清 fsDrawerId (v31): ${t23_12 ? "✓" : "✗"}`);
   if (!t23_12) allPass = false;
 
-  // 23.13 CSS .fs-grid 三列布局
-  const t23_13 = /\.fs-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3/.test(_css);
-  console.log(`  CSS .fs-grid 三列布局: ${t23_13 ? "✓" : "✗"}`);
+  // 23.13 CSS .fs-grid 多列布局（v23 三列，v31 升四列；测试用多列通用模式）
+  const t23_13 = /\.fs-grid\s*\{[^}]*grid-template-columns:\s*repeat\([2-9]/.test(_css);
+  console.log(`  CSS .fs-grid 多列布局（v23 3 列 / v31 4 列）: ${t23_13 ? "✓" : "✗"}`);
   if (!t23_13) allPass = false;
 
-  // 23.14 CSS .fs-item.expanded（v23 占满整行；v24 起撤销 - 不再 grid-column: 1/-1）
-  //   - 用 .match 拿 .fs-item.expanded 第一个 { ... } 块内容，再检查是否含 grid-column: 1 / -1
-  //   - v24 期望：这个块里**不**应再有 grid-column: 1 / -1
-  const _expandedBlockMatch = _css.match(/\.fs-item\.expanded\s*\{[^}]*\}/);
-  const _expandedBlock = _expandedBlockMatch ? _expandedBlockMatch[0] : "";
-  const t23_14 = !/grid-column:\s*1\s*\/\s*-1/.test(_expandedBlock);
-  console.log(`  v24 撤销 .fs-item.expanded 的 grid-column: 1/-1: ${t23_14 ? "✓" : "✗"}`);
+  // 23.14 v31 完全移除 .fs-item.expanded（不再有 inline 展开概念，改用抽屉展示详情）
+  //   - 期望：CSS 中**完全**不再有 .fs-item.expanded 选择器
+  const t23_14 = !/\.fs-item\.expanded/.test(_css);
+  console.log(`  v31 CSS 不再有 .fs-item.expanded 选择器（详情改抽屉）: ${t23_14 ? "✓" : "✗"}`);
   if (!t23_14) allPass = false;
 
   const t23All = t23_1a && t23_1b && t23_2 && t23_3 && t23_4 && t23_5a && t23_5b && t23_6 && t23_7a && t23_7b && t23_8 && t23_9 && t23_10a && t23_10b && t23_11 && t23_12 && t23_13 && t23_14;
@@ -2883,9 +2880,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   // —— v24 测试: 1) 伏笔只纵向展开; 2) 灵石/物品左右互换; 3) 灵石 stats 在台账上方 + 物品未使用 top5; 4) 详情抽屉 + 取消选中 ——
   console.log("\n测试 24：v24（伏笔只纵向展开 + 财物左右互换 + 统计顶部 + 物品 top5 + 详情抽屉）");
 
-  // 24.1 CSS：.fs-item.expanded 不再有 grid-column: 1 / -1（只纵向展开）
-  const t24_1 = !/grid-column:\s*1\s*\/\s*-1/.test(_expandedBlock);
-  console.log(`  CSS .fs-item.expanded 不再 grid-column: 1/-1: ${t24_1 ? "✓" : "✗"}`);
+  // 24.1 CSS：v31 完全移除 .fs-item.expanded（不再有 inline 展开概念，改用抽屉）
+  const t24_1 = !/\.fs-item\.expanded/.test(_css);
+  console.log(`  CSS 不再有 .fs-item.expanded (v31 改抽屉): ${t24_1 ? "✓" : "✗"}`);
   if (!t24_1) allPass = false;
 
   // 24.2 CSS：.compound-col-editor 有抽屉样式（max-height: 0 + open: 60vh）
@@ -3307,9 +3304,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  CSS: .fs-item { cursor: pointer }（整张卡可点）: ${fsItemCursor ? "✓" : "✗"}`);
   if (!fsItemCursor) allPass = false;
 
-  // 26.3 .fs-card-detail 加 max-height + overflow-y: auto
-  const detailScroll = /\.fs-card-detail\s*\{[\s\S]{0,300}max-height:\s*60vh[\s\S]{0,200}overflow-y:\s*auto/.test(cssText);
-  console.log(`  CSS: .fs-card-detail { max-height: 60vh + overflow-y: auto }: ${detailScroll ? "✓" : "✗"}`);
+  // 26.3 v31：.fs-drawer position: fixed（替代旧 .fs-card-detail 的 max-height+overflow）
+  const detailScroll = /\.fs-drawer\s*\{[\s\S]{0,300}position:\s*fixed[\s\S]{0,200}right:\s*0/.test(cssText);
+  console.log(`  CSS: .fs-drawer { position: fixed + right: 0 } (v31 替代 .fs-card-detail): ${detailScroll ? "✓" : "✗"}`);
   if (!detailScroll) allPass = false;
 
   // 26.4 .fs-record-row 第一列减半到 minmax(40px, 55px)
@@ -3329,13 +3326,15 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  CSS: .fs-card-head 自身无 cursor:pointer（已迁出）: ${headNoCursor ? "✓" : "✗"}`);
   if (!headNoCursor) allPass = false;
 
-  // 26.7 renderFsList: article 上加 data-action="toggle"
-  const articleToggle = /<article class="fs-item[\s\S]{0,200}data-action="toggle"/.test(appText);
-  console.log(`  JS: <article.fs-item> 上有 data-action="toggle": ${articleToggle ? "✓" : "✗"}`);
+  // 26.7 renderFsList: article 上加 data-action="open-drawer"（v31 替代 toggle）
+  const articleToggle = /<article class="fs-item[\s\S]{0,200}data-action="open-drawer"/.test(appText);
+  console.log(`  JS: <article.fs-item> 上有 data-action="open-drawer" (v31): ${articleToggle ? "✓" : "✗"}`);
   if (!articleToggle) allPass = false;
 
   // 26.8 renderFsList: active 时同时加 .border-selected class
-  const activeBorderSel = /currentItemId \? "active border-selected"/.test(appText);
+  //   v31: 用 isInDrawer 替代 currentItemId（因为选中态 = 抽屉里显示的那张）
+  const activeBorderSel = /isInDrawer \? "active border-selected"/.test(appText)
+    || /currentItemId \? "active border-selected"/.test(appText);
   console.log(`  JS: active 卡片 class 同时含 'active border-selected': ${activeBorderSel ? "✓" : "✗"}`);
   if (!activeBorderSel) allPass = false;
 
@@ -3426,34 +3425,44 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  编辑按钮 innerText 不含 "编辑"/"完成编辑" 文字: ${editBtnClean ? "✓" : "✗"}`);
   if (!(editIconOnly && editBtnClean)) allPass = false;
 
-  // 27.8 折叠/展开过渡动画：fs-card-detail 有 transition + 折叠态 max-height:0
-  const detailTransition = /\.fs-card-detail[\s\S]{0,500}transition:[\s\S]{0,500}max-height/.test(cssText);
-  const detailCollapsed = /\.fs-card-detail\s*\{[\s\S]{0,300}max-height:\s*0[\s\S]{0,300}opacity:\s*0/.test(cssText);
-  const detailExpanded = /\.fs-item\.expanded\s+\.fs-card-detail\s*\{[\s\S]{0,300}max-height:\s*60vh[\s\S]{0,300}opacity:\s*1/.test(cssText);
-  console.log(`  CSS: .fs-card-detail 有 transition: max-height: ${detailTransition ? "✓" : "✗"}`);
-  console.log(`  CSS: 折叠态 max-height:0 + opacity:0: ${detailCollapsed ? "✓" : "✗"}`);
-  console.log(`  CSS: 展开态 max-height:60vh + opacity:1: ${detailExpanded ? "✓" : "✗"}`);
+  // 27.8 v31：.fs-card-detail 整体删除（in-place 展开改右侧抽屉）
+  //   详情折叠/展开的 transition 现在由 .fs-drawer (transform translateX) 接管
+  const noFsCardDetailV27 = !/\.fs-card-detail\s*\{/.test(cssText) && !/\.fs-card-detail\s+/.test(cssText);
+  // 验证抽屉替代了它
+  const drawerTransitionV27 = /\.fs-drawer\s*\{[\s\S]{0,500}transition:[\s\S]{0,100}transform/.test(cssText);
+  const drawerInitialV27 = /\.fs-drawer\s*\{[\s\S]{0,500}transform:\s*translateX\(100%\)/.test(cssText);
+  const drawerOpenV27 = /\.fs-drawer\.open\s*\{[\s\S]{0,200}transform:\s*translateX\(0\)/.test(cssText);
+  const detailTransition = noFsCardDetailV27 && drawerTransitionV27;
+  const detailCollapsed = noFsCardDetailV27 && drawerInitialV27;
+  const detailExpanded = noFsCardDetailV27 && drawerOpenV27;
+  console.log(`  CSS: .fs-card-detail 整体已删 (v31 改抽屉): ${noFsCardDetailV27 ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-drawer transition: transform (v31): ${drawerTransitionV27 ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-drawer 初始 translateX(100%) (v31): ${drawerInitialV27 ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-drawer.open translateX(0) (v31): ${drawerOpenV27 ? "✓" : "✗"}`);
   if (!(detailTransition && detailCollapsed && detailExpanded)) allPass = false;
 
-  // 27.9 expandFsCard / collapseFsCard 辅助函数存在
-  const expandFn = /function\s+expandFsCard\(itemId\)\s*\{[\s\S]{0,400}classList\.add\("expanded"\)[\s\S]{0,200}renderFsCardDetail/.test(appText);
-  const collapseFn = /function\s+collapseFsCard\(itemId\)\s*\{[\s\S]{0,400}classList\.remove\("expanded"\)[\s\S]{0,400}setTimeout/.test(appText);
-  console.log(`  JS: expandFsCard 函数 + classList.add("expanded") + renderFsCardDetail: ${expandFn ? "✓" : "✗"}`);
-  console.log(`  JS: collapseFsCard 函数 + classList.remove("expanded") + setTimeout: ${collapseFn ? "✓" : "✗"}`);
+  // 27.9 v31：openFsDrawer / closeFsDrawer 辅助函数（替代 expandFsCard/collapseFsCard）
+  const openFnV27 = /function\s+openFsDrawer\(itemId\)/.test(appText);
+  const closeFnV27 = /function\s+closeFsDrawer\(\)/.test(appText);
+  const expandFn = openFnV27;
+  const collapseFn = closeFnV27;
+  console.log(`  JS: openFsDrawer 函数存在 (v31 替代 expandFsCard): ${openFnV27 ? "✓" : "✗"}`);
+  console.log(`  JS: closeFsDrawer 函数存在 (v31 替代 collapseFsCard): ${closeFnV27 ? "✓" : "✗"}`);
   if (!(expandFn && collapseFn)) allPass = false;
 
-  // 27.10 onFsClick 调用 expandFsCard / collapseFsCard（不再 renderFsList 整段重画）
-  const onFsExpand = /collapseFsCard\(state\.ui\.fsExpandedId\)/.test(appText) && /expandFsCard\(id\)/.test(appText);
+  // 27.10 v31：onFsClick 调 openFsDrawer（替代 expand/collapse）
+  const onFsExpand = /openFsDrawer\(id\)/.test(appText);
   // 精确检测 onFsClick 函数体（const onFsClick = (e) => { ... };）内不含 renderFsList()
   const onFsBodyMatch = appText.match(/const onFsClick = \(e\) => \{[\s\S]*?\};/);
   const onFsNoRender = onFsBodyMatch ? !/renderFsList\(\)/.test(onFsBodyMatch[0]) : false;
-  console.log(`  JS: onFsClick 调 expandFsCard/collapseFsCard: ${onFsExpand ? "✓" : "✗"}`);
-  console.log(`  JS: onFsClick 函数体内不再 renderFsList()（保留 transition）: ${onFsNoRender ? "✓" : "✗"}`);
+  console.log(`  JS: onFsClick 调 openFsDrawer (v31): ${onFsExpand ? "✓" : "✗"}`);
+  console.log(`  JS: onFsClick 函数体内不再 renderFsList()（v31 改抽屉）: ${onFsNoRender ? "✓" : "✗"}`);
   if (!(onFsExpand && onFsNoRender)) allPass = false;
 
-  // 27.11 renderFsList: detail 容器现在永远渲染（让 transition 正常播放）
-  const detailAlways = /<div class="fs-card-detail" data-detail-for="\$\{escapeHtml\(it\.id\)\}"><\/div>/.test(appText);
-  console.log(`  JS: renderFsList 模板中 detail 容器始终渲染: ${detailAlways ? "✓" : "✗"}`);
+  // 27.11 v31：renderFsList 模板中**不再**含 .fs-card-detail（详情整体移到抽屉）
+  const noDetailInListV27 = !/<div class="fs-card-detail"/.test(appText);
+  const detailAlways = noDetailInListV27;  // v31: 模板不再有 detail
+  console.log(`  JS: renderFsList 模板中已删 .fs-card-detail (v31 改抽屉): ${noDetailInListV27 ? "✓" : "✗"}`);
   if (!detailAlways) allPass = false;
 
   const t27All = headHasFsNo && headNoNo && headHasName && headHasStatus
@@ -3480,12 +3489,14 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   // ========================================
   console.log("\n测试 28：v28 - 编辑态保护 + 缩略标题精简 + 履历号小化 + 展开隐藏 head");
 
-  // 28.1 onFsClick 编辑态保护：state.ui.fsEditing && state.ui.fsExpandedId === id 时拦截折叠
-  const fsEditGuardSame = /state\.ui\.fsEditing\s*&&\s*state\.ui\.fsExpandedId\s*===\s*id[\s\S]{0,200}toast\(["']编辑中/.test(appText);
-  // 编辑态 + 切换其他：toast("请先完成当前伏笔的编辑...")
-  const fsEditGuardSwitch = /state\.ui\.fsEditing\s*&&\s*state\.ui\.fsExpandedId\s*&&\s*state\.ui\.fsExpandedId\s*!==\s*id[\s\S]{0,200}toast\(["']请先完成当前伏笔/.test(appText);
-  console.log(`  JS: 编辑态禁止折叠当前卡 (toast 提示): ${fsEditGuardSame ? "✓" : "✗"}`);
-  console.log(`  JS: 编辑态禁止切换其他卡 (toast 提示): ${fsEditGuardSwitch ? "✓" : "✗"}`);
+  // 28.1 v31：openFsDrawer 编辑态保护（替代 onFsClick 中的保护逻辑）
+  //   - 同一项: openFsDrawer 早返回
+  //   - 切换其他项: fsEditing && fsDrawerId && fsDrawerId !== itemId 时拦截（toast 提示）
+  const fsEditGuardSame = /function\s+openFsDrawer[\s\S]{0,500}state\.ui\.fsDrawerId\s*===\s*itemId[\s\S]{0,50}return/.test(appText);
+  const fsEditGuardSwitch = /state\.ui\.fsEditing\s*&&\s*state\.ui\.fsDrawerId\s*&&\s*state\.ui\.fsDrawerId\s*!==\s*itemId[\s\S]{0,200}toast\(["']编辑中/.test(appText)
+    || /state\.ui\.fsEditing\s*&&\s*state\.ui\.fsDrawerId\s*&&\s*state\.ui\.fsDrawerId\s*!==\s*itemId[\s\S]{0,200}toast\(["']请先完成/.test(appText);
+  console.log(`  JS: openFsDrawer 同一项早返回 (v31): ${fsEditGuardSame ? "✓" : "✗"}`);
+  console.log(`  JS: openFsDrawer 切换其他项拦截 (v31): ${fsEditGuardSwitch ? "✓" : "✗"}`);
   if (!(fsEditGuardSame && fsEditGuardSwitch)) allPass = false;
 
   // 28.2 renderFsCardDetail 已无 fs-detail-rec-badge / recBadgeHtml
@@ -3519,16 +3530,18 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  CSS: 已删 .fs-item .fs-col-no 样式: ${noFsColNoCss ? "✓" : "✗"}`);
   if (!(fsNoSpan && noDisplayNoVar && noHashPrefix && fsNoCss && noFsColNoCss)) allPass = false;
 
-  // 28.5 展开后 .fs-card-head 隐藏
-  const hideHeadOnExpand = /\.fs-item\.expanded\s+\.fs-card-head\s*\{[^}]*display:\s*none/.test(cssText);
-  console.log(`  CSS: .fs-item.expanded .fs-card-head { display: none } (v28): ${hideHeadOnExpand ? "✓" : "✗"}`);
-  if (!hideHeadOnExpand) allPass = false;
+  // 28.5 v31 改：抽屉 head 是独立的 .fs-drawer-head（不在 .fs-item 里），不需要 display:none
+  const noHideHead = !/\.fs-item\.expanded\s+\.fs-card-head/.test(cssText);
+  const hasDrawerHead = /\.fs-drawer-head\s*\{/.test(cssText);
+  console.log(`  CSS: .fs-item.expanded .fs-card-head 已删 (v31 改抽屉): ${noHideHead ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-drawer-head 独立存在 (v31): ${hasDrawerHead ? "✓" : "✗"}`);
+  if (!(noHideHead && hasDrawerHead)) allPass = false;
 
   const t28All = fsEditGuardSame && fsEditGuardSwitch
     && noRecBadgeJs
     && t28_3a && t28_3b && t28_3c
     && fsNoSpan && noDisplayNoVar && noHashPrefix && fsNoCss && noFsColNoCss
-    && hideHeadOnExpand;
+    && noHideHead && hasDrawerHead;
   console.log("  v28 改动:", t28All ? "PASS" : "FAIL");
   if (!t28All) allPass = false;
 
@@ -3554,10 +3567,15 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  CSS: 已删 v23 前的 .fs-item.active .fs-no (v29): ${oldFsNoActive ? "✗ 还存在" : "✓"}`);
   if (oldFsNoActive) allPass = false;
 
-  // 29.5 新 .fs-item 卡片容器（v23+）仍在
-  const newFsItem = /\.fs-item\s*\{[\s\S]{0,500}display:\s*flex;\s*flex-direction:\s*column;\s*border:\s*1px solid\s+var\(--border/.test(cssText);
-  console.log(`  CSS: 新 .fs-item 卡片容器仍存在 (v23+): ${newFsItem ? "✓" : "✗"}`);
-  if (!newFsItem) allPass = false;
+  // 29.5 v31：.fs-item 不再有 flex-direction: column（详情改抽屉后只需横向布局 head）
+  //   - v23~v30 期间是 column（head + detail），v31 恢复 v22 之前的横向布局（只有 head）
+  const fsItemNoColumn = !/\.fs-item\s*\{[\s\S]{0,500}display:\s*flex;\s*flex-direction:\s*column/.test(cssText);
+  const fsItemHasBorder = /\.fs-item\s*\{[\s\S]{0,500}border:\s*1px solid\s+var\(--border/.test(cssText);
+  const fsItemHasCursor = /\.fs-item\s*\{[\s\S]{0,500}cursor:\s*pointer/.test(cssText);
+  console.log(`  CSS: .fs-item 无 flex-direction: column (v31 改抽屉后只需横向): ${fsItemNoColumn ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-item 仍含 border (v31): ${fsItemHasBorder ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-item 仍含 cursor: pointer (v31 整张可点): ${fsItemHasCursor ? "✓" : "✗"}`);
+  if (!(fsItemNoColumn && fsItemHasBorder && fsItemHasCursor)) allPass = false;
 
   // 29.6 新 .fs-item.active 不含 background（仅描边选中态）
   const activeNoBg = /\.fs-item\.active\s*\{[^}]*\}/.test(cssText) && !/\.fs-item\.active\s*\{[^}]*background/.test(cssText);
@@ -3592,7 +3610,7 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!borderSelected) allPass = false;
 
   const t29All = !oldFsItemBlock && !oldFsItemHover && !oldFsItemActive && !oldFsNoActive
-    && newFsItem && activeNoBg
+    && fsItemNoColumn && fsItemHasBorder && fsItemHasCursor && activeNoBg
     && fsGridFlex && fsGridMinH && fsGridOverflow
     && headWidth100 && headBoxSizing
     && renderActiveAndBorder && borderSelected;
@@ -3658,6 +3676,161 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     && pageViewFlex;
   console.log("  v30 改动:", t30All ? "PASS" : "FAIL");
   if (!t30All) allPass = false;
+
+
+  // ===== v31: 伏笔详情改右侧抽屉（替代 in-place 展开）=====
+  //   1) SCHEMA_VERSION 14 -> 15
+  //   2) state.ui.fsDrawerId 替代 fsExpandedId
+  //   3) 卡片模板 data-action="open-drawer"（不再是 "toggle"）
+  //   4) renderFsDrawer() 渲染右侧抽屉（替代 renderFsCardDetail）
+  //   5) openFsDrawer / closeFsDrawer 函数（替代 expand/collapse）
+  //   6) 抽屉 CSS：.fs-drawer position:fixed + transform translateX 滑入滑出
+  //   7) 遮罩 .fs-drawer-mask 点击关闭
+  //   8) 抽屉打开时 .foreshadowing-page--drawer-open 加 grid padding-right
+  //   9) Esc 键关闭抽屉
+  //  10) 编辑按钮 #btn-fs-toggle 仍在抽屉内（图标切换）
+  //  11) 抽屉内字段：fs-fsno / fs-name / fs-status + 履历区
+  //  12) 抽屉 close 按钮 #btn-fs-drawer-close
+  console.log("\n测试 31：v31 - 伏笔详情右侧抽屉（替代 in-place 展开）");
+
+  // 31.1 SCHEMA_VERSION 升到 15
+  const schema15 = /const SCHEMA_VERSION\s*=\s*15\s*;/.test(SRC);
+  console.log(`  SCHEMA_VERSION 14 -> 15: ${schema15 ? "✓" : "✗"}`);
+  if (!schema15) allPass = false;
+
+  // 31.2 state.ui.fsDrawerId 默认值
+  const fsDrawerIdDefault = /fsDrawerId:\s*null/.test(SRC);
+  console.log(`  state.ui 默认含 fsDrawerId: null: ${fsDrawerIdDefault ? "✓" : "✗"}`);
+  if (!fsDrawerIdDefault) allPass = false;
+
+  // 31.3 fsExpandedId -> fsDrawerId 迁移
+  const fsExpandToDrawer = /state\.ui\.fsDrawerId\s*=\s*state\.ui\.fsExpandedId/.test(SRC);
+  console.log(`  load 兼容迁移 fsExpandedId -> fsDrawerId: ${fsExpandToDrawer ? "✓" : "✗"}`);
+  if (!fsExpandToDrawer) allPass = false;
+
+  // 31.4 卡片 data-action="open-drawer"
+  const dataActionDrawer = /<article class="fs-item[^"]*"[^>]*data-action="open-drawer"/.test(appText);
+  console.log(`  卡片 data-action="open-drawer": ${dataActionDrawer ? "✓" : "✗"}`);
+  if (!dataActionDrawer) allPass = false;
+
+  // 31.5 卡片模板不再含 .fs-card-detail
+  const noDetailInList = !/<div class="fs-card-detail"/.test(appText);
+  console.log(`  卡片模板已删 .fs-card-detail: ${noDetailInList ? "✓" : "✗"}`);
+  if (!noDetailInList) allPass = false;
+
+  // 31.6 renderFsDrawer 函数
+  const hasRenderFsDrawer = /function\s+renderFsDrawer\(\)/.test(appText);
+  console.log(`  renderFsDrawer 函数存在: ${hasRenderFsDrawer ? "✓" : "✗"}`);
+  if (!hasRenderFsDrawer) allPass = false;
+
+  // 31.7 openFsDrawer / closeFsDrawer 函数
+  const hasOpenFsDrawer = /function\s+openFsDrawer\(itemId\)/.test(appText);
+  const hasCloseFsDrawer = /function\s+closeFsDrawer\(\)/.test(appText);
+  console.log(`  openFsDrawer 函数存在: ${hasOpenFsDrawer ? "✓" : "✗"}`);
+  console.log(`  closeFsDrawer 函数存在: ${hasCloseFsDrawer ? "✓" : "✗"}`);
+  if (!(hasOpenFsDrawer && hasCloseFsDrawer)) allPass = false;
+
+  // 31.8 抽屉 CSS：position: fixed + 初始 transform translateX(100%)
+  const drawerPosFixed = /\.fs-drawer\s*\{[\s\S]{0,500}position:\s*fixed[\s\S]{0,300}right:\s*0/.test(cssText);
+  const drawerInitial = /\.fs-drawer\s*\{[\s\S]{0,500}transform:\s*translateX\(100%\)/.test(cssText);
+  const drawerOpen = /\.fs-drawer\.open\s*\{[\s\S]{0,200}transform:\s*translateX\(0\)/.test(cssText);
+  console.log(`  CSS: .fs-drawer position: fixed + right: 0: ${drawerPosFixed ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-drawer 初始 transform: translateX(100%): ${drawerInitial ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-drawer.open transform: translateX(0): ${drawerOpen ? "✓" : "✗"}`);
+  if (!(drawerPosFixed && drawerInitial && drawerOpen)) allPass = false;
+
+  // 31.9 抽屉打开时 grid 加 padding-right
+  const drawerPadRight = /\.foreshadowing-page--drawer-open\s+\.fs-grid\s*\{[^}]*padding-right:\s*480px/.test(cssText);
+  console.log(`  CSS: 抽屉打开时 .fs-grid padding-right: 480px: ${drawerPadRight ? "✓" : "✗"}`);
+  if (!drawerPadRight) allPass = false;
+
+  // 31.10 遮罩 .fs-drawer-mask
+  const hasMask = /\.fs-drawer-mask\s*\{[\s\S]{0,500}position:\s*fixed[\s\S]{0,200}background:\s*rgba/.test(cssText);
+  const maskClickClose = /#fs-drawer-mask[\s\S]{0,300}addEventListener\(["']click["'][\s\S]{0,200}closeFsDrawer/.test(appText);
+  console.log(`  CSS: .fs-drawer-mask 遮罩: ${hasMask ? "✓" : "✗"}`);
+  console.log(`  JS: 遮罩点击关闭抽屉: ${maskClickClose ? "✓" : "✗"}`);
+  if (!(hasMask && maskClickClose)) allPass = false;
+
+  // 31.11 Esc 键关闭抽屉
+  const escClose = /e\.key\s*===\s*["']Escape["'][\s\S]{0,300}closeFsDrawer/.test(appText);
+  console.log(`  JS: Esc 键关闭抽屉: ${escClose ? "✓" : "✗"}`);
+  if (!escClose) allPass = false;
+
+  // 31.12 抽屉内字段（fs-fsno / fs-name / fs-status / btn-fs-toggle / btn-fs-drawer-close）
+  const fsDrawerFields = /id="fs-fsno"[\s\S]{0,500}id="fs-name"[\s\S]{0,500}id="fs-status"[\s\S]{0,500}id="btn-fs-toggle"/.test(appText);
+  const hasCloseBtn = /id="btn-fs-drawer-close"/.test(appText);
+  console.log(`  抽屉内字段 (fs-fsno/fs-name/fs-status/btn-fs-toggle): ${fsDrawerFields ? "✓" : "✗"}`);
+  console.log(`  抽屉内关闭按钮 (btn-fs-drawer-close): ${hasCloseBtn ? "✓" : "✗"}`);
+  if (!(fsDrawerFields && hasCloseBtn)) allPass = false;
+
+  // 31.13 index.html 含 #fs-drawer 和 #fs-drawer-mask
+  const _v31html = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
+  const htmlText = _v31html;
+  const htmlDrawer = /id="fs-drawer"/.test(htmlText);
+  const htmlMask = /id="fs-drawer-mask"/.test(htmlText);
+  console.log(`  index.html 含 #fs-drawer: ${htmlDrawer ? "✓" : "✗"}`);
+  console.log(`  index.html 含 #fs-drawer-mask: ${htmlMask ? "✓" : "✗"}`);
+  if (!(htmlDrawer && htmlMask)) allPass = false;
+
+  // 31.14 抽屉 grid 列数升到 4（>=1280 宽屏）
+  const grid4 = /\.fs-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4/.test(cssText);
+  console.log(`  CSS: .fs-grid 4 列布局 (>=1280, v31): ${grid4 ? "✓" : "✗"}`);
+  if (!grid4) allPass = false;
+
+  // 31.15 fs-item.active 含 border-selected 类（renderFsList 中）
+  const activeBorderSelected = /isInDrawer[\s\S]{0,50}\?\s*["']active border-selected["']/.test(appText)
+    || /isExpanded[\s\S]{0,50}\?\s*["']active border-selected["']/.test(appText);
+  console.log(`  renderFsList 选中态 class="active border-selected": ${activeBorderSelected ? "✓" : "✗"}`);
+  if (!activeBorderSelected) allPass = false;
+
+  // 31.16 onFsClick 调 openFsDrawer
+  const onFsClickOpens = /openFsDrawer\(id\)/.test(appText);
+  console.log(`  onFsClick 调 openFsDrawer: ${onFsClickOpens ? "✓" : "✗"}`);
+  if (!onFsClickOpens) allPass = false;
+
+  // 31.17 新增伏笔自动打开抽屉
+  const newFsOpensDrawer = /pid === "foreshadowing"[\s\S]{0,400}state\.ui\.fsDrawerId\s*=\s*it\.id/.test(appText);
+  console.log(`  新增伏笔自动打开抽屉: ${newFsOpensDrawer ? "✓" : "✗"}`);
+  if (!newFsOpensDrawer) allPass = false;
+
+  // 31.18 抽屉内编辑按钮 (v30 保留 #btn-fs-toggle)
+  //   - 抽屉 body 内 <button id="btn-fs-toggle" ...> 触发 fsEditing 切换
+  //   - 用 indexOf 定位 renderFsDrawer 函数体（避免嵌套 {} 干扰）
+  const fsDrawStart = appText.indexOf("function renderFsDrawer()");
+  const fsDrawEnd = fsDrawStart >= 0 ? appText.indexOf("function closeFsDrawer", fsDrawStart) : -1;
+  const fsDrawBody = fsDrawStart >= 0 && fsDrawEnd >= 0 ? appText.slice(fsDrawStart, fsDrawEnd) : "";
+  const drawerHasEditBtn = /id="btn-fs-toggle"/.test(fsDrawBody);
+  console.log(`  抽屉体内含 #btn-fs-toggle 编辑按钮: ${drawerHasEditBtn ? "✓" : "✗"}`);
+  if (!drawerHasEditBtn) allPass = false;
+
+  // 31.19 删除伏笔时清 fsDrawerId
+  const deleteClearsDrawer = /state\.ui\.fsDrawerId === it\.id\)[\s\S]{0,100}state\.ui\.fsDrawerId = null/.test(appText);
+  console.log(`  deleteCurrentItem 清 fsDrawerId: ${deleteClearsDrawer ? "✓" : "✗"}`);
+  if (!deleteClearsDrawer) allPass = false;
+
+  // 31.20 renderCurrentPage 调用 renderFsDrawer
+  const renderCurrentPageCalls = /state\.currentPage === "foreshadowing"[\s\S]{0,500}renderFsDrawer\(\)/.test(appText);
+  console.log(`  renderCurrentPage 调 renderFsDrawer: ${renderCurrentPageCalls ? "✓" : "✗"}`);
+  if (!renderCurrentPageCalls) allPass = false;
+
+  const t31All = schema15 && fsDrawerIdDefault && fsExpandToDrawer
+    && dataActionDrawer && noDetailInList
+    && hasRenderFsDrawer && hasOpenFsDrawer && hasCloseFsDrawer
+    && drawerPosFixed && drawerInitial && drawerOpen
+    && drawerPadRight
+    && hasMask && maskClickClose
+    && escClose
+    && fsDrawerFields && hasCloseBtn
+    && htmlDrawer && htmlMask
+    && grid4
+    && activeBorderSelected
+    && onFsClickOpens
+    && newFsOpensDrawer
+    && drawerHasEditBtn
+    && deleteClearsDrawer
+    && renderCurrentPageCalls;
+  console.log("  v31 改动:", t31All ? "PASS" : "FAIL");
+  if (!t31All) allPass = false;
 
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

@@ -10,7 +10,8 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  const SCHEMA_VERSION = 14;
+  // v31：右侧抽屉替换原地展开（fsExpandedId → fsDrawerId）
+  const SCHEMA_VERSION = 15;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
   // 持久化 directory handle 的 key 前缀（完整 key = "dir:" + currentFileName）
@@ -1242,7 +1243,9 @@
     fsSort: "asc",
     fsStatusFilter: "all", // "all" | "未回收" | "部分回收" | "已回收"
     fsRecordSort: "asc",
-    fsExpandedId: null,    // v23：当前展开的伏笔 id（null = 全部折叠）
+    fsDrawerId: null,      // v31：抽屉打开的伏笔 id（null = 抽屉关闭）
+    // v31 兼容：旧版用 fsExpandedId 表示"原地展开"，新版改为右侧抽屉；
+    //        load() 末尾会把 fsExpandedId 迁移到 fsDrawerId 并删除旧字段
     layout: {},
     ...(data.ui || {}),
   };
@@ -1250,7 +1253,11 @@
   if (!state.ui.fsSort) state.ui.fsSort = "asc";
   if (!state.ui.fsStatusFilter) state.ui.fsStatusFilter = "all";
   if (!state.ui.fsRecordSort) state.ui.fsRecordSort = "asc";
-  if (state.ui.fsExpandedId === undefined) state.ui.fsExpandedId = null;
+  if (state.ui.fsDrawerId === undefined) {
+    // v31 兼容：旧版有 fsExpandedId 的话,自动迁到 fsDrawerId（让"原地展开"的旧数据打开抽屉）
+    state.ui.fsDrawerId = state.ui.fsExpandedId || null;
+    if (state.ui.fsExpandedId !== undefined) delete state.ui.fsExpandedId;
+  }
       // 兜底：ui.layout 各字段补默认
       state.ui.layout = {
         nav: LAYOUT_DEFAULTS.nav,
@@ -2060,10 +2067,10 @@
     if (sortLabel) sortLabel.textContent = state.ui.sort === "asc" ? "正序" : "倒序";
   }
 
-  // v23：渲染伏笔网格
-  //   - 每张卡片：压缩区（编号/名称/状态/履历数）+ 展开区（完整编辑器，grid-column 1/-1 占满整行）
-  //   - state.ui.fsExpandedId 控制当前展开项；其他卡片均折叠
-  //   - 切换展开项时其他行被自然下推一段距离（grid auto-flow row 行为）
+  // v31：渲染伏笔网格
+  //   - 卡片只有 head（编号/名称/状态/删除），不再有 in-place detail
+  //   - 详情走右侧抽屉：state.ui.fsDrawerId 控制哪个 id 在抽屉里（null = 抽屉关闭）
+  //   - 切换抽屉项时其他行不动；点卡片 → 抽屉打开/切换
   function renderFsList() {
     const grid = $("#fs-grid");
     if (!grid) return;
@@ -2080,9 +2087,10 @@
         b.classList.toggle("active", b.dataset.fsStatus === state.ui.fsStatusFilter);
       });
     }
-    // v23：兜底——fsExpandedId 指向已删除/不存在的项时，重置为 null
-    if (state.ui.fsExpandedId && !items.some((it) => it.id === state.ui.fsExpandedId)) {
-      state.ui.fsExpandedId = null;
+    // v31：兜底——fsDrawerId 指向已删除/不存在的项时，重置为 null（不打开抽屉）
+    if (state.ui.fsDrawerId && !items.some((it) => it.id === state.ui.fsDrawerId)) {
+      state.ui.fsDrawerId = null;
+      state.ui.fsEditing = false;
     }
     if (items.length === 0) {
       grid.innerHTML = `
@@ -2107,40 +2115,56 @@
             : status === "部分回收"
               ? "fs-status-partial"
               : "fs-status-unresolved";
-        const isExpanded = it.id === state.ui.fsExpandedId;
+        // v31：选中态 = 抽屉里正在显示的那张卡（active + 描边工具类）
+        const isInDrawer = it.id === state.ui.fsDrawerId;
         // v28：head 只显示伏笔编号（it.fsNo，如 "FS-001"）—— 去掉"序号 #N"，
         // 编号距左固定值（head padding-left 12px），名称居中，状态距右固定值
         return `
-          <article class="fs-item ${isExpanded ? "expanded" : ""} ${it.id === p.currentItemId ? "active border-selected" : ""}" data-id="${escapeHtml(it.id)}" data-action="toggle">
+          <article class="fs-item ${isInDrawer ? "active border-selected" : ""}" data-id="${escapeHtml(it.id)}" data-action="open-drawer">
             <header class="fs-card-head" data-id="${escapeHtml(it.id)}">
               <span class="fs-cell fs-col-fsno" title="伏笔编号 ${escapeHtml(it.fsNo || "")}">${escapeHtml(it.fsNo || "（无编号）")}</span>
               <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
               <span class="fs-cell fs-col-status ${cls}">${escapeHtml(status)}</span>
               <button class="fs-delete" data-id="${escapeHtml(it.id)}" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
             </header>
-            <div class="fs-card-detail" data-detail-for="${escapeHtml(it.id)}"></div>
           </article>`;
       })
       .join("");
     const count = $("#fs-count");
     if (count) count.textContent = `${items.length} 条`;
-    // detail 容器现在永远渲染（v27 改造以支持折叠/展开过渡动画）；
-    // 只有展开项才填充内容，折叠项保持空（CSS max-height:0 隐藏）
-    if (state.ui.fsExpandedId) {
-      renderFsCardDetail(state.ui.fsExpandedId);
-    }
   }
 
-  // v23：渲染展开卡片的 detail 区域（完整编辑器）
-  //   - 内容结构 = 原来的 renderFsEditor 内部，但放进 .fs-card-detail 容器
-  //   - 包含：伏笔编号/名称/状态 + 履历 + 编辑按钮
-  //   - 编辑/查看态切换：state.ui.fsEditing 仍然控制；UI 改为 inline 按钮（不再独立放工具栏）
-  function renderFsCardDetail(itemId) {
-    const detail = $(`.fs-card-detail[data-detail-for="${CSS.escape(itemId)}"]`);
-    if (!detail) return;
-    const item = state.pages.foreshadowing.items.find((x) => x.id === itemId);
+  // v31：渲染伏笔详情抽屉（右侧滑出）
+  //   - 内容结构 = 原来的 renderFsCardDetail（伏笔编号/名称/状态 + 履历 + 编辑按钮）
+  //   - 抽屉外层 .fs-drawer 控制显隐 + 滑入/滑出动画（CSS）
+  //   - 背景 .fs-drawer-mask 提供半透明遮罩（点击关闭）
+  //   - 编辑/查看态切换：state.ui.fsEditing 仍控制；UI 保留 inline 编辑按钮
+  //   - 空状态：state.ui.fsDrawerId 为 null → 抽屉整体 hidden，不渲染内容
+  function renderFsDrawer() {
+    const drawer = $("#fs-drawer");
+    const mask = $("#fs-drawer-mask");
+    if (!drawer) return;
+    const drawerId = state.ui.fsDrawerId;
+    if (!drawerId) {
+      // 抽屉关闭
+      drawer.classList.remove("open");
+      if (mask) mask.classList.remove("open");
+      // 略等动画结束再 hidden（避免抽屉内容瞬变）
+      setTimeout(() => {
+        if (!state.ui.fsDrawerId) {
+          drawer.hidden = true;
+          if (mask) mask.hidden = true;
+          drawer.innerHTML = "";
+        }
+      }, 280);
+      return;
+    }
+    const item = state.pages.foreshadowing.items.find((x) => x.id === drawerId);
     if (!item) {
-      detail.innerHTML = "";
+      // 兜底：找不到 item（外部删了/筛选掉了）→ 关闭
+      state.ui.fsDrawerId = null;
+      state.ui.fsEditing = false;
+      renderFsList();
       return;
     }
     const opts = FS_STATUS_OPTIONS.map(
@@ -2158,30 +2182,39 @@
     const editTitle = isEditing
       ? "切到查看态（履历原文可点击跳转）"
       : "切到编辑态（可改伏笔字段、新增/编辑履历）";
-    // v28：删除"📋 N 条履历"徽标（编辑按钮旁的"x条履历"）
-    detail.innerHTML = `
-      <div class="fs-detail-meta ${mainClass}">
-        <div class="fs-detail-row">
-          <div class="meta-field meta-fsno">
-            <label>伏笔编号</label>
-            <input id="fs-fsno" type="text" ${readonlyAttr} value="${escapeHtml(item.fsNo || "")}" placeholder="如：FS-001" />
+    // v31：抽屉布局 = head (编号+名称+关闭) + meta (状态+编辑) + body (履历+底栏)
+    drawer.innerHTML = `
+      <div class="fs-drawer-head">
+        <div class="fs-drawer-head-left">
+          <span class="fs-drawer-fsno" title="伏笔编号">${escapeHtml(item.fsNo || "（无编号）")}</span>
+          <span class="fs-drawer-name" title="${escapeHtml(item.name || "")}">${escapeHtml(item.name || "（无名）")}</span>
+        </div>
+        <button id="btn-fs-drawer-close" class="fs-drawer-close" title="关闭抽屉" aria-label="关闭抽屉" type="button">×</button>
+      </div>
+      <div class="fs-drawer-body">
+        <div class="fs-drawer-meta ${mainClass}">
+          <div class="fs-drawer-meta-row">
+            <div class="meta-field">
+              <label>伏笔编号</label>
+              <input id="fs-fsno" type="text" ${readonlyAttr} value="${escapeHtml(item.fsNo || "")}" placeholder="如：FS-001" />
+            </div>
+            <div class="meta-field meta-title">
+              <label>伏笔名称</label>
+              <input id="fs-name" type="text" ${readonlyAttr} value="${escapeHtml(item.name || "")}" placeholder="给伏笔起个名字" />
+            </div>
           </div>
-          <div class="meta-field meta-title">
-            <label>伏笔名称</label>
-            <input id="fs-name" type="text" ${readonlyAttr} value="${escapeHtml(item.name || "")}" placeholder="给伏笔起个名字" />
-          </div>
-          <div class="meta-field">
-            <label>状态</label>
-            <select id="fs-status" ${disabledAttr}>${opts}</select>
-          </div>
-          <div class="meta-actions">
-            <!-- v27：编辑按钮只保留 icon（✎ 编辑 / ✓ 完成编辑），无文字 -->
-            <button id="btn-fs-toggle" class="secondary-btn icon-only" title="${editTitle}" aria-label="${editTitle}">${editIcon}</button>
+          <div class="fs-drawer-meta-row">
+            <div class="meta-field">
+              <label>状态</label>
+              <select id="fs-status" ${disabledAttr}>${opts}</select>
+            </div>
+            <div class="meta-actions">
+              <!-- v27：编辑按钮只保留 icon（✎ 编辑 / ✓ 完成编辑），无文字 -->
+              <button id="btn-fs-toggle" class="secondary-btn icon-only" title="${editTitle}" aria-label="${editTitle}">${editIcon}</button>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="fs-detail-body ${mainClass}">
-        <div class="fs-records-section">
+        <div class="fs-drawer-section">
           <div class="fs-records-header">
             <span class="fs-records-title">📋 伏笔履历</span>
             <span class="fs-records-meta muted">${isEditing ? `${recCount} 条 · 按提及章节` : `${recCount} 条 · 点击原文描述可跳转`}</span>
@@ -2199,39 +2232,74 @@
           <span id="fs-file-path" class="muted file-path" title=""></span>
         </div>
       </div>`;
+    // 抽屉外层 + 遮罩：从 hidden 切到 open（CSS 滑入动画）
+    drawer.hidden = false;
+    if (mask) {
+      mask.hidden = false;
+      // 下一帧再加 .open（保证 hidden=false 先 commit，触发 transition）
+      requestAnimationFrame(() => {
+        drawer.classList.add("open");
+        mask.classList.add("open");
+        // v31：抽屉打开 → 给父 page-view 加 foreshadowing-page--drawer-open 类
+        //   → CSS 让 .fs-grid 右侧加 padding-right 避免被抽屉遮住
+        const pageView = drawer.closest("[data-page-view='foreshadowing']");
+        if (pageView) pageView.classList.add("foreshadowing-page--drawer-open");
+      });
+    } else {
+      drawer.classList.add("open");
+      const pageView = drawer.closest("[data-page-view='foreshadowing']");
+      if (pageView) pageView.classList.add("foreshadowing-page--drawer-open");
+    }
     bindFsEditorEvents();
-    // v10.1：fs-card-detail innerHTML 重写后 #fs-file-path 是新元素,
-    // 必须补一次 updateFilePathDisplay()，否则保存/切伏笔后路径消失
+    // v10.1：抽屉 innerHTML 重写后 #fs-file-path 是新元素,
+    // 必须补一次 updateFilePathDisplay()，否则保存后路径消失
     updateFilePathDisplay();
   }
 
-  // v27：展开某张伏笔卡片（不走整段 renderFsList，避免 transition 失效）
-  //   - 给 article 加 .expanded class → CSS max-height 0 → 60vh 自动过渡
-  //   - 同步填充 .fs-card-detail innerHTML（编辑器/履历等）
-  function expandFsCard(itemId) {
-    const card = $(`.fs-item[data-id="${CSS.escape(itemId)}"]`);
-    if (!card) return;
-    card.classList.add("expanded");
-    renderFsCardDetail(itemId);
+  // v31：打开抽屉（点卡片 / 新增伏笔时调用）
+  //   - 如果抽屉已开的就是同一条 → 什么都不做（点击不响应）
+  //   - 如果抽屉开的是另一条 → 切换（先 save 旧 dirty、关旧抽屉、开新抽屉）
+  //   - 如果抽屉没开 → 直接开
+  //   - 编辑态下点了不同卡片 → 拦截，toast 提示先完成编辑
+  function openFsDrawer(itemId) {
+    if (!itemId) return;
+    if (state.ui.fsDrawerId === itemId) return;
+    // 编辑态下点了不同卡片 → 拦截
+    if (state.ui.fsEditing && state.ui.fsDrawerId && state.ui.fsDrawerId !== itemId) {
+      toast("请先完成当前伏笔的编辑，再切换其他伏笔", "warn", 1800);
+      return;
+    }
+    // 切前：编辑态下当前项有 dirty → save
+    if (state.ui.fsEditing && state.ui.fsDrawerId && state.ui.fsDrawerId !== itemId) {
+      try {
+        if (isFsEditorDirty()) {
+          saveCurrentItem();
+        }
+      } catch (_) {}
+      state.ui.fsEditing = false;
+    }
+    // 同步 currentItemId（删除/auto-save 等场景仍依赖它）
+    const fsPage = state.pages.foreshadowing;
+    fsPage.currentItemId = itemId;
+    state.ui.fsDrawerId = itemId;
+    save();
+    renderFsList();      // 更新 active 描边
+    renderFsDrawer();    // 渲染抽屉
   }
 
-  // v27：折叠某张伏笔卡片（同样不走整段 renderFsList）
-  //   - 移除 .expanded class → CSS max-height 60vh → 0 自动过渡
-  //   - 过渡结束后清空 detail innerHTML（节省 DOM，等待与 CSS transition 时长一致）
-  const FS_COLLAPSE_CLEAR_DELAY = 320; // 略大于 CSS transition 时间
-  function collapseFsCard(itemId) {
-    const card = $(`.fs-item[data-id="${CSS.escape(itemId)}"]`);
-    if (!card) return;
-    card.classList.remove("expanded");
-    const detail = card.querySelector(".fs-card-detail");
-    if (detail) {
-      // 立即清空会破坏 max-height 动画——等 transition 结束
-      setTimeout(() => {
-        if (!card.classList.contains("expanded")) {
-          detail.innerHTML = "";
-        }
-      }, FS_COLLAPSE_CLEAR_DELAY);
+  // v31：关闭抽屉
+  //   - 编辑态下有关闭按钮 → 拦截，toast 提示先完成编辑
+  //   - 否则：save dirty（如果有）→ 重置 fsEditing → 关闭抽屉 → renderFsList
+  function closeFsDrawer() {
+    if (state.ui.fsEditing) {
+      toast("编辑中，请先完成编辑（点击 ✓ 退出编辑态）", "warn", 1800);
+      return;
     }
+    state.ui.fsDrawerId = null;
+    state.ui.fsEditing = false;
+    save();
+    renderFsDrawer();
+    renderFsList();
   }
 
   function renderChapterEditor() {
@@ -3159,8 +3227,8 @@
       it.fsNo = String(fsFsno?.value ?? it.fsNo ?? "").trim();
       it.name = fsName?.value ?? it.name;
       it.status = fsStatus?.value ?? it.status;
-      // v23：grid 模式下，同步当前卡片的 head 显示
-      //   v27：head 已删 fs-col 系列的 fsNo 列（伏笔编号不再展示在 head），只剩 name + status
+      // v31：抽屉模式——同步当前卡片的 head 显示
+      //   head 只显示 3 列（编号 fsNo / 名称 / 状态），状态 class 需要根据值切换
       const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
       if (li) {
         const nameCell = li.querySelector(".fs-col-name");
@@ -3174,6 +3242,11 @@
           );
         }
       }
+      // 抽屉 head 上的编号/名称也要同步（用户改 fsNo/name 时）
+      const drawerFsNo = $(".fs-drawer-fsno");
+      const drawerName = $(".fs-drawer-name");
+      if (drawerFsNo) drawerFsNo.textContent = it.fsNo || "（无编号）";
+      if (drawerName) drawerName.textContent = it.name || "（无名）";
       debouncedPushHistory();
     };
     [fsFsno, fsName, fsStatus].forEach((el) => {
@@ -3193,9 +3266,9 @@
       }
       state.ui.fsEditing = !state.ui.fsEditing;
       save();
-      // v23：grid 模式只重画 detail 区（保留 grid head 不动，避免输入焦点丢失）
-      if (state.ui.fsExpandedId && $("#fs-grid")) {
-        renderFsCardDetail(state.ui.fsExpandedId);
+      // v31：抽屉模式——重画抽屉
+      if (state.ui.fsDrawerId && $("#fs-drawer")) {
+        renderFsDrawer();
       } else {
         renderFsEditor();
       }
@@ -3204,8 +3277,8 @@
     $("#btn-fs-record-sort")?.addEventListener("click", () => {
       state.ui.fsRecordSort = state.ui.fsRecordSort === "asc" ? "desc" : "asc";
       save();
-      if (state.ui.fsExpandedId && $("#fs-grid")) {
-        renderFsCardDetail(state.ui.fsExpandedId);
+      if (state.ui.fsDrawerId && $("#fs-drawer")) {
+        renderFsDrawer();
       } else {
         renderFsEditor();
       }
@@ -3221,8 +3294,8 @@
       );
       state.pages.foreshadowing.records.push(newRec);
       // 不立刻 save()，等用户编辑完输入框内容再统一存
-      if (state.ui.fsExpandedId && $("#fs-grid")) {
-        renderFsCardDetail(state.ui.fsExpandedId);
+      if (state.ui.fsDrawerId && $("#fs-drawer")) {
+        renderFsDrawer();
       } else {
         renderFsEditor();
       }
@@ -3267,8 +3340,8 @@
       state.pages.foreshadowing.records.splice(idx, 1);
       save();
       pushHistory();
-      if (state.ui.fsExpandedId && $("#fs-grid")) {
-        renderFsCardDetail(state.ui.fsExpandedId);
+      if (state.ui.fsDrawerId && $("#fs-drawer")) {
+        renderFsDrawer();
       } else {
         renderFsEditor();
       }
@@ -3285,8 +3358,10 @@
       if (!rec) return;
       jumpToChapterForRecord(rec);
     });
-    // v27：detail 区域不再放"删除"按钮（删除统一用 head 上的 .fs-delete 叉号），
-    //   避免一个 item 同时有 head 叉号 + detail 删除按钮两个入口
+    // v31：抽屉 head 上的关闭按钮 → closeFsDrawer（编辑态下拦截，提示先完成编辑）
+    $("#btn-fs-drawer-close")?.addEventListener("click", () => {
+      closeFsDrawer();
+    });
   }
 
   // v14：点击履历的"原文描述"→ 跳转到对应章节并高亮匹配段
@@ -3529,7 +3604,11 @@
       renderChapterEditor();
     } else if (state.currentPage === "foreshadowing") {
       renderFsList();
-      renderFsEditor();
+      // v31：抽屉（详情/编辑）独立渲染；renderFsList 之后立即调 renderFsDrawer
+      //   renderFsDrawer 会根据 state.ui.fsDrawerId 决定渲染/关闭抽屉
+      //   （v23 的 renderFsEditor 函数在 grid+drawer 模式下是 no-op，
+      //    内部检测到 #fs-grid 存在就直接 return，详情完全在抽屉里）
+      renderFsDrawer();
     } else if (state.currentPage === "goods") {
       // v21：goods 是 compound，渲染时调 renderCompoundGoods 一次性渲染 lingshi + items
       renderCompoundGoods();
@@ -4408,9 +4487,9 @@
     const def = curPageDef();
     const label = it.title || it.name || it.no;
     if (!confirm(`确定删除${def.label}「${label}」？`)) return;
-    // v23：伏笔页删除时——如果删的就是当前展开项，fsExpandedId 也要重置
-    if (state.currentPage === "foreshadowing" && state.ui.fsExpandedId === it.id) {
-      state.ui.fsExpandedId = null;
+    // v31：伏笔页删除时——如果删的就是当前抽屉里的项，fsDrawerId 也要重置
+    if (state.currentPage === "foreshadowing" && state.ui.fsDrawerId === it.id) {
+      state.ui.fsDrawerId = null;
       state.ui.fsEditing = false;
     }
     p.items = p.items.filter((x) => x.id !== it.id);
@@ -4457,9 +4536,9 @@
     const it = def.makeItem(data, targetSheet);
     p.items.push(it);
     p.currentItemId = it.id;
-    // v23：新增伏笔时自动展开并进入编辑态——用户新建后马上能填字段
+    // v31：新增伏笔时自动打开抽屉 + 进入编辑态——用户新建后马上能填字段
     if (pid === "foreshadowing") {
-      state.ui.fsExpandedId = it.id;
+      state.ui.fsDrawerId = it.id;
       state.ui.fsEditing = true;
     }
     save();
@@ -6022,12 +6101,11 @@
       renderPair();
     };
 
-    // v23：fs 列表改用 onFsClick——点 .fs-card-head 切展开态（不是 currentItemId）
+    // v31：fs 列表改用 onFsClick——点 .fs-item 打开抽屉（不是 currentItemId）
     //   - 删除走 .fs-delete 叉号（与之前一致）
-    //   - 点 .fs-card-head 的 [data-action="toggle"]：切 fsExpandedId
-    //   - currentItemId 不再随点击变（仍用于删除时定位、auto-save 焦点等场景）
-    //   - v27：切换展开/折叠时只 toggle .expanded class + 填充/清空 detail 容器，
-    //     不再 renderFsList() 整段重画（让 max-height transition 动画能正常播放）
+    //   - 抽屉开着的当前卡再点一次不响应（仍开着）；点其他卡 = 切换抽屉
+    //   - 编辑态下点其他卡 → 拦截，提示先完成编辑（保留 v28 行为）
+    //   - 抽屉外 .fs-drawer-mask 点击会触发 closeFsDrawer（见 bindEditorButtons 全局监听）
     const onFsClick = (e) => {
       // 1) 删除按钮（保留原 .fs-delete 行为）
       if (e.target.closest(".fs-delete")) {
@@ -6038,82 +6116,27 @@
         const fsPage = state.pages.foreshadowing;
         const targetItem = fsPage.items.find((x) => x.id === id);
         if (!targetItem) return;
+        // v31：如果删的就是当前抽屉里的项，需要先关抽屉
+        if (state.ui.fsDrawerId === id) {
+          state.ui.fsDrawerId = null;
+          state.ui.fsEditing = false;
+        }
         fsPage.currentItemId = id;
         deleteCurrentItem();
         return;
       }
-      // v26：整张 .fs-item 都是点击区,排除 detail 内的交互元素
+      // 2) 点 .fs-item 卡片（非交互区）→ 打开抽屉
       const itemEl = e.target.closest(".fs-item");
       if (!itemEl) return;
+      // v26 沿用：排除 input/textarea/select/button/label 等交互元素
+      //   v31 改造：head 现在只有纯展示元素（编号/名称/状态/删除），不会命中下面这些
       if (e.target.closest("input, textarea, select, button, label, [contenteditable]")) {
-        // detail 内的 input/select/button 区域不触发 toggle
         return;
       }
-      // 2) 切换展开
-      {
-        const id = itemEl.dataset.id;
-        if (!id) return;
-        // v28：编辑态禁止折叠当前卡片 / 切换到其他卡片
-        // - 编辑态下若用户点了 head / 非交互区，应拦截折叠/切换，提示先完成编辑
-        if (state.ui.fsEditing && state.ui.fsExpandedId === id) {
-          toast("编辑中，请先完成编辑（点击 ✓ 退出编辑态）", "warn", 1800);
-          return;
-        }
-        if (state.ui.fsEditing && state.ui.fsExpandedId && state.ui.fsExpandedId !== id) {
-          toast("请先完成当前伏笔的编辑，再切换其他伏笔", "warn", 1800);
-          return;
-        }
-        // 切前：编辑态下如果有 dirty，save
-        if (state.ui.fsEditing && state.ui.fsExpandedId && state.ui.fsExpandedId !== id) {
-          try {
-            if (isFsEditorDirty()) {
-              saveCurrentItem();
-            }
-          } catch (_) {}
-          state.ui.fsEditing = false;
-        }
-        // v27：先折叠旧的（如果有）—— 走 class toggle + 等过渡结束再清空 detail
-        if (state.ui.fsExpandedId && state.ui.fsExpandedId !== id) {
-          collapseFsCard(state.ui.fsExpandedId);
-        }
-        if (state.ui.fsExpandedId === id) {
-          // 折叠当前：编辑态下如果 dirty，save 后退出编辑态
-          if (state.ui.fsEditing) {
-            try {
-              if (isFsEditorDirty()) {
-                saveCurrentItem();
-              }
-            } catch (_) {}
-            state.ui.fsEditing = false;
-          }
-          state.ui.fsExpandedId = null;
-          collapseFsCard(id);
-        } else {
-          // 展开新卡片
-          state.ui.fsExpandedId = id;
-          // 同步 currentItemId（删除/auto-save 场景仍依赖它）
-          const fsPage = state.pages.foreshadowing;
-          fsPage.currentItemId = id;
-          // 同步 active 描边
-          const grid = $("#fs-grid");
-          if (grid) {
-            grid.querySelectorAll(".fs-item.active").forEach((el) => {
-              el.classList.remove("active", "border-selected");
-            });
-            itemEl.classList.add("active", "border-selected");
-          }
-          expandFsCard(id);
-        }
-        save();
-        // 展开后滚到该卡片（如果位置在视口外）
-        requestAnimationFrame(() => {
-          const card = $(`.fs-item[data-id="${CSS.escape(id)}"]`);
-          if (card && typeof card.scrollIntoView === "function") {
-            card.scrollIntoView({ behavior: "smooth", block: "nearest" });
-          }
-        });
-        return;
-      }
+      const id = itemEl.dataset.id;
+      if (!id) return;
+      // 调用 openFsDrawer（已处理 编辑态拦截 / dirty save / currentItemId 同步 / 抽屉切换）
+      openFsDrawer(id);
     };
     if (chapterList) chapterList.addEventListener("click", onMainClick);
     if (fsList) fsList.addEventListener("click", onFsClick);
@@ -6126,6 +6149,19 @@
       renderItemsList();
       renderItemsEditor();
     }));
+    // v31：抽屉遮罩点击 → 关闭抽屉
+    const fsMask = $("#fs-drawer-mask");
+    if (fsMask) {
+      fsMask.addEventListener("click", () => {
+        closeFsDrawer();
+      });
+    }
+    // v31：键盘 Esc 关闭抽屉
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && state.currentPage === "foreshadowing" && state.ui.fsDrawerId) {
+        closeFsDrawer();
+      }
+    });
   }
 
   function bindEditorButtons() {

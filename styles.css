@@ -3360,16 +3360,21 @@ input[type="range"]::-moz-range-thumb {
 .ch2-delete:hover { color: #c0392b; }
 
 /* ============================================
-   伏笔管理 v23 — 三列多行网格 + 卡片展开
-   - .fs-grid: grid 容器,3 列(响应式:>=1280 3列,>=768 2列,<768 1列)
-   - .fs-item: 卡片（折叠态 = 1 个 grid item,展开态 = grid-column: 1/-1 占满整行）
-   - .fs-card-head: 折叠态永远显示
-   - .fs-card-detail: 展开后填充的 detail 区
+   伏笔管理 v31 — 卡片网格 + 右侧抽屉详情
+   - .fs-grid: grid 容器,响应式列数（>=1280 4列,>=900 3列,>=600 2列,<600 1列）
+     —— 比 v23 的 3 列布局更密，一页能多看 1-2 张卡（用户要求"大小适中，无需一页只显示4个"）
+   - .fs-item: 卡片（只有 head；不再有 in-place detail；选中态 = 抽屉正在显示）
+   - .fs-card-head: head 部分永远显示
+   - .fs-drawer: 右侧滑出抽屉，详情/编辑都在这里
+   - .fs-drawer-mask: 半透明背景遮罩（点击关闭）
    ============================================ */
 .fs-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  /* v31：从 3 列升到 4 列（>=1280），让"中等大小"卡片在宽屏一页能看到 8-12 个
+     —— 视需求"卡片大小适中，无需一页只显示 4 个"，方案 3 的 4 列被否了
+        （不要按状态分列），但 4 列 + 中等卡片 = 8-12 个/页刚好 */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
   padding: 12px 0;
   /* v29：让 grid 在 flex column 父容器里撑满剩余空间并支持滚动
      - flex: 1 1 auto  → 占满 page-toolbar/seg 之后的剩余高度
@@ -3385,15 +3390,30 @@ input[type="range"]::-moz-range-thumb {
   /* 滚动条跟主题色统一（webkit 系） */
   scrollbar-width: thin;
   scrollbar-color: var(--border, #e2d6c4) transparent;
+  /* v31：抽屉打开时给 grid 右侧加 padding，避免卡片被抽屉遮住右半边
+     —— 抽屉宽 480px，但屏幕可能更窄，calc 自适应 */
+  transition: padding-right 0.28s ease;
+  padding-right: 0;
+}
+/* v31：抽屉打开时给 grid 留出抽屉宽度的右侧空间（避免内容被挡） */
+.foreshadowing-page--drawer-open .fs-grid {
+  padding-right: 480px;
 }
 .fs-grid::-webkit-scrollbar { width: 8px; }
 .fs-grid::-webkit-scrollbar-thumb { background: var(--border, #e2d6c4); border-radius: 4px; }
 .fs-grid::-webkit-scrollbar-track { background: transparent; }
 @media (max-width: 1279px) {
+  .fs-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 899px) {
   .fs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .fs-grid { grid-template-columns: 1fr; }
+}
+/* v31：抽屉打开时 ≤899 视口下 抽屉宽度与 grid 自身列数叠加可能挤 → 关掉 padding 让 grid 正常滚动 */
+@media (max-width: 899px) {
+  .foreshadowing-page--drawer-open .fs-grid { padding-right: 0; }
 }
 
 .fs-empty {
@@ -3419,37 +3439,36 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: none !important;
 }
 
+/* v31：卡片容器
+   - 不再有 flex-direction: column（v23 之前是给"head + detail"准备的）
+   - 不再有 expanded 状态（v27 引入的 inline 展开/折叠动画，v31 改为右侧抽屉后弃用）
+   - 整张卡是点击区 → 打开抽屉 */
 .fs-item {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   border: 1px solid var(--border, #e2d6c4);
   border-radius: 8px;
   background: var(--card-bg, rgba(255, 255, 255, 0.4));
   transition: box-shadow 0.12s ease, border-color 0.12s ease;
-  overflow: hidden;
   min-width: 0;
-  /* v26：整张卡片都是点击/hover 命中区（不再只点 head） */
+  /* v26：整张卡片都是点击/hover 命中区 */
   cursor: pointer;
 }
 .fs-item:hover {
   border-color: var(--accent, #785a3c);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
 }
-/* v26：选中态用 .border-selected 工具类——border 高亮，无 box-shadow */
+/* v31：选中态 = 抽屉里正在显示的卡（视觉由 .border-selected 提供） */
 .fs-item.active {
   /* 视觉由 .border-selected 提供（renderFsList 会同时加 .active 和 .border-selected） */
 }
-.fs-item.expanded {
-  border-color: var(--accent, #785a3c);
-  box-shadow: 0 2px 8px rgba(120, 90, 60, 0.12);
-}
 
-/* 卡片头部：横向填充满（v27 改造）
-   - 编号（#N）距左固定值（head padding 12px）
+/* 卡片头部：横向填充满
+   - 编号距左固定值（head padding-left 12px）
    - 名称居中（text-align: center + flex:1）
    - 状态距右固定值（margin-left:auto + head padding 12px）
    - 删除按钮紧贴状态右侧
-   v26：去掉自身 cursor/hover——hover 由外层 .fs-item 接管，避免视觉上像「里面又有个 card」 */
+   v26：去掉自身 cursor/hover——hover 由外层 .fs-item 接管 */
 .fs-card-head {
   display: flex;
   align-items: center;
@@ -3457,9 +3476,6 @@ input[type="range"]::-moz-range-thumb {
   padding: 10px 12px;
   user-select: none;
   min-width: 0;
-  /* v29：显式 width:100% 确保 head 横向填充满 .fs-item 卡片容器
-     （之前 .fs-item 残留 v23 前的 padding:8px 14px 会把 head 挤在内部，
-     删掉旧 .fs-item 后这里再加 100% 双保险，避免任何 flex column 布局变化导致 head 收缩） */
   width: 100%;
   box-sizing: border-box;
 }
@@ -3474,7 +3490,7 @@ input[type="range"]::-moz-range-thumb {
 }
 .fs-item .fs-col-fsno {
   /* v28：head 左侧的伏笔编号（如 FS-001）—— 距左固定值（head padding-left 12px），
-     等宽 + 粗体 + 主题强调色，与"序号 #N"做视觉区分 */
+     等宽 + 粗体 + 主题强调色 */
   flex-shrink: 0;
   font-size: 12px;
   color: var(--accent, #785a3c);
@@ -3523,34 +3539,6 @@ input[type="range"]::-moz-range-thumb {
   background: rgba(192, 57, 43, 0.12);
 }
 
-/* detail 区：折叠/展开过渡动画（v27 改造）
-   - 折叠态：max-height:0 + opacity:0 + padding:0 + border-top-width:0 完全收起
-   - 展开态：max-height:60vh + opacity:1 + 正常 padding + border-top:1px
-   - 过渡通过 transition 在 max-height/opacity/padding/border-top-width 上播放
-   - 内容超过 60vh 时 overflow-y:auto 出现滚动条（沿用 v26） */
-.fs-card-detail {
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  padding: 0 14px;
-  background: var(--editor-bg, rgba(255, 255, 255, 0.25));
-  min-width: 0;
-  border-top: 1px solid var(--border, #e2d6c4);
-  border-top-width: 0;
-  transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.28s ease, border-top-width 0.28s ease;
-}
-.fs-item.expanded .fs-card-detail {
-  max-height: 60vh;
-  opacity: 1;
-  padding: 4px 14px 14px;
-  border-top-width: 1px;
-  overflow-y: auto;
-}
-/* v28：展开后隐藏 head（缩略标题折叠到 detail 顶部，整张卡片只显示 detail） */
-.fs-item.expanded .fs-card-head {
-  display: none;
-}
-
 /* v27：编辑按钮只显示 icon（无文字），更紧凑 */
 .secondary-btn.icon-only {
   padding: 4px 8px;
@@ -3558,21 +3546,148 @@ input[type="range"]::-moz-range-thumb {
   font-size: 14px;
   text-align: center;
 }
-.fs-detail-meta { padding: 8px 0; }
-.fs-detail-row {
+
+
+/* ============================================
+   v31：伏笔详情抽屉（右侧滑出）
+   - .fs-drawer-mask: 全屏半透明遮罩，点击关闭抽屉
+   - .fs-drawer: 固定在视口右侧，宽度 480px，从右侧滑入/滑出
+   - .fs-drawer-head: 抽屉顶部（编号+名称+关闭按钮）
+   - .fs-drawer-body: 抽屉正文（状态+编辑+履历+底栏）
+   - 过渡：transform translateX(100%) → translateX(0)
+   ============================================ */
+.fs-drawer-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+  z-index: 90;
+}
+.fs-drawer-mask.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.fs-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: 480px;
+  max-width: 90vw;
+  background: var(--card-bg, #faf6ed);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.12);
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fs-drawer.open {
+  transform: translateX(0);
+}
+
+.fs-drawer-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border, #e2d6c4);
+  background: var(--card-bg, #faf6ed);
+}
+.fs-drawer-head-left {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.fs-drawer-fsno {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #785a3c);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.fs-drawer-name {
+  flex: 1 1 auto;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text, #2c2418);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.fs-drawer-close {
+  flex-shrink: 0;
+  background: transparent;
+  border: 0;
+  color: var(--muted, #8a7a66);
+  font-size: 22px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.fs-drawer-close:hover {
+  color: #c0392b;
+  background: rgba(192, 57, 43, 0.08);
+}
+
+.fs-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 14px 16px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border, #e2d6c4) transparent;
+}
+.fs-drawer-body::-webkit-scrollbar { width: 8px; }
+.fs-drawer-body::-webkit-scrollbar-thumb { background: var(--border, #e2d6c4); border-radius: 4px; }
+.fs-drawer-body::-webkit-scrollbar-track { background: transparent; }
+
+/* 抽屉内的 meta 区域（编号/名称/状态/编辑按钮） */
+.fs-drawer-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--border-soft, #e6e0d4);
+}
+.fs-drawer-meta-row {
   display: grid;
-  grid-template-columns: 1fr 2fr 1fr auto;
+  grid-template-columns: 1fr 2fr;
   gap: 12px;
   align-items: end;
 }
-.fs-detail-meta .meta-field { display: flex; flex-direction: column; gap: 4px; }
-.fs-detail-meta label {
+.fs-drawer-meta-row:nth-child(2) {
+  grid-template-columns: 1fr auto;
+}
+.fs-drawer-meta .meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.fs-drawer-meta .meta-field.meta-title { flex: 1 1 auto; }
+.fs-drawer-meta label {
   font-size: 11px;
   color: var(--muted);
   font-weight: 500;
 }
-.fs-detail-meta input,
-.fs-detail-meta select {
+.fs-drawer-meta input,
+.fs-drawer-meta select {
   padding: 6px 10px;
   border: 1px solid var(--border, #e2d6c4);
   border-radius: 4px;
@@ -3580,53 +3695,42 @@ input[type="range"]::-moz-range-thumb {
   font-family: inherit;
   background: var(--input-bg, #faf6ed);
   color: var(--fg, #2c2418);
+  width: 100%;
+  box-sizing: border-box;
 }
-.fs-detail-meta .meta-actions {
+.fs-drawer-meta .meta-actions {
   display: flex;
   gap: 6px;
   align-items: end;
   white-space: nowrap;
 }
+.fs-drawer-meta.readonly input,
+.fs-drawer-meta.readonly select {
+  background: var(--readonly-bg, rgba(0, 0, 0, 0.02));
+  color: var(--muted, #6a5a4a);
+  cursor: default;
+}
 
-.fs-detail-body { padding: 8px 0 0; }
-.fs-detail-body .meta-field {
+/* 抽屉内的"履历"段 */
+.fs-drawer-section {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  padding: 12px 0;
 }
-.fs-detail-body label {
-  font-size: 11px;
-  color: var(--muted);
-  font-weight: 500;
+.fs-drawer-section .fs-records-header { padding: 0; }
+.fs-drawer-section .fs-records-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
 }
-.fs-detail-body input,
-.fs-detail-body textarea {
-  padding: 6px 10px;
-  border: 1px solid var(--border, #e2d6c4);
-  border-radius: 4px;
-  font-size: 13px;
-  font-family: inherit;
-  background: var(--input-bg, #faf6ed);
-  color: var(--fg, #2c2418);
-}
-.fs-detail-body textarea {
-  min-height: 80px;
-  resize: vertical;
-  width: 100%;
-  box-sizing: border-box;
-}
-.fs-detail-body.readonly input,
-.fs-detail-body.readonly textarea,
-.fs-detail-body.readonly select {
-  background: var(--readonly-bg, rgba(0, 0, 0, 0.02));
-  color: var(--muted, #6a5a4a);
-  cursor: default;
-}
-.fs-detail-meta.readonly input,
-.fs-detail-meta.readonly select {
-  background: var(--readonly-bg, rgba(0, 0, 0, 0.02));
-  color: var(--muted, #6a5a4a);
-  cursor: default;
+
+/* 抽屉底栏（保存状态 + 文件路径）沿用 .body-stats */
+.fs-drawer-body .body-stats {
+  flex-shrink: 0;
+  padding: 8px 0 12px;
+  border-top: 1px dashed var(--border-soft, #e6e0d4);
+  margin-top: 8px;
 }
 
 /* 覆盖旧的 .fs-list / .fs-list-row 样式——grid 模式下不显示 */
