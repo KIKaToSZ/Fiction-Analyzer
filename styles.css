@@ -2226,14 +2226,7 @@ input[type="range"]::-moz-range-thumb {
   background: var(--active-bg, rgba(120, 90, 60, 0.12));
   font-weight: 500;
 }
-.fs-col-fsno {
-  font-family: var(--mono-font, ui-monospace, "SFMono-Regular", "Menlo", monospace);
-  font-size: 13px;
-  color: var(--accent, #785a3c);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* v27：删 fsNo 列样式（head 不再展示伏笔编号，迁到 detail 内的 input#fs-fsno） */
 /* v17：伏笔名称列 flex:1，撑开空间，把状态/删除按钮推到右侧 */
 .fs-col-name {
   flex: 1;
@@ -3453,7 +3446,11 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 2px 8px rgba(120, 90, 60, 0.12);
 }
 
-/* 卡片头部：压缩态永远显示
+/* 卡片头部：横向填充满（v27 改造）
+   - 编号（#N）距左固定值（head padding 12px）
+   - 名称居中（text-align: center + flex:1）
+   - 状态距右固定值（margin-left:auto + head padding 12px）
+   - 删除按钮紧贴状态右侧
    v26：去掉自身 cursor/hover——hover 由外层 .fs-item 接管，避免视觉上像「里面又有个 card」 */
 .fs-card-head {
   display: flex;
@@ -3480,17 +3477,12 @@ input[type="range"]::-moz-range-thumb {
   width: 28px;
   text-align: right;
 }
-.fs-item .fs-col-fsno {
-  flex-shrink: 0;
-  width: 72px;
-  font-family: var(--mono-font, ui-monospace, "SFMono-Regular", "Menlo", monospace);
-  color: var(--accent, #785a3c);
-}
 .fs-item .fs-col-name {
   flex: 1 1 auto;
   min-width: 0;
   font-size: 13px;
   font-weight: 500;
+  text-align: center; /* v27：名称居中显示 */
 }
 .fs-item .fs-col-status {
   flex-shrink: 0;
@@ -3499,22 +3491,7 @@ input[type="range"]::-moz-range-thumb {
   padding: 2px 8px;
   border-radius: 10px;
   text-align: center;
-}
-.fs-item .fs-rec-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  color: var(--muted);
-  background: var(--hover, rgba(0, 0, 0, 0.05));
-  padding: 2px 6px;
-  border-radius: 8px;
-  white-space: nowrap;
-}
-.fs-item .fs-caret {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--muted);
-  width: 14px;
-  text-align: center;
+  margin-left: auto; /* v27：状态推到右侧（距右固定值 = head padding-right 12px） */
 }
 
 .fs-item .fs-delete {
@@ -3539,15 +3516,48 @@ input[type="range"]::-moz-range-thumb {
   background: rgba(192, 57, 43, 0.12);
 }
 
-/* detail 区：仅展开后渲染
-   v26：加 max-height + overflow-y: auto——展开后内容超出可视区时出滚动条 */
+/* detail 区：折叠/展开过渡动画（v27 改造）
+   - 折叠态：max-height:0 + opacity:0 + padding:0 + border-top-width:0 完全收起
+   - 展开态：max-height:60vh + opacity:1 + 正常 padding + border-top:1px
+   - 过渡通过 transition 在 max-height/opacity/padding/border-top-width 上播放
+   - 内容超过 60vh 时 overflow-y:auto 出现滚动条（沿用 v26） */
 .fs-card-detail {
-  padding: 4px 14px 14px;
-  border-top: 1px solid var(--border, #e2d6c4);
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0 14px;
   background: var(--editor-bg, rgba(255, 255, 255, 0.25));
   min-width: 0;
+  border-top: 1px solid var(--border, #e2d6c4);
+  border-top-width: 0;
+  transition: max-height 0.28s ease, opacity 0.22s ease, padding 0.28s ease, border-top-width 0.28s ease;
+}
+.fs-item.expanded .fs-card-detail {
   max-height: 60vh;
+  opacity: 1;
+  padding: 4px 14px 14px;
+  border-top-width: 1px;
   overflow-y: auto;
+}
+
+/* v27：detail 顶部显示履历数徽标（从 head 移过来） */
+.fs-detail-rec-badge {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--hover, rgba(0, 0, 0, 0.05));
+  padding: 2px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+  margin-left: 4px;
+}
+
+/* v27：编辑按钮只显示 icon（无文字），更紧凑 */
+.secondary-btn.icon-only {
+  padding: 4px 8px;
+  min-width: 28px;
+  font-size: 14px;
+  text-align: center;
 }
 .fs-detail-meta { padding: 8px 0; }
 .fs-detail-row {

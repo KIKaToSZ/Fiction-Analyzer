@@ -2109,26 +2109,22 @@
               : "fs-status-unresolved";
         const displayNo = idx + 1;
         const isExpanded = it.id === state.ui.fsExpandedId;
-        // 履历数（折叠时显示一个小徽标，让用户知道这个伏笔有多少条提及）
-        const recCount = getFsRecordsByFsNo(it).length;
         return `
           <article class="fs-item ${isExpanded ? "expanded" : ""} ${it.id === p.currentItemId ? "active border-selected" : ""}" data-id="${escapeHtml(it.id)}" data-action="toggle">
             <header class="fs-card-head" data-id="${escapeHtml(it.id)}">
               <span class="fs-cell fs-col-no" title="序号">#${displayNo}</span>
-              <span class="fs-cell fs-col-fsno" title="${escapeHtml(it.fsNo || "—")}">${escapeHtml(it.fsNo || "—")}</span>
               <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
               <span class="fs-cell fs-col-status ${cls}">${escapeHtml(status)}</span>
-              ${recCount > 0 ? `<span class="fs-rec-badge" title="${recCount} 条履历">📋${recCount}</span>` : ""}
-              <span class="fs-caret" aria-hidden="true">${isExpanded ? "▾" : "▸"}</span>
               <button class="fs-delete" data-id="${escapeHtml(it.id)}" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
             </header>
-            ${isExpanded ? `<div class="fs-card-detail" data-detail-for="${escapeHtml(it.id)}"></div>` : ""}
+            <div class="fs-card-detail" data-detail-for="${escapeHtml(it.id)}"></div>
           </article>`;
       })
       .join("");
     const count = $("#fs-count");
     if (count) count.textContent = `${items.length} 条`;
-    // 如果有展开项，填充其 detail 区域
+    // detail 容器现在永远渲染（v27 改造以支持折叠/展开过渡动画）；
+    // 只有展开项才填充内容，折叠项保持空（CSS max-height:0 隐藏）
     if (state.ui.fsExpandedId) {
       renderFsCardDetail(state.ui.fsExpandedId);
     }
@@ -2156,6 +2152,16 @@
     const mainClass = isEditing ? "" : "readonly";
     const recordsHtml = renderFsRecordRows(item.id);
     const recCount = getFsRecordsByFsNo(item).length;
+    // v27：编辑按钮只保留 icon（笔/对勾），删除"完成编辑"和"编辑"等文字
+    const editIcon = isEditing ? "✓" : "✎";
+    const editTitle = isEditing
+      ? "切到查看态（履历原文可点击跳转）"
+      : "切到编辑态（可改伏笔字段、新增/编辑履历）";
+    // v27：rec-badge 移到 detail 顶部（head 不再显示，避免和 status 抢"距右固定值"）
+    const recBadgeHtml =
+      recCount > 0
+        ? `<span class="fs-detail-rec-badge" title="${recCount} 条履历">📋 ${recCount} 条履历</span>`
+        : "";
     detail.innerHTML = `
       <div class="fs-detail-meta ${mainClass}">
         <div class="fs-detail-row">
@@ -2172,8 +2178,9 @@
             <select id="fs-status" ${disabledAttr}>${opts}</select>
           </div>
           <div class="meta-actions">
-            <button id="btn-fs-toggle" class="secondary-btn" title="${isEditing ? "切到查看态（履历原文可点击跳转）" : "切到编辑态（可改伏笔字段、新增/编辑履历）"}">${isEditing ? "✓ 完成编辑" : "✎ 编辑"}</button>
-            <button id="btn-fs-delete-detail" class="danger-btn" title="删除该伏笔">删除</button>
+            <!-- v27：编辑按钮只保留 icon（✎ 编辑 / ✓ 完成编辑），无文字 -->
+            <button id="btn-fs-toggle" class="secondary-btn icon-only" title="${editTitle}" aria-label="${editTitle}">${editIcon}</button>
+            ${recBadgeHtml}
           </div>
         </div>
       </div>
@@ -2212,6 +2219,35 @@
     // v10.1：fs-card-detail innerHTML 重写后 #fs-file-path 是新元素,
     // 必须补一次 updateFilePathDisplay()，否则保存/切伏笔后路径消失
     updateFilePathDisplay();
+  }
+
+  // v27：展开某张伏笔卡片（不走整段 renderFsList，避免 transition 失效）
+  //   - 给 article 加 .expanded class → CSS max-height 0 → 60vh 自动过渡
+  //   - 同步填充 .fs-card-detail innerHTML（编辑器/履历等）
+  function expandFsCard(itemId) {
+    const card = $(`.fs-item[data-id="${CSS.escape(itemId)}"]`);
+    if (!card) return;
+    card.classList.add("expanded");
+    renderFsCardDetail(itemId);
+  }
+
+  // v27：折叠某张伏笔卡片（同样不走整段 renderFsList）
+  //   - 移除 .expanded class → CSS max-height 60vh → 0 自动过渡
+  //   - 过渡结束后清空 detail innerHTML（节省 DOM，等待与 CSS transition 时长一致）
+  const FS_COLLAPSE_CLEAR_DELAY = 320; // 略大于 CSS transition 时间
+  function collapseFsCard(itemId) {
+    const card = $(`.fs-item[data-id="${CSS.escape(itemId)}"]`);
+    if (!card) return;
+    card.classList.remove("expanded");
+    const detail = card.querySelector(".fs-card-detail");
+    if (detail) {
+      // 立即清空会破坏 max-height 动画——等 transition 结束
+      setTimeout(() => {
+        if (!card.classList.contains("expanded")) {
+          detail.innerHTML = "";
+        }
+      }, FS_COLLAPSE_CLEAR_DELAY);
+    }
   }
 
   function renderChapterEditor() {
@@ -3147,12 +3183,11 @@
       it.payoff = fsPayoff?.value ?? it.payoff;
       it.notes = fsNotes?.value ?? it.notes;
       // v23：grid 模式下，同步当前卡片的 head 显示
+      //   v27：head 已删 fs-col 系列的 fsNo 列（伏笔编号不再展示在 head），只剩 name + status
       const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
       if (li) {
-        const fsnoCell = li.querySelector(".fs-col-fsno");
         const nameCell = li.querySelector(".fs-col-name");
         const statusCell = li.querySelector(".fs-col-status");
-        if (fsnoCell) fsnoCell.textContent = it.fsNo || "—";
         if (nameCell) nameCell.textContent = it.name || "（无名）";
         if (statusCell) {
           statusCell.textContent = it.status || FS_STATUS_DEFAULT;
@@ -3282,15 +3317,8 @@
       if (!rec) return;
       jumpToChapterForRecord(rec);
     });
-    // v23：detail 区域内的「删除」按钮（grid 模式下用）
-    //   - 跟列表的 .fs-delete 叉号行为一致：先 dirty check 保存，再 deleteCurrentItem
-    $("#btn-fs-delete-detail")?.addEventListener("click", () => {
-      if (state.ui.fsEditing && isFsEditorDirty()) {
-        saveCurrentItem();
-      }
-      // currentItemId 已经是 it.id（curItem 已设）
-      deleteCurrentItem();
-    });
+    // v27：detail 区域不再放"删除"按钮（删除统一用 head 上的 .fs-delete 叉号），
+    //   避免一个 item 同时有 head 叉号 + detail 删除按钮两个入口
   }
 
   // v14：点击履历的"原文描述"→ 跳转到对应章节并高亮匹配段
@@ -6030,6 +6058,8 @@
     //   - 删除走 .fs-delete 叉号（与之前一致）
     //   - 点 .fs-card-head 的 [data-action="toggle"]：切 fsExpandedId
     //   - currentItemId 不再随点击变（仍用于删除时定位、auto-save 焦点等场景）
+    //   - v27：切换展开/折叠时只 toggle .expanded class + 填充/清空 detail 容器，
+    //     不再 renderFsList() 整段重画（让 max-height transition 动画能正常播放）
     const onFsClick = (e) => {
       // 1) 删除按钮（保留原 .fs-delete 行为）
       if (e.target.closest(".fs-delete")) {
@@ -6064,8 +6094,12 @@
           } catch (_) {}
           state.ui.fsEditing = false;
         }
+        // v27：先折叠旧的（如果有）—— 走 class toggle + 等过渡结束再清空 detail
+        if (state.ui.fsExpandedId && state.ui.fsExpandedId !== id) {
+          collapseFsCard(state.ui.fsExpandedId);
+        }
         if (state.ui.fsExpandedId === id) {
-          // 折叠：编辑态下如果 dirty，save 后退出编辑态
+          // 折叠当前：编辑态下如果 dirty，save 后退出编辑态
           if (state.ui.fsEditing) {
             try {
               if (isFsEditorDirty()) {
@@ -6075,14 +6109,24 @@
             state.ui.fsEditing = false;
           }
           state.ui.fsExpandedId = null;
+          collapseFsCard(id);
         } else {
+          // 展开新卡片
           state.ui.fsExpandedId = id;
           // 同步 currentItemId（删除/auto-save 场景仍依赖它）
           const fsPage = state.pages.foreshadowing;
           fsPage.currentItemId = id;
+          // 同步 active 描边
+          const grid = $("#fs-grid");
+          if (grid) {
+            grid.querySelectorAll(".fs-item.active").forEach((el) => {
+              el.classList.remove("active", "border-selected");
+            });
+            itemEl.classList.add("active", "border-selected");
+          }
+          expandFsCard(id);
         }
         save();
-        renderFsList();
         // 展开后滚到该卡片（如果位置在视口外）
         requestAnimationFrame(() => {
           const card = $(`.fs-item[data-id="${CSS.escape(id)}"]`);

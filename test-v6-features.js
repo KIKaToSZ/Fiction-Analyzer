@@ -1567,12 +1567,14 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
 
   // 15.6 UI 4 列头（v15 改后是 3 列头：fs-col-fsno / fs-col-name / fs-col-status）
   //     旧 v14 时代有 fs-col-no 列，v15 改后已删
-  const t15_6a = /fs-cell\s+fs-col-fsno/.test(SRC) || /fs-list-row/.test(SRC);
-  const t15_6b = /fs-col-fsno/.test(SRC);
+  //   v27：head 进一步精简为 3 列（fs-col-no 序号 / fs-col-name 名称 / fs-col-status 状态），
+  //        fs-col-fsno 迁到 detail 内的 input#fs-fsno
+  const t15_6a = /fs-cell\s+fs-col-no/.test(SRC);
+  const t15_6b = /fs-col-fsno/.test(SRC) ? false : true; // v27：head 不再用 fs-col-fsno
   const t15_6c = /fs-col-name/.test(SRC);
   const t15_6d = /fs-col-status/.test(SRC);
-  console.log(`  fs-cell fs-col-fsno (列表头): ${t15_6a ? "✓" : "✗"}`);
-  console.log(`  fs-col-fsno 类名: ${t15_6b ? "✓" : "✗"}`);
+  console.log(`  fs-cell fs-col-no (列表头): ${t15_6a ? "✓" : "✗"}`);
+  console.log(`  head 已删 fs-col-fsno (v27): ${t15_6b ? "✓" : "✗"}`);
   console.log(`  fs-col-name 类名: ${t15_6c ? "✓" : "✗"}`);
   console.log(`  fs-col-status 类名: ${t15_6d ? "✓" : "✗"}`);
   if (!(t15_6a && t15_6b && t15_6c && t15_6d)) allPass = false;
@@ -1629,8 +1631,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!(t15_11a && t15_11b)) allPass = false;
 
   // 15.12 CSS 样式齐全
+  //   v27：删 .fs-col-fsno 样式（head 不再展示伏笔编号）；改测 "已删"
   const t15_12a = /\.fs-list-row\b/.test(_css) || /\.fs-cell\s+fs-col-no/.test(_css) || /\.fs-cell\b/.test(_css);
-  const t15_12b = /\.fs-col-fsno\b/.test(_css);
+  const t15_12b = !/\.fs-col-fsno\b/.test(_css); // v27：CSS 中已无 .fs-col-fsno
   const t15_12c = /\.fs-records-section\b/.test(_css);
   const t15_12d = /\.fs-record-row\b/.test(_css);
   const t15_12e = /\.fs-rec-notes-link\b/.test(_css);
@@ -1638,7 +1641,7 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   const t15_12g = /\.highlight-mark\b/.test(_css);
   const t15_12h = /\.import-section-card\b/.test(_css);
   console.log(`  CSS .fs-cell (fs-list-row): ${t15_12a ? "✓" : "✗"}`);
-  console.log(`  CSS .fs-col-fsno: ${t15_12b ? "✓" : "✗"}`);
+  console.log(`  CSS 已删 .fs-col-fsno (v27): ${t15_12b ? "✓" : "✗"}`);
   console.log(`  CSS .fs-records-section: ${t15_12c ? "✓" : "✗"}`);
   console.log(`  CSS .fs-record-row: ${t15_12d ? "✓" : "✗"}`);
   console.log(`  CSS .fs-rec-notes-link: ${t15_12e ? "✓" : "✗"}`);
@@ -1731,11 +1734,12 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!(t16_4a && t16_4b && t16_4c && t16_4d && t16_4e)) allPass = false;
 
   // v23 重新引入 fs-col-no（卡片头部左侧显示 #1/#2/#3 序号）
-  const t16_5a = /fs-cell\s+fs-col-fsno/.test(SRC);
+  //   v27：head 进一步精简——fs-col-fsno 迁到 detail，head 只剩 3 列
+  const t16_5a = !/fs-cell\s+fs-col-fsno/.test(SRC); // v27：head 已删 fs-col-fsno
   const t16_5b = /fs-cell\s+fs-col-name/.test(SRC);
   const t16_5c = /fs-cell\s+fs-col-status/.test(SRC);
   const t16_5d = /fs-cell\s+fs-col-no\b/.test(SRC);
-  console.log(`  列表含 fs-col-fsno 列: ${t16_5a ? "✓" : "✗"}`);
+  console.log(`  head 已删 fs-col-fsno (v27): ${t16_5a ? "✓" : "✗"}`);
   console.log(`  列表含 fs-col-name 列: ${t16_5b ? "✓" : "✗"}`);
   console.log(`  列表含 fs-col-status 列: ${t16_5c ? "✓" : "✗"}`);
   console.log(`  列表含 fs-col-no 列 (v23 重新引入): ${t16_5d ? "✓" : "✗"}`);
@@ -3346,6 +3350,115 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     && headNoCursor && articleToggle && activeBorderSel && headNoToggle && onFsClosest && excludeInputs;
   console.log("  v26 改动:", t26All ? "PASS" : "FAIL");
   if (!t26All) allPass = false;
+
+
+  // ========================================
+  // 测试 27：v27 - 伏笔卡片 UI 改造
+  //   1) head 横向填充满，编号唯一/距左固定，名称居中，状态居右/距右固定
+  //   2) 删除按钮（× 叉号）保留在 head 右侧，detail 内的删除按钮移除
+  //   3) head 不再带 fs-caret 箭头
+  //   4) 编辑按钮只保留 icon（✎ / ✓），无"编辑"/"完成编辑"文字
+  //   5) 折叠只显示 head、展开只显示 detail、过渡动画
+  // ========================================
+  console.log("\n测试 27：v27 - 伏笔卡片 UI 改造（head 三段 + 删除唯一 + 无 caret + icon 编辑 + 折叠过渡）");
+
+  // 27.1 head 模板只有 3 列：fs-col-no / fs-col-name / fs-col-status；不含 fs-col-fsno
+  const headNoFsNo = !/fs-cell\s+fs-col-fsno/.test(appText);
+  const headHasNo = /fs-cell\s+fs-col-no\b/.test(appText);
+  const headHasName = /fs-cell\s+fs-col-name\b/.test(appText);
+  const headHasStatus = /fs-cell\s+fs-col-status/.test(appText);
+  console.log(`  head 不再含 fs-col-fsno 列 (v27): ${headNoFsNo ? "✓" : "✗"}`);
+  console.log(`  head 含 fs-col-no 编号列: ${headHasNo ? "✓" : "✗"}`);
+  console.log(`  head 含 fs-col-name 名称列: ${headHasName ? "✓" : "✗"}`);
+  console.log(`  head 含 fs-col-status 状态列: ${headHasStatus ? "✓" : "✗"}`);
+  if (!(headNoFsNo && headHasNo && headHasName && headHasStatus)) allPass = false;
+
+  // 27.2 CSS: fs-col-name 居中，fs-col-status 距右（margin-left: auto）
+  const nameCenter = /\.fs-item\s+\.fs-col-name[\s\S]{0,200}text-align:\s*center/.test(cssText);
+  const statusRight = /\.fs-item\s+\.fs-col-status[\s\S]{0,200}margin-left:\s*auto/.test(cssText);
+  console.log(`  CSS: fs-col-name text-align: center (居中): ${nameCenter ? "✓" : "✗"}`);
+  console.log(`  CSS: fs-col-status margin-left: auto (距右): ${statusRight ? "✓" : "✗"}`);
+  if (!(nameCenter && statusRight)) allPass = false;
+
+  // 27.3 head 中保留 fs-delete 叉号按钮
+  const headHasDelete = /<button class="fs-delete"[\s\S]{0,200}>×<\/button>/.test(appText);
+  console.log(`  head 保留 fs-delete × 叉号按钮: ${headHasDelete ? "✓" : "✗"}`);
+  if (!headHasDelete) allPass = false;
+
+  // 27.4 detail 内不再有 btn-fs-delete-detail 删除按钮（避免双删除入口）
+  const detailNoDeleteBtn = !/id="btn-fs-delete-detail"/.test(appText);
+  const detailNoDeleteBind = !/\$\("#btn-fs-delete-detail"\)[\s\S]{0,300}addEventListener/.test(appText);
+  console.log(`  detail 已无 #btn-fs-delete-detail 按钮: ${detailNoDeleteBtn ? "✓" : "✗"}`);
+  console.log(`  detail 已无 #btn-fs-delete-detail 事件绑定: ${detailNoDeleteBind ? "✓" : "✗"}`);
+  if (!(detailNoDeleteBtn && detailNoDeleteBind)) allPass = false;
+
+  // 27.5 head 不再含 fs-caret 箭头元素
+  const headNoCaret = !/class="fs-caret"/.test(appText);
+  const cssNoCaret = !/\.fs-caret\b/.test(cssText);
+  console.log(`  head 不再含 fs-caret 元素: ${headNoCaret ? "✓" : "✗"}`);
+  console.log(`  CSS 不再含 .fs-caret 样式: ${cssNoCaret ? "✓" : "✗"}`);
+  if (!(headNoCaret && cssNoCaret)) allPass = false;
+
+  // 27.6 head 不再含 fs-rec-badge（履历数迁到 detail）
+  const headNoRecBadge = !/class="fs-rec-badge"/.test(appText);
+  const detailHasRecBadge = /class="fs-detail-rec-badge"/.test(appText);
+  console.log(`  head 不再含 fs-rec-badge 徽标: ${headNoRecBadge ? "✓" : "✗"}`);
+  console.log(`  detail 已含 fs-detail-rec-badge 徽标: ${detailHasRecBadge ? "✓" : "✗"}`);
+  if (!(headNoRecBadge && detailHasRecBadge)) allPass = false;
+
+  // 27.7 编辑按钮（btn-fs-toggle）只保留 icon：✎ / ✓，无 "编辑" / "完成编辑" 文字
+  const editIconOnly = /id="btn-fs-toggle"[\s\S]{0,500}class="secondary-btn icon-only"/.test(appText);
+  const editNoTextWord = !/完成编辑|切到编辑态/.test(appText.replace(/title="[^"]*"/g, "").replace(/aria-label="[^"]*"/g, ""));
+  // 注意：title / aria-label 允许含 "切到编辑态" 等描述性文字，但按钮 innerText 不能有 "编辑"
+  // 用更稳的检测：btn-fs-toggle 模板内部不能出现 ">✎ 编辑" 或 ">✓ 完成编辑" 之类
+  const editBtnClean = !/btn-fs-toggle"[\s\S]{0,500}>✓ 完成编辑|>✎ 编辑</.test(appText);
+  console.log(`  编辑按钮加 .icon-only 类: ${editIconOnly ? "✓" : "✗"}`);
+  console.log(`  编辑按钮 innerText 不含 "编辑"/"完成编辑" 文字: ${editBtnClean ? "✓" : "✗"}`);
+  if (!(editIconOnly && editBtnClean)) allPass = false;
+
+  // 27.8 折叠/展开过渡动画：fs-card-detail 有 transition + 折叠态 max-height:0
+  const detailTransition = /\.fs-card-detail[\s\S]{0,500}transition:[\s\S]{0,500}max-height/.test(cssText);
+  const detailCollapsed = /\.fs-card-detail\s*\{[\s\S]{0,300}max-height:\s*0[\s\S]{0,300}opacity:\s*0/.test(cssText);
+  const detailExpanded = /\.fs-item\.expanded\s+\.fs-card-detail\s*\{[\s\S]{0,300}max-height:\s*60vh[\s\S]{0,300}opacity:\s*1/.test(cssText);
+  console.log(`  CSS: .fs-card-detail 有 transition: max-height: ${detailTransition ? "✓" : "✗"}`);
+  console.log(`  CSS: 折叠态 max-height:0 + opacity:0: ${detailCollapsed ? "✓" : "✗"}`);
+  console.log(`  CSS: 展开态 max-height:60vh + opacity:1: ${detailExpanded ? "✓" : "✗"}`);
+  if (!(detailTransition && detailCollapsed && detailExpanded)) allPass = false;
+
+  // 27.9 expandFsCard / collapseFsCard 辅助函数存在
+  const expandFn = /function\s+expandFsCard\(itemId\)\s*\{[\s\S]{0,400}classList\.add\("expanded"\)[\s\S]{0,200}renderFsCardDetail/.test(appText);
+  const collapseFn = /function\s+collapseFsCard\(itemId\)\s*\{[\s\S]{0,400}classList\.remove\("expanded"\)[\s\S]{0,400}setTimeout/.test(appText);
+  console.log(`  JS: expandFsCard 函数 + classList.add("expanded") + renderFsCardDetail: ${expandFn ? "✓" : "✗"}`);
+  console.log(`  JS: collapseFsCard 函数 + classList.remove("expanded") + setTimeout: ${collapseFn ? "✓" : "✗"}`);
+  if (!(expandFn && collapseFn)) allPass = false;
+
+  // 27.10 onFsClick 调用 expandFsCard / collapseFsCard（不再 renderFsList 整段重画）
+  const onFsExpand = /collapseFsCard\(state\.ui\.fsExpandedId\)/.test(appText) && /expandFsCard\(id\)/.test(appText);
+  // 精确检测 onFsClick 函数体（const onFsClick = (e) => { ... };）内不含 renderFsList()
+  const onFsBodyMatch = appText.match(/const onFsClick = \(e\) => \{[\s\S]*?\};/);
+  const onFsNoRender = onFsBodyMatch ? !/renderFsList\(\)/.test(onFsBodyMatch[0]) : false;
+  console.log(`  JS: onFsClick 调 expandFsCard/collapseFsCard: ${onFsExpand ? "✓" : "✗"}`);
+  console.log(`  JS: onFsClick 函数体内不再 renderFsList()（保留 transition）: ${onFsNoRender ? "✓" : "✗"}`);
+  if (!(onFsExpand && onFsNoRender)) allPass = false;
+
+  // 27.11 renderFsList: detail 容器现在永远渲染（让 transition 正常播放）
+  const detailAlways = /<div class="fs-card-detail" data-detail-for="\$\{escapeHtml\(it\.id\)\}"><\/div>/.test(appText);
+  console.log(`  JS: renderFsList 模板中 detail 容器始终渲染: ${detailAlways ? "✓" : "✗"}`);
+  if (!detailAlways) allPass = false;
+
+  const t27All = headNoFsNo && headHasNo && headHasName && headHasStatus
+    && nameCenter && statusRight
+    && headHasDelete
+    && detailNoDeleteBtn && detailNoDeleteBind
+    && headNoCaret && cssNoCaret
+    && headNoRecBadge && detailHasRecBadge
+    && editIconOnly && editBtnClean
+    && detailTransition && detailCollapsed && detailExpanded
+    && expandFn && collapseFn
+    && onFsExpand && onFsNoRender
+    && detailAlways;
+  console.log("  v27 改动:", t27All ? "PASS" : "FAIL");
+  if (!t27All) allPass = false;
 
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
