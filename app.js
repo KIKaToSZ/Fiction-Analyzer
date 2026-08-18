@@ -264,9 +264,12 @@
     // v21：灵石台账
     //  - 5 字段：章节号 / 收支类型 / 数量 / 类型 / 原文描述
     //  - quantity 允许正负数：正数=收入，负数=支出（与「收支类型」字段冗余但方便直接录入）
+    // v23：ling 时 state.pages.lingshi 仍存数据，goods tab 内部双栏渲染用到；
+    // 但 PAGES 暴露成 tab 后用户觉得多余，标记 hiddenInNav 从导航移除
     lingshi: {
       id: "lingshi",
       kind: "list",
+      hiddenInNav: true,
       label: "灵石台账",
       icon: "💎",
       matchName(name) {
@@ -327,9 +330,11 @@
     // v21：物品台账
     //  - 6 字段：章节号 / 物品名称 / 数量 / 类型 / 状态 / 原文描述
     //  - 状态：持有 / 使用 / 丢失 / 赠与 / 出售 等
+    // v23：同 lingshi，state.pages.items 仍存数据，goods tab 内部双栏渲染用到
     items: {
       id: "items",
       kind: "list",
+      hiddenInNav: true,
       label: "物品台账",
       icon: "📦",
       matchName(name) {
@@ -534,7 +539,8 @@
     const numStr = String(num).padStart(fmt.padWidth, "0");
     return fmt.prefix + numStr;
   }
-  const PAGE_IDS = Object.keys(PAGES);
+  // v23：派生时跳过 hiddenInNav（如 lingshi/items——其数据仍存在 state.pages，但不在左侧 tab 暴露）
+  const PAGE_IDS = Object.keys(PAGES).filter((pid) => !PAGES[pid]?.hiddenInNav);
   const DEFAULT_PAGE = "chapter";
 
   /* ============================================================
@@ -1236,6 +1242,7 @@
     fsSort: "asc",
     fsStatusFilter: "all", // "all" | "未回收" | "部分回收" | "已回收"
     fsRecordSort: "asc",
+    fsExpandedId: null,    // v23：当前展开的伏笔 id（null = 全部折叠）
     layout: {},
     ...(data.ui || {}),
   };
@@ -1243,6 +1250,7 @@
   if (!state.ui.fsSort) state.ui.fsSort = "asc";
   if (!state.ui.fsStatusFilter) state.ui.fsStatusFilter = "all";
   if (!state.ui.fsRecordSort) state.ui.fsRecordSort = "asc";
+  if (state.ui.fsExpandedId === undefined) state.ui.fsExpandedId = null;
       // 兜底：ui.layout 各字段补默认
       state.ui.layout = {
         nav: LAYOUT_DEFAULTS.nav,
@@ -1255,6 +1263,24 @@
       // 兜底：确保每个 page 至少有基本结构
       for (const pid of PAGE_IDS) {
         if (!state.pages[pid]) state.pages[pid] = makePageState();
+        if (!Array.isArray(state.pages[pid].items))
+          state.pages[pid].items = [];
+        if (!Array.isArray(state.pages[pid].sheets))
+          state.pages[pid].sheets = [];
+      }
+      // v23：hiddenInNav 类型的 page（lingshi/items）不参与 PAGE_IDS，但 state.pages 仍要存数据
+      // ——load() 上面 1088 行的循环按 PAGE_IDS 遍历，lingshi/items 数据不会回填；
+      // 兜底必须从 data.pages 显式搬过来
+      for (const pid of Object.keys(PAGES)) {
+        if (!PAGES[pid]?.hiddenInNav) continue;
+        if (data.pages && data.pages[pid]) {
+          state.pages[pid] = {
+            ...makePageState(),
+            ...data.pages[pid],
+          };
+        } else if (!state.pages[pid]) {
+          state.pages[pid] = makePageState();
+        }
         if (!Array.isArray(state.pages[pid].items))
           state.pages[pid].items = [];
         if (!Array.isArray(state.pages[pid].sheets))
@@ -2034,9 +2060,13 @@
     if (sortLabel) sortLabel.textContent = state.ui.sort === "asc" ? "正序" : "倒序";
   }
 
+  // v23：渲染伏笔网格
+  //   - 每张卡片：压缩区（编号/名称/状态/履历数）+ 展开区（完整编辑器，grid-column 1/-1 占满整行）
+  //   - state.ui.fsExpandedId 控制当前展开项；其他卡片均折叠
+  //   - 切换展开项时其他行被自然下推一段距离（grid auto-flow row 行为）
   function renderFsList() {
-    const list = $("#fs-list");
-    if (!list) return;
+    const grid = $("#fs-grid");
+    if (!grid) return;
     const p = curPage();
     // v18：列表用「筛选 + 排序」结果
     const items = getFilteredItems();
@@ -2050,8 +2080,24 @@
         b.classList.toggle("active", b.dataset.fsStatus === state.ui.fsStatusFilter);
       });
     }
-    list.className = "fs-list";
-    list.innerHTML = items
+    // v23：兜底——fsExpandedId 指向已删除/不存在的项时，重置为 null
+    if (state.ui.fsExpandedId && !items.some((it) => it.id === state.ui.fsExpandedId)) {
+      state.ui.fsExpandedId = null;
+    }
+    if (items.length === 0) {
+      grid.innerHTML = `
+        <div class="fs-empty">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+            <path d="M3 7h18M3 12h18M3 17h12" />
+          </svg>
+          <p>暂无伏笔，点上方「+ 新增伏笔」添加</p>
+          <p class="hint">伏笔 = 故事里提前铺设、后续回收的剧情线索</p>
+        </div>`;
+      const count = $("#fs-count");
+      if (count) count.textContent = `0 条`;
+      return;
+    }
+    grid.innerHTML = items
       .map((it, idx) => {
         const status = it.status || FS_STATUS_DEFAULT;
         // v17：状态 class 映射（未回收 / 部分回收 / 已回收）
@@ -2061,20 +2107,111 @@
             : status === "部分回收"
               ? "fs-status-partial"
               : "fs-status-unresolved";
-        // v15：列表项横向 3 列 [伏笔编号 / 伏笔名称 / 状态]
-        // 序号 = 当前 sheet 内按 fsNo 排序后的 1-based 索引（渲染层算，不存数据）
         const displayNo = idx + 1;
+        const isExpanded = it.id === state.ui.fsExpandedId;
+        // 履历数（折叠时显示一个小徽标，让用户知道这个伏笔有多少条提及）
+        const recCount = getFsRecordsByFsNo(it).length;
         return `
-          <li class="fs-item ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
-            <span class="fs-cell fs-col-fsno" title="${escapeHtml(it.fsNo || "—")}">${escapeHtml(it.fsNo || "—")}</span>
-            <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
-            <span class="fs-cell fs-col-status ${cls}">${escapeHtml(status)}</span>
-            <button class="fs-delete" data-id="${escapeHtml(it.id)}" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
-          </li>`;
+          <article class="fs-item ${isExpanded ? "expanded" : ""} ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
+            <header class="fs-card-head" data-action="toggle" data-id="${escapeHtml(it.id)}">
+              <span class="fs-cell fs-col-no" title="序号">#${displayNo}</span>
+              <span class="fs-cell fs-col-fsno" title="${escapeHtml(it.fsNo || "—")}">${escapeHtml(it.fsNo || "—")}</span>
+              <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
+              <span class="fs-cell fs-col-status ${cls}">${escapeHtml(status)}</span>
+              ${recCount > 0 ? `<span class="fs-rec-badge" title="${recCount} 条履历">📋${recCount}</span>` : ""}
+              <span class="fs-caret" aria-hidden="true">${isExpanded ? "▾" : "▸"}</span>
+              <button class="fs-delete" data-id="${escapeHtml(it.id)}" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
+            </header>
+            ${isExpanded ? `<div class="fs-card-detail" data-detail-for="${escapeHtml(it.id)}"></div>` : ""}
+          </article>`;
       })
       .join("");
     const count = $("#fs-count");
     if (count) count.textContent = `${items.length} 条`;
+    // 如果有展开项，填充其 detail 区域
+    if (state.ui.fsExpandedId) {
+      renderFsCardDetail(state.ui.fsExpandedId);
+    }
+  }
+
+  // v23：渲染展开卡片的 detail 区域（完整编辑器）
+  //   - 内容结构 = 原来的 renderFsEditor 内部，但放进 .fs-card-detail 容器
+  //   - 包含：伏笔编号/名称/状态 + 铺设/回收章节 + 备注 + 履历 + 编辑/完成/删除按钮
+  //   - 编辑/查看态切换：state.ui.fsEditing 仍然控制；UI 改为 inline 按钮（不再独立放工具栏）
+  function renderFsCardDetail(itemId) {
+    const detail = $(`.fs-card-detail[data-detail-for="${CSS.escape(itemId)}"]`);
+    if (!detail) return;
+    const item = state.pages.foreshadowing.items.find((x) => x.id === itemId);
+    if (!item) {
+      detail.innerHTML = "";
+      return;
+    }
+    const opts = FS_STATUS_OPTIONS.map(
+      (s) =>
+        `<option value="${escapeHtml(s)}" ${item.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`
+    ).join("");
+    const isEditing = !!state.ui.fsEditing;
+    const readonlyAttr = isEditing ? "" : "readonly";
+    const disabledAttr = isEditing ? "" : "disabled";
+    const mainClass = isEditing ? "" : "readonly";
+    const recordsHtml = renderFsRecordRows(item.id);
+    const recCount = getFsRecordsByFsNo(item).length;
+    detail.innerHTML = `
+      <div class="fs-detail-meta ${mainClass}">
+        <div class="fs-detail-row">
+          <div class="meta-field meta-fsno">
+            <label>伏笔编号</label>
+            <input id="fs-fsno" type="text" ${readonlyAttr} value="${escapeHtml(item.fsNo || "")}" placeholder="如：FS-001" />
+          </div>
+          <div class="meta-field meta-title">
+            <label>伏笔名称</label>
+            <input id="fs-name" type="text" ${readonlyAttr} value="${escapeHtml(item.name || "")}" placeholder="给伏笔起个名字" />
+          </div>
+          <div class="meta-field">
+            <label>状态</label>
+            <select id="fs-status" ${disabledAttr}>${opts}</select>
+          </div>
+          <div class="meta-actions">
+            <button id="btn-fs-toggle" class="secondary-btn" title="${isEditing ? "切到查看态（履历原文可点击跳转）" : "切到编辑态（可改伏笔字段、新增/编辑履历）"}">${isEditing ? "✓ 完成编辑" : "✎ 编辑"}</button>
+            <button id="btn-fs-delete-detail" class="danger-btn" title="删除该伏笔">删除</button>
+          </div>
+        </div>
+      </div>
+      <div class="fs-detail-body ${mainClass}">
+        <div class="fs-form-row">
+          <div class="meta-field">
+            <label>铺设章节</label>
+            <input id="fs-setup" type="text" ${readonlyAttr} value="${escapeHtml(item.setup || "")}" placeholder="如：第三章、第12章" />
+          </div>
+          <div class="meta-field">
+            <label>回收章节</label>
+            <input id="fs-payoff" type="text" ${readonlyAttr} value="${escapeHtml(item.payoff || "")}" placeholder="如：第二十章、第45章" />
+          </div>
+        </div>
+        <label class="body-label">备注 / 详情</label>
+        <textarea id="fs-notes" ${readonlyAttr} placeholder="伏笔的具体内容、提示、相关情节等…">${escapeHtml(item.notes || "")}</textarea>
+        <div class="fs-records-section">
+          <div class="fs-records-header">
+            <span class="fs-records-title">📋 伏笔履历</span>
+            <span class="fs-records-meta muted">${isEditing ? `${recCount} 条 · 按提及章节` : `${recCount} 条 · 点击原文描述可跳转`}</span>
+            <button id="btn-fs-record-sort" class="link-btn" title="切换正/倒序（按提及章节）">${state.ui.fsRecordSort === "asc" ? "正序" : "倒序"}</button>
+            <button id="btn-fs-add-record" class="link-btn" ${isEditing ? "" : "hidden"}>+ 新增履历</button>
+          </div>
+          <div class="fs-records-list" id="fs-records-list">
+            ${recordsHtml || `<div class="fs-records-empty muted">${isEditing ? "还没有履历，点上方「+ 新增履历」添加" : "还没有履历"}</div>`}
+          </div>
+        </div>
+        <div class="body-stats">
+          <div class="stats-left">
+            <span id="fs-save-status" class="muted"></span>
+          </div>
+          <span id="fs-file-path" class="muted file-path" title=""></span>
+        </div>
+      </div>`;
+    bindFsEditorEvents();
+    // v10.1：fs-card-detail innerHTML 重写后 #fs-file-path 是新元素,
+    // 必须补一次 updateFilePathDisplay()，否则保存/切伏笔后路径消失
+    updateFilePathDisplay();
   }
 
   function renderChapterEditor() {
@@ -2119,6 +2256,13 @@
   }
 
   function renderFsEditor() {
+    // v23：grid 模式下没有 #fs-editor 容器——所有渲染都在 renderFsList 内联完成
+    //   保留这个函数是为了让旧调用点（renderCurrentPage / bindFsEditorEvents 内部）依然可调
+    //   实际效果：grid 模式下 delegate 到 renderFsList；非 grid 模式（理论上不再有）走旧逻辑
+    if ($("#fs-grid") && !$("#fs-editor")) {
+      renderFsList();
+      return;
+    }
     const it = curItem();
     const empty = $("#fs-editor-empty");
     const editor = $("#fs-editor");
@@ -2911,11 +3055,18 @@
     const fsFsno = $("#fs-fsno");
     const fsName = $("#fs-name");
     const fsStatus = $("#fs-status");
+    // v23：grid 模式下，新增铺设章节/回收章节/备注 三个字段
+    const fsSetup = $("#fs-setup");
+    const fsPayoff = $("#fs-payoff");
+    const fsNotes = $("#fs-notes");
     const syncMeta = () => {
       it.fsNo = String(fsFsno?.value ?? it.fsNo ?? "").trim();
       it.name = fsName?.value ?? it.name;
       it.status = fsStatus?.value ?? it.status;
-      // 同步左侧列表项
+      it.setup = fsSetup?.value ?? it.setup;
+      it.payoff = fsPayoff?.value ?? it.payoff;
+      it.notes = fsNotes?.value ?? it.notes;
+      // v23：grid 模式下，同步当前卡片的 head 显示
       const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
       if (li) {
         const fsnoCell = li.querySelector(".fs-col-fsno");
@@ -2933,10 +3084,19 @@
       }
       debouncedPushHistory();
     };
-    [fsFsno, fsName, fsStatus].forEach((el) => {
+    [fsFsno, fsName, fsStatus, fsSetup, fsPayoff, fsNotes].forEach((el) => {
       el?.addEventListener("input", syncMeta);
       el?.addEventListener("change", syncMeta);
     });
+    // v23：备注字数统计（实时显示给用户）—— grid 模式才有
+    if (fsNotes) {
+      const updateWordCount = () => {
+        // 找 detail 区域内的 .fs-detail-body 容器（保留 stats-left id 占位）
+        // 当前实现：直接更新 stats-left
+        // 不强制显示；如有需要后续可加
+      };
+      fsNotes.addEventListener("input", updateWordCount);
+    }
     // v19：编辑/查看态切换
     //  - 切回查看态时：先检查内容是否真的变了（isFsEditorDirty），
     //    有变化才调 saveCurrentItem() 落盘 + 入 undo 栈；
@@ -2950,15 +3110,22 @@
       }
       state.ui.fsEditing = !state.ui.fsEditing;
       save();
-      renderFsEditor();
-      // 重新挂事件（renderFsEditor 会重新生成 DOM）
-      // 注：renderFsEditor 内部已经调用了 bindFsEditorEvents
+      // v23：grid 模式只重画 detail 区（保留 grid head 不动，避免输入焦点丢失）
+      if (state.ui.fsExpandedId && $("#fs-grid")) {
+        renderFsCardDetail(state.ui.fsExpandedId);
+      } else {
+        renderFsEditor();
+      }
     });
     // v18：履历排序（按提及章节正/倒序）
     $("#btn-fs-record-sort")?.addEventListener("click", () => {
       state.ui.fsRecordSort = state.ui.fsRecordSort === "asc" ? "desc" : "asc";
       save();
-      renderFsEditor();
+      if (state.ui.fsExpandedId && $("#fs-grid")) {
+        renderFsCardDetail(state.ui.fsExpandedId);
+      } else {
+        renderFsEditor();
+      }
     });
     // v14：新增履历
     $("#btn-fs-add-record")?.addEventListener("click", () => {
@@ -2971,7 +3138,11 @@
       );
       state.pages.foreshadowing.records.push(newRec);
       // 不立刻 save()，等用户编辑完输入框内容再统一存
-      renderFsEditor();
+      if (state.ui.fsExpandedId && $("#fs-grid")) {
+        renderFsCardDetail(state.ui.fsExpandedId);
+      } else {
+        renderFsEditor();
+      }
       // 聚焦到新行的 setup 输入
       setTimeout(() => {
         const row = document.querySelector(
@@ -3013,7 +3184,11 @@
       state.pages.foreshadowing.records.splice(idx, 1);
       save();
       pushHistory();
-      renderFsEditor();
+      if (state.ui.fsExpandedId && $("#fs-grid")) {
+        renderFsCardDetail(state.ui.fsExpandedId);
+      } else {
+        renderFsEditor();
+      }
     });
     // v14：点击原文描述 → 跳转到章节
     list?.addEventListener("click", (e) => {
@@ -3026,6 +3201,15 @@
       );
       if (!rec) return;
       jumpToChapterForRecord(rec);
+    });
+    // v23：detail 区域内的「删除」按钮（grid 模式下用）
+    //   - 跟列表的 .fs-delete 叉号行为一致：先 dirty check 保存，再 deleteCurrentItem
+    $("#btn-fs-delete-detail")?.addEventListener("click", () => {
+      if (state.ui.fsEditing && isFsEditorDirty()) {
+        saveCurrentItem();
+      }
+      // currentItemId 已经是 it.id（curItem 已设）
+      deleteCurrentItem();
     });
   }
 
@@ -4148,6 +4332,11 @@
     const def = curPageDef();
     const label = it.title || it.name || it.no;
     if (!confirm(`确定删除${def.label}「${label}」？`)) return;
+    // v23：伏笔页删除时——如果删的就是当前展开项，fsExpandedId 也要重置
+    if (state.currentPage === "foreshadowing" && state.ui.fsExpandedId === it.id) {
+      state.ui.fsExpandedId = null;
+      state.ui.fsEditing = false;
+    }
     p.items = p.items.filter((x) => x.id !== it.id);
     p.currentItemId = null;
     save();
@@ -4192,6 +4381,11 @@
     const it = def.makeItem(data, targetSheet);
     p.items.push(it);
     p.currentItemId = it.id;
+    // v23：新增伏笔时自动展开并进入编辑态——用户新建后马上能填字段
+    if (pid === "foreshadowing") {
+      state.ui.fsExpandedId = it.id;
+      state.ui.fsEditing = true;
+    }
     save();
     pushHistory();
     renderAll();
@@ -5505,8 +5699,69 @@
       renderPair();
     };
 
+    // v23：fs 列表改用 onFsClick——点 .fs-card-head 切展开态（不是 currentItemId）
+    //   - 删除走 .fs-delete 叉号（与之前一致）
+    //   - 点 .fs-card-head 的 [data-action="toggle"]：切 fsExpandedId
+    //   - currentItemId 不再随点击变（仍用于删除时定位、auto-save 焦点等场景）
+    const onFsClick = (e) => {
+      // 1) 删除按钮（保留原 .fs-delete 行为）
+      if (e.target.closest(".fs-delete")) {
+        e.stopPropagation();
+        const id = e.target.closest(".fs-delete").dataset.id;
+        if (!id) return;
+        // v23：用 id 定位并走 deleteCurrentItem（需要在 curPage 之前设 currentItemId）
+        const fsPage = state.pages.foreshadowing;
+        const targetItem = fsPage.items.find((x) => x.id === id);
+        if (!targetItem) return;
+        fsPage.currentItemId = id;
+        deleteCurrentItem();
+        return;
+      }
+      // 2) 切换展开——只点 [data-action="toggle"] 头才触发
+      const toggleEl = e.target.closest('[data-action="toggle"]');
+      if (toggleEl) {
+        const id = toggleEl.dataset.id;
+        if (!id) return;
+        // 切前：编辑态下如果有 dirty，save
+        if (state.ui.fsEditing && state.ui.fsExpandedId && state.ui.fsExpandedId !== id) {
+          try {
+            if (isFsEditorDirty()) {
+              saveCurrentItem();
+            }
+          } catch (_) {}
+          state.ui.fsEditing = false;
+        }
+        if (state.ui.fsExpandedId === id) {
+          // 折叠：编辑态下如果 dirty，save 后退出编辑态
+          if (state.ui.fsEditing) {
+            try {
+              if (isFsEditorDirty()) {
+                saveCurrentItem();
+              }
+            } catch (_) {}
+            state.ui.fsEditing = false;
+          }
+          state.ui.fsExpandedId = null;
+        } else {
+          state.ui.fsExpandedId = id;
+          // 同步 currentItemId（删除/auto-save 场景仍依赖它）
+          const fsPage = state.pages.foreshadowing;
+          fsPage.currentItemId = id;
+        }
+        save();
+        renderFsList();
+        // 展开后滚到该卡片（如果位置在视口外）
+        requestAnimationFrame(() => {
+          const card = $(`.fs-item[data-id="${CSS.escape(id)}"]`);
+          if (card && typeof card.scrollIntoView === "function") {
+            card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }
+        });
+        return;
+      }
+    };
     if (chapterList) chapterList.addEventListener("click", onMainClick);
-    if (fsList) fsList.addEventListener("click", onMainClick);
+    if (fsList) fsList.addEventListener("click", onFsClick);
     if (characterList) characterList.addEventListener("click", onMainClick);
     if (lingshiList) lingshiList.addEventListener("click", onSubListClick("lingshi", () => {
       renderLingshiList();

@@ -1087,8 +1087,8 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   const t12_5a = !/id="btn-import"/.test(chSection);
   const t12_5b = /id="btn-import"/.test(fsSection);
   // 顺序：#btn-new-fs 在前、#btn-import 在后
-  const fsOrder = fsSection.indexOf('id="btn-new-fs"') < fsSection.indexOf('id="btn-import"') &&
-                  fsSection.indexOf('id="btn-import"') < fsSection.indexOf('id="btn-fs-save"');
+  // v23：btn-fs-save 已删（v17 删的），只检查前两个的相对顺序
+  const fsOrder = fsSection.indexOf('id="btn-new-fs"') < fsSection.indexOf('id="btn-import"');
   console.log(`  章节页 page-toolbar 已删 #btn-import: ${t12_5a ? "✓" : "✗"}`);
   console.log(`  伏笔页 page-toolbar 已加 #btn-import: ${t12_5b ? "✓" : "✗"}`);
   console.log(`  顺序：btn-new-fs < btn-import: ${fsOrder ? "✓" : "✗"}`);
@@ -1534,14 +1534,14 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   // 15.3 主表 item 结构用 fsNo + name + status（不再有 setup/notes/payoff）
   const t15_3a = /it\.fsNo\s*=/.test(SRC) || /item\.fsNo/.test(SRC);
   const t15_3b = /state\.pages\.foreshadowing\.items/.test(SRC) || /pages\.foreshadowing\s*\?\s*\.\s*items/.test(SRC);
-  // 不应有 it.setup / it.payoff（v14 已删）
-  const noFsSetup = !/it\.setup\s*=/.test(SRC);
-  const noFsPayoff = !/it\.payoff\s*=/.test(SRC);
+  // v23 重新引入 it.setup / it.payoff（grid 模式 detail 区有「铺设章节」「回收章节」字段）
+  const hasFsSetup = /it\.setup\s*=/.test(SRC);
+  const hasFsPayoff = /it\.payoff\s*=/.test(SRC);
   console.log(`  item.fsNo 字段存在: ${t15_3a ? "✓" : "✗"}`);
   console.log(`  pages.foreshadowing.items 访问: ${t15_3b ? "✓" : "✗"}`);
-  console.log(`  item.setup 已删除: ${noFsSetup ? "✓" : "✗"}`);
-  console.log(`  item.payoff 已删除: ${noFsPayoff ? "✓" : "✗"}`);
-  if (!(t15_3a && t15_3b && noFsSetup && noFsPayoff)) allPass = false;
+  console.log(`  item.setup 字段已重新引入 (v23 grid detail): ${hasFsSetup ? "✓" : "✗"}`);
+  console.log(`  item.payoff 字段已重新引入 (v23 grid detail): ${hasFsPayoff ? "✓" : "✗"}`);
+  if (!(t15_3a && t15_3b && hasFsSetup && hasFsPayoff)) allPass = false;
 
   // 15.4 IMPORT_SECTIONS 包含 fs-main 和 fs-record
   const t15_4a = /IMPORT_SECTIONS\s*=\s*\{/.test(SRC);
@@ -1657,7 +1657,7 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  index.html #import-fs-record-drop: ${t15_13d ? "✓" : "✗"}`);
   if (!(t15_13a && t15_13b && t15_13c && t15_13d)) allPass = false;
 
-  const t15All = t15_1a && t15_2a && t15_2b && t15_2c && t15_2d && t15_2e && t15_3a && t15_3b && noFsSetup && noFsPayoff && t15_4a && t15_4b && t15_4c && t15_4d && t15_5a && t15_5b && t15_5c && t15_6a && t15_6b && t15_6c && t15_6d && t15_7a && t15_7b && t15_7c && t15_7d && t15_7e && t15_8a && t15_8b && t15_8c && t15_8d && t15_8e && t15_8f && t15_9a && t15_9b && t15_9c && t15_10a && t15_10b && t15_11a && t15_11b && t15_12a && t15_12b && t15_12c && t15_12d && t15_12e && t15_12f && t15_12g && t15_12h && t15_13a && t15_13b && t15_13c && t15_13d;
+  const t15All = t15_1a && t15_2a && t15_2b && t15_2c && t15_2d && t15_2e && t15_3a && t15_3b && hasFsSetup && hasFsPayoff && t15_4a && t15_4b && t15_4c && t15_4d && t15_5a && t15_5b && t15_5c && t15_6a && t15_6b && t15_6c && t15_6d && t15_7a && t15_7b && t15_7c && t15_7d && t15_7e && t15_8a && t15_8b && t15_8c && t15_8d && t15_8e && t15_8f && t15_9a && t15_9b && t15_9c && t15_10a && t15_10b && t15_11a && t15_11b && t15_12a && t15_12b && t15_12c && t15_12d && t15_12e && t15_12f && t15_12g && t15_12h && t15_13a && t15_13b && t15_13c && t15_13d;
   console.log("  v14 改动:", t15All ? "PASS" : "FAIL");
   if (!t15All) allPass = false;
 
@@ -1729,16 +1729,15 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  makeItem 已去掉 no: ${t16_4e ? "✓" : "✗"}`);
   if (!(t16_4a && t16_4b && t16_4c && t16_4d && t16_4e)) allPass = false;
 
-  // 16.5 列表 UI 3 列：fs-col-fsno / fs-col-name / fs-col-status（无 fs-col-no）
+  // v23 重新引入 fs-col-no（卡片头部左侧显示 #1/#2/#3 序号）
   const t16_5a = /fs-cell\s+fs-col-fsno/.test(SRC);
   const t16_5b = /fs-cell\s+fs-col-name/.test(SRC);
   const t16_5c = /fs-cell\s+fs-col-status/.test(SRC);
-  // 列表行不应再有 fs-col-no span
-  const t16_5d = !/fs-cell\s+fs-col-no\b/.test(SRC);
+  const t16_5d = /fs-cell\s+fs-col-no\b/.test(SRC);
   console.log(`  列表含 fs-col-fsno 列: ${t16_5a ? "✓" : "✗"}`);
   console.log(`  列表含 fs-col-name 列: ${t16_5b ? "✓" : "✗"}`);
   console.log(`  列表含 fs-col-status 列: ${t16_5c ? "✓" : "✗"}`);
-  console.log(`  列表无 fs-col-no 列: ${t16_5d ? "✓" : "✗"}`);
+  console.log(`  列表含 fs-col-no 列 (v23 重新引入): ${t16_5d ? "✓" : "✗"}`);
   if (!(t16_5a && t16_5b && t16_5c && t16_5d)) allPass = false;
 
   // 16.6 编辑器 meta 字段只剩 3 个：meta-fsno / meta-title（伏笔名称）/ 状态
@@ -1764,11 +1763,11 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  v11→v12 迁移: fs.items.map((old) =>): ${t16_7c ? "✓" : "✗"}`);
   if (!(t16_7a && t16_7b && t16_7c)) allPass = false;
 
-  // 16.8 styles.css 列表 grid 改 3 列 + 删 .fs-col-no
+  // v23 重新引入 .fs-col-no（卡片头部左侧 #编号列）
   const t16_8a = /\.fs-list-row\s*\{[^}]*grid-template-columns:\s*130px\s+1fr\s+110px/s.test(_css);
-  const t16_8b = !/\.fs-col-no\s*\{/.test(_css);
+  const t16_8b = /\.fs-col-no\s*\{/.test(_css);
   console.log(`  CSS .fs-list-row 3 列 grid: ${t16_8a ? "✓" : "✗"}`);
-  console.log(`  CSS 删除 .fs-col-no 样式: ${t16_8b ? "✓" : "✗"}`);
+  console.log(`  CSS 含 .fs-col-no 样式 (v23 重新引入): ${t16_8b ? "✓" : "✗"}`);
   if (!(t16_8a && t16_8b)) allPass = false;
 
   // 16.9 index.html 导入提示写明 3 字段
@@ -2771,6 +2770,99 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   const t22All = t22_1 && t22_2 && t22_3 && t22_4 && t22_5 && t22_6 && t22_7;
   console.log("  v22 修复:", t22All ? "PASS" : "FAIL");
   if (!t22All) allPass = false;
+
+  // —— v23 测试: 1) 隐藏 lingshi/items tab; 2) 伏笔三列网格 + 卡片展开 ——
+  console.log("\n测试 23：v23（隐藏 lingshi/items tab + 伏笔三列网格 + 卡片展开）");
+  // 23.1 PAGES.lingshi / PAGES.items 加了 hiddenInNav: true
+  const t23_1a = /lingshi:\s*\{[\s\S]*?id:\s*"lingshi"[\s\S]*?hiddenInNav:\s*true/.test(SRC);
+  const t23_1b = /items:\s*\{[\s\S]*?id:\s*"items"[\s\S]*?hiddenInNav:\s*true/.test(SRC);
+  console.log(`  PAGES.lingshi 含 hiddenInNav: true: ${t23_1a ? "✓" : "✗"}`);
+  console.log(`  PAGES.items 含 hiddenInNav: true: ${t23_1b ? "✓" : "✗"}`);
+  if (!(t23_1a && t23_1b)) allPass = false;
+
+  // 23.2 PAGE_IDS 派生时跳过 hiddenInNav
+  const t23_2 = /const PAGE_IDS = Object\.keys\(PAGES\)\.filter\(\(pid\) => !PAGES\[pid\]\?\.hiddenInNav\)/.test(SRC);
+  console.log(`  PAGE_IDS 派生过滤 hiddenInNav: ${t23_2 ? "✓" : "✗"}`);
+  if (!t23_2) allPass = false;
+
+  // 23.3 load() 兜底循环回填 hiddenInNav 数据
+  const t23_3 = /for \(const pid of Object\.keys\(PAGES\)\)[\s\S]*?if \(!PAGES\[pid\]\?\.hiddenInNav\) continue;/.test(SRC);
+  console.log(`  load() 兜底循环含 hiddenInNav 处理: ${t23_3 ? "✓" : "✗"}`);
+  if (!t23_3) allPass = false;
+
+  // 23.4 行为：PAGE_IDS 派生结果 = 5 个公开 tab
+  //   - lingshi / items 是 hiddenInNav（用户用 goods tab 看双栏，lingshi/items 不再独立 tab）
+  //   - 其它 5 个：chapter / foreshadowing / goods / storyline / character
+  //   - 通过 SRC 简单字符串检查，避免复杂正则误判
+  const t23_4a = /id:\s*"chapter"/.test(SRC) && /id:\s*"foreshadowing"/.test(SRC) && /id:\s*"goods"/.test(SRC) && /id:\s*"storyline"/.test(SRC) && /id:\s*"character"/.test(SRC);
+  //   关键检查：ling 时 state.pages.lingshi / items 仍存在 PAGES（goods tab 内部渲染用到），但带 hiddenInNav
+  const t23_4b = /id:\s*"lingshi"[\s\S]{0,200}hiddenInNav:\s*true/.test(SRC);
+  const t23_4c = /id:\s*"items"[\s\S]{0,200}hiddenInNav:\s*true/.test(SRC);
+  const t23_4 = t23_4a && t23_4b && t23_4c;
+  console.log(`  5 个公开 tab 注册项存在: ${t23_4a ? "✓" : "✗"}`);
+  console.log(`  lingshi 项有 hiddenInNav: true: ${t23_4b ? "✓" : "✗"}`);
+  console.log(`  items 项有 hiddenInNav: true: ${t23_4c ? "✓" : "✗"}`);
+  if (!t23_4) allPass = false;
+
+  // 23.5 伏笔页 HTML 用 fs-grid 容器
+  const t23_5a = /id="fs-grid"/.test(html);
+  const t23_5b = !/class="two-cols"[^>]*data-page-view="foreshadowing"/.test(html);
+  console.log(`  index.html 伏笔页有 #fs-grid: ${t23_5a ? "✓" : "✗"}`);
+  console.log(`  伏笔页不再用 .two-cols 双栏: ${t23_5b ? "✓" : "✗"}`);
+  if (!(t23_5a && t23_5b)) allPass = false;
+
+  // 23.6 renderFsList 生成 article.fs-item
+  const t23_6 = /<article class="fs-item[\s\S]*?data-id="\$\{escapeHtml\(it\.id\)\}"/.test(SRC);
+  console.log(`  renderFsList 用 <article class="fs-item">: ${t23_6 ? "✓" : "✗"}`);
+  if (!t23_6) allPass = false;
+
+  // 23.7 state.ui.fsExpandedId 默认值
+  const t23_7a = /fsExpandedId:\s*null/.test(SRC);
+  const t23_7b = /if \(state\.ui\.fsExpandedId === undefined\) state\.ui\.fsExpandedId = null;/.test(SRC);
+  console.log(`  state.ui 默认含 fsExpandedId: null: ${t23_7a ? "✓" : "✗"}`);
+  console.log(`  load 兜底补 fsExpandedId: ${t23_7b ? "✓" : "✗"}`);
+  if (!(t23_7a && t23_7b)) allPass = false;
+
+  // 23.8 renderFsCardDetail 函数存在
+  const t23_8 = /function renderFsCardDetail\(itemId\)/.test(SRC);
+  console.log(`  renderFsCardDetail 函数: ${t23_8 ? "✓" : "✗"}`);
+  if (!t23_8) allPass = false;
+
+  // 23.9 addNewItemInPage 在伏笔时设 fsExpandedId
+  const t23_9 = /pid === "foreshadowing"[\s\S]*?state\.ui\.fsExpandedId = it\.id;[\s\S]*?state\.ui\.fsEditing = true;/.test(SRC);
+  console.log(`  新增伏笔自动展开+编辑态: ${t23_9 ? "✓" : "✗"}`);
+  if (!t23_9) allPass = false;
+
+  // 23.10 bindListEvents 的伏笔点击用 onFsClick（切展开态）
+  const t23_10a = /onFsClick = \(e\) =>\s*\{[\s\S]*?data-action="toggle"/.test(SRC);
+  const t23_10b = /fsList\.addEventListener\("click", onFsClick\)/.test(SRC);
+  console.log(`  bindListEvents 含 onFsClick + data-action=toggle: ${t23_10a ? "✓" : "✗"}`);
+  console.log(`  fsList 绑 onFsClick: ${t23_10b ? "✓" : "✗"}`);
+  if (!(t23_10a && t23_10b)) allPass = false;
+
+  // 23.11 bindFsEditorEvents 监听 setup/payoff/notes 输入
+  const t23_11 = /\[fsFsno, fsName, fsStatus, fsSetup, fsPayoff, fsNotes\]\.forEach/.test(SRC);
+  console.log(`  bindFsEditorEvents 监听 fsSetup/fsPayoff/fsNotes: ${t23_11 ? "✓" : "✗"}`);
+  if (!t23_11) allPass = false;
+
+  // 23.12 删伏笔时清 fsExpandedId
+  const t23_12 = /state\.ui\.fsExpandedId === it\.id\)[\s\S]*?state\.ui\.fsExpandedId = null;/.test(SRC);
+  console.log(`  deleteCurrentItem 清 fsExpandedId: ${t23_12 ? "✓" : "✗"}`);
+  if (!t23_12) allPass = false;
+
+  // 23.13 CSS .fs-grid 三列布局
+  const t23_13 = /\.fs-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3/.test(_css);
+  console.log(`  CSS .fs-grid 三列布局: ${t23_13 ? "✓" : "✗"}`);
+  if (!t23_13) allPass = false;
+
+  // 23.14 CSS .fs-item.expanded 占满整行
+  const t23_14 = /\.fs-item\.expanded[\s\S]*?grid-column:\s*1\s*\/\s*-1/.test(_css);
+  console.log(`  CSS .fs-item.expanded 占满整行: ${t23_14 ? "✓" : "✗"}`);
+  if (!t23_14) allPass = false;
+
+  const t23All = t23_1a && t23_1b && t23_2 && t23_3 && t23_4 && t23_5a && t23_5b && t23_6 && t23_7a && t23_7b && t23_8 && t23_9 && t23_10a && t23_10b && t23_11 && t23_12 && t23_13 && t23_14;
+  console.log("  v23 改动:", t23All ? "PASS" : "FAIL");
+  if (!t23All) allPass = false;
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));
 process.exit(allPass ? 0 : 1);

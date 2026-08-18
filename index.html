@@ -289,73 +289,15 @@
               <span class="page-toolbar-spacer"></span>
               <span id="fs-count" class="muted page-toolbar-meta">0 条</span>
             </div>
-            <div class="two-cols">
-              <aside class="col col-list">
-                <!-- v19：状态筛选放到列表最上方（与新增/导入并列 → 移到此处独占一行）
-                     - 4 档分段按钮（全部 / 未回收 / 部分回收 / 已回收）
-                     - 默认"全部"被选中 -->
-                <div id="seg-fs-status" class="seg seg-fs-status" role="group" aria-label="按状态筛选">
-                  <button class="seg-btn active" data-fs-status="all" title="显示全部">全部</button>
-                  <button class="seg-btn" data-fs-status="未回收" title="只显示未回收的伏笔">未回收</button>
-                  <button class="seg-btn" data-fs-status="部分回收" title="只显示部分回收的伏笔">部分回收</button>
-                  <button class="seg-btn" data-fs-status="已回收" title="只显示已回收的伏笔">已回收</button>
-                </div>
-                <ul id="fs-list" class="fs-list"></ul>
-              </aside>
-              <div class="resizer resizer-col-list" data-resizer="two-list" title="拖动调整伏笔列表宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
-                <span class="resizer-reset-hint">双击重置</span>
-              </div>
-              <main class="col col-editor">
-                <div id="fs-editor-empty" class="empty-state">
-                  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
-                    <path d="M3 7h18M3 12h18M3 17h12" />
-                  </svg>
-                  <p>从左侧选一条伏笔查看，或新增一条</p>
-                  <p class="hint">伏笔 = 故事里提前铺设、后续回收的剧情线索</p>
-                </div>
-                <article id="fs-editor" class="editor" hidden>
-                  <div class="editor-meta editor-meta-fs">
-                    <div class="meta-field meta-num">
-                      <label>序号</label>
-                      <input id="fs-no" type="text" inputmode="numeric" placeholder="如：1 / 序章" />
-                    </div>
-                    <div class="meta-field meta-title">
-                      <label>伏笔名称</label>
-                      <input id="fs-name" type="text" placeholder="给伏笔起个名字" />
-                    </div>
-                    <div class="meta-field">
-                      <label>状态</label>
-                      <select id="fs-status"></select>
-                    </div>
-                    <div class="meta-actions">
-                      <button id="btn-fs-save" class="primary-btn">保存</button>
-                      <button id="btn-fs-delete" class="danger-btn">删除</button>
-                    </div>
-                  </div>
-                  <div class="editor-body">
-                    <div class="fs-form-row">
-                      <div class="meta-field">
-                        <label>铺设章节</label>
-                        <input id="fs-setup" type="text" placeholder="如：第三章、第12章" />
-                      </div>
-                      <div class="meta-field">
-                        <label>回收章节</label>
-                        <input id="fs-payoff" type="text" placeholder="如：第二十章、第45章" />
-                      </div>
-                    </div>
-                    <label class="body-label">备注 / 详情</label>
-                    <textarea id="fs-notes" placeholder="伏笔的具体内容、提示、相关情节等…"></textarea>
-                    <div class="body-stats">
-                      <div class="stats-left">
-                        <span id="fs-word-count" class="muted">0 字</span>
-                        <span id="fs-save-status" class="muted"></span>
-                      </div>
-                      <span id="fs-file-path" class="muted file-path" title=""></span>
-                    </div>
-                  </div>
-                </article>
-              </main>
+            <!-- v23：状态筛选保留在工具栏下方一行（筛选 + 网格） -->
+            <div id="seg-fs-status" class="seg seg-fs-status" role="group" aria-label="按状态筛选">
+              <button class="seg-btn active" data-fs-status="all" title="显示全部">全部</button>
+              <button class="seg-btn" data-fs-status="未回收" title="只显示未回收的伏笔">未回收</button>
+              <button class="seg-btn" data-fs-status="部分回收" title="只显示部分回收的伏笔">部分回收</button>
+              <button class="seg-btn" data-fs-status="已回收" title="只显示已回收的伏笔">已回收</button>
             </div>
+            <!-- v23：三列多行网格容器（替代原来的「左列表+右详情」双栏） -->
+            <div class="fs-grid" id="fs-grid"></div>
           </section>
 
           <!-- ===================== 财物详情页（v21：左右双台账） =====================
