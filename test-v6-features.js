@@ -2835,10 +2835,10 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  新增伏笔自动展开+编辑态: ${t23_9 ? "✓" : "✗"}`);
   if (!t23_9) allPass = false;
 
-  // 23.10 bindListEvents 的伏笔点击用 onFsClick（切展开态）
-  const t23_10a = /onFsClick = \(e\) =>\s*\{[\s\S]*?data-action="toggle"/.test(SRC);
+  // 23.10 bindListEvents 的伏笔点击用 onFsClick（v26 改：整张 .fs-item 命中即触发）
+  const t23_10a = /onFsClick = \(e\) =>\s*\{[\s\S]{0,1500}const itemEl = e\.target\.closest\("\.fs-item"\)/.test(SRC);
   const t23_10b = /fsList\.addEventListener\("click", onFsClick\)/.test(SRC);
-  console.log(`  bindListEvents 含 onFsClick + data-action=toggle: ${t23_10a ? "✓" : "✗"}`);
+  console.log(`  bindListEvents onFsClick 用 closest('.fs-item') 触发: ${t23_10a ? "✓" : "✗"}`);
   console.log(`  fsList 绑 onFsClick: ${t23_10b ? "✓" : "✗"}`);
   if (!(t23_10a && t23_10b)) allPass = false;
 
@@ -3271,6 +3271,81 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   const t25All = t25_1 && t25_2 && t25_3 && t25_4a && t25_4b && t25_5a && t25_5b && t25_5c && t25_6 && t25_7a && t25_7b && t25_7c && t25_7d && t25_8a && t25_8b && t25_8c && t25_8d && t25_9a && t25_9b && t25_10a && t25_10b && t25_10c && t25_10d && t25_11a && t25_11b && t25_11c && t25_12a && t25_12b && t25_13a && t25_13b && t25_14a && t25_14b && t25_15a && t25_15b && t25_15c && t25_16a && t25_16b && t25_16c && t25_16d && t25_17a && t25_17b && t25_18 && t25_19a && t25_19b && t25_20a && t25_20b && t25_20c && t25_21 && t25_22a && t25_22b && t25_23a && t25_23b && t25_23c && t25_23d;
   console.log("  v25 改动:", t25All ? "PASS" : "FAIL");
   if (!t25All) allPass = false;
+
+  /* ============================================================
+  测试 26：v26 - 整张 fs-item 可点击 + .border-selected 工具类 +
+          展开后内容超出滚动条 + 履历章节号宽度减半
+  ============================================================ */
+  console.log("\n测试 26：v26 - 整张 fs-item 可点击 + .border-selected + 详情滚动 + 履历列宽减半");
+
+  let cssText = "", appText = "";
+  try {
+    const __testDirname = "/home/gem/.aily/workdir/task_7672995282002398156/fiction-analyzer";
+    cssText = fs.readFileSync(path.join(__testDirname, "styles.css"), "utf-8");
+    appText = fs.readFileSync(path.join(__testDirname, "app.js"), "utf-8");
+  } catch (e) {
+    console.log("  读取源文件失败:", e.message);
+  }
+
+  // 26.1 .border-selected 工具类存在：border-color + box-shadow: none
+  const hasBorderSelected = /\.border-selected\s*\{[\s\S]{0,200}border-color:\s*var\(--accent[\s\S]{0,200}box-shadow:\s*none\s*!important/.test(cssText);
+  console.log(`  CSS: .border-selected 工具类定义 (border-color + box-shadow:none): ${hasBorderSelected ? "✓" : "✗"}`);
+  if (!hasBorderSelected) allPass = false;
+
+  // 26.2 .fs-item 加了 cursor: pointer
+  const fsItemCursor = /\.fs-item\s*\{[\s\S]{0,400}cursor:\s*pointer/.test(cssText);
+  console.log(`  CSS: .fs-item { cursor: pointer }（整张卡可点）: ${fsItemCursor ? "✓" : "✗"}`);
+  if (!fsItemCursor) allPass = false;
+
+  // 26.3 .fs-card-detail 加 max-height + overflow-y: auto
+  const detailScroll = /\.fs-card-detail\s*\{[\s\S]{0,300}max-height:\s*60vh[\s\S]{0,200}overflow-y:\s*auto/.test(cssText);
+  console.log(`  CSS: .fs-card-detail { max-height: 60vh + overflow-y: auto }: ${detailScroll ? "✓" : "✗"}`);
+  if (!detailScroll) allPass = false;
+
+  // 26.4 .fs-record-row 第一列减半到 minmax(40px, 55px)
+  const recordCol = /\.fs-record-row\s*\{[\s\S]{0,400}grid-template-columns:\s*minmax\(40px,\s*55px\)/.test(cssText);
+  console.log(`  CSS: .fs-record-row grid 第 1 列减半 (minmax(40,55)): ${recordCol ? "✓" : "✗"}`);
+  if (!recordCol) allPass = false;
+
+  // 26.5 .fs-rec-setup-num-static min-width 同步减半（48px → 24px）
+  const setupNumW = /\.fs-rec-setup-num-static\s*\{[\s\S]{0,200}min-width:\s*24px/.test(cssText);
+  console.log(`  CSS: .fs-rec-setup-num-static min-width 24px: ${setupNumW ? "✓" : "✗"}`);
+  if (!setupNumW) allPass = false;
+
+  // 26.6 .fs-card-head 不再有 cursor: pointer（迁到外层 .fs-item）
+  const headNoCursor = !/\.fs-card-head\s*\{[\s\S]{0,400}cursor:\s*pointer/.test(cssText);
+  console.log(`  CSS: .fs-card-head 自身无 cursor:pointer（已迁出）: ${headNoCursor ? "✓" : "✗"}`);
+  if (!headNoCursor) allPass = false;
+
+  // 26.7 renderFsList: article 上加 data-action="toggle"
+  const articleToggle = /<article class="fs-item[\s\S]{0,200}data-action="toggle"/.test(appText);
+  console.log(`  JS: <article.fs-item> 上有 data-action="toggle": ${articleToggle ? "✓" : "✗"}`);
+  if (!articleToggle) allPass = false;
+
+  // 26.8 renderFsList: active 时同时加 .border-selected class
+  const activeBorderSel = /currentItemId \? "active border-selected"/.test(appText);
+  console.log(`  JS: active 卡片 class 同时含 'active border-selected': ${activeBorderSel ? "✓" : "✗"}`);
+  if (!activeBorderSel) allPass = false;
+
+  // 26.9 fs-card-head 上不再带 data-action="toggle"
+  const headNoToggle = !/<header class="fs-card-head"[\s\S]{0,200}data-action="toggle"/.test(appText);
+  console.log(`  JS: <header.fs-card-head> 上无 data-action="toggle"（已迁出）: ${headNoToggle ? "✓" : "✗"}`);
+  if (!headNoToggle) allPass = false;
+
+  // 26.10 onFsClick: 用 closest('.fs-item') 触发 toggle（不再依赖 [data-action="toggle"] 头选择器）
+  const onFsClosest = /const onFsClick = \(e\) =>[\s\S]{0,1500}const itemEl = e\.target\.closest\("\.fs-item"\);[\s\S]{0,500}const id = itemEl\.dataset\.id/.test(appText);
+  console.log(`  JS: onFsClick 用 closest('.fs-item') 触发 toggle: ${onFsClosest ? "✓" : "✗"}`);
+  if (!onFsClosest) allPass = false;
+
+  // 26.11 onFsClick: 排除 detail 内 input/textarea/select/button/label
+  const excludeInputs = /e\.target\.closest\("input, textarea, select, button, label, \[contenteditable\]"\)/.test(appText);
+  console.log(`  JS: onFsClick 排除 detail 内交互元素: ${excludeInputs ? "✓" : "✗"}`);
+  if (!excludeInputs) allPass = false;
+
+  const t26All = hasBorderSelected && fsItemCursor && detailScroll && recordCol && setupNumW
+    && headNoCursor && articleToggle && activeBorderSel && headNoToggle && onFsClosest && excludeInputs;
+  console.log("  v26 改动:", t26All ? "PASS" : "FAIL");
+  if (!t26All) allPass = false;
 
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

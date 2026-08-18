@@ -2112,8 +2112,8 @@
         // 履历数（折叠时显示一个小徽标，让用户知道这个伏笔有多少条提及）
         const recCount = getFsRecordsByFsNo(it).length;
         return `
-          <article class="fs-item ${isExpanded ? "expanded" : ""} ${it.id === p.currentItemId ? "active" : ""}" data-id="${escapeHtml(it.id)}">
-            <header class="fs-card-head" data-action="toggle" data-id="${escapeHtml(it.id)}">
+          <article class="fs-item ${isExpanded ? "expanded" : ""} ${it.id === p.currentItemId ? "active border-selected" : ""}" data-id="${escapeHtml(it.id)}" data-action="toggle">
+            <header class="fs-card-head" data-id="${escapeHtml(it.id)}">
               <span class="fs-cell fs-col-no" title="序号">#${displayNo}</span>
               <span class="fs-cell fs-col-fsno" title="${escapeHtml(it.fsNo || "—")}">${escapeHtml(it.fsNo || "—")}</span>
               <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
@@ -6044,10 +6044,16 @@
         deleteCurrentItem();
         return;
       }
-      // 2) 切换展开——只点 [data-action="toggle"] 头才触发
-      const toggleEl = e.target.closest('[data-action="toggle"]');
-      if (toggleEl) {
-        const id = toggleEl.dataset.id;
+      // v26：整张 .fs-item 都是点击区,排除 detail 内的交互元素
+      const itemEl = e.target.closest(".fs-item");
+      if (!itemEl) return;
+      if (e.target.closest("input, textarea, select, button, label, [contenteditable]")) {
+        // detail 内的 input/select/button 区域不触发 toggle
+        return;
+      }
+      // 2) 切换展开
+      {
+        const id = itemEl.dataset.id;
         if (!id) return;
         // 切前：编辑态下如果有 dirty，save
         if (state.ui.fsEditing && state.ui.fsExpandedId && state.ui.fsExpandedId !== id) {
