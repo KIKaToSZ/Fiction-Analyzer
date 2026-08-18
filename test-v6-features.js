@@ -1556,8 +1556,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!(t15_4a && t15_4b && t15_4c && t15_4d)) allPass = false;
 
   // 15.5 双 section 提交互不影响 - 各有 confirmId
-  const t15_5a = /btn-import-fs-main-confirm/.test(SRC);
-  const t15_5b = /btn-import-fs-record-confirm/.test(SRC);
+  // v25：fs-main/fs-record 共用 btn-import-fs-confirm
+  const t15_5a = /confirmId: "btn-import-fs-confirm"/.test(SRC);
+  const t15_5b = /"fs-record":\s*\{[\s\S]{0,1500}confirmId: "btn-import-fs-confirm"/.test(SRC);
   const t15_5c = /btn-import-confirm/.test(SRC); // 章节
   console.log(`  章节确认按钮 id: ${t15_5c ? "✓" : "✗"}`);
   console.log(`  fs-main 确认按钮 id: ${t15_5a ? "✓" : "✗"}`);
@@ -2555,8 +2556,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   const t21_1a = /function renumberForeshadowing\(\)/.test(SRC);
   const t21_1b = /detectFsNoFormat\(p\.items\)/.test(SRC) || /detectFsNoFormat\(.*items.*\)/.test(SRC);
   const t21_1c = /formatFsNoByFormat\(n, fmt\)/.test(SRC) || /formatFsNoByFormat\(.*\)/.test(SRC);
-  const t21_1d = /pushHistory\(\)/.test(SRC.match(/function renumberForeshadowing[\s\S]*?\n  \}/)[0]);
-  const t21_1e = /saveAsJson\(\)/.test(SRC.match(/function renumberForeshadowing[\s\S]*?\n  \}/)[0]);
+  // v25：renumberForeshadowing 重构 - pushHistory 移到 applyRenumber，saveAsJson 删除
+  const t21_1d = /pushHistory/.test(SRC.match(/function applyRenumber[\s\S]*?\n  \}/)?.[0] || "");
+  const t21_1e = !/saveAsJson\(\)/.test((SRC.match(/function applyRenumber[\s\S]{0,800}?\n  \}/)?.[0] || "").split("\n").filter(l => !l.trim().startsWith("//")).join("\n"));
   console.log(`  renumberForeshadowing 函数: ${t21_1a ? "✓" : "✗"}`);
   console.log(`  内含 detectFsNoFormat: ${t21_1b ? "✓" : "✗"}`);
   console.log(`  内含 formatFsNoByFormat: ${t21_1c ? "✓" : "✗"}`);
@@ -3001,6 +3003,274 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   const t24All = t24_1 && t24_2a && t24_2b && t24_3 && t24_4a && t24_4b && t24_4c && t24_5a && t24_5b && t24_6 && t24_7 && t24_8 && t24_9 && t24_10 && t24_11 && t24_12a && t24_12b && t24_13a && t24_13b && t24_14a && t24_14b && t24_15 && t24_16a && t24_16b && t24_17 && t24_18;
   console.log("  v24 改动:", t24All ? "PASS" : "FAIL");
   if (!t24All) allPass = false;
+
+  // ============================================================
+  // 测试 25：v25（4 个需求）
+  //  1) 修 onFsClick 事件绑错 id (#fs-list → #fs-grid)
+  //  2) 重新编号：连续性检查弹窗（先检查，按结果显示）+ 去掉 saveAsJson
+  //  3) 合并伏笔导入按钮为【导入】+ 智能判断哪些 section 有数据
+  //  4) modal-import 弹窗底部按钮移出滚动区
+  // ============================================================
+  console.log("\n测试 25：v25（4 个需求：展开/收起事件修复 + 重新编号检查 + 合并导入按钮 + 弹窗底部固定）");
+
+  // v25 测试用的 html 变量
+  const _v25html = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
+  const _v25css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf-8");
+
+  // 25.1 app.js：const fsList = $("#fs-grid")
+  const t25_1 = /const fsList = \$\("#fs-grid"\)/.test(SRC);
+  console.log(`  app.js bindListEvents 修 fsList 容器 id 为 #fs-grid: ${t25_1 ? "✓" : "✗"}`);
+  if (!t25_1) allPass = false;
+
+  // 25.2 app.js：#fs-list 不再出现
+  const t25_2 = !/\$\("#fs-list"\)/.test(SRC);
+  console.log(`  app.js 不再出现 #fs-list 引用: ${t25_2 ? "✓" : "✗"}`);
+  if (!t25_2) allPass = false;
+
+  // 25.3 app.js：renumberForeshadowing 不再有 confirm(...)
+  const t25_3 = !/confirm\(`确定按当前列表/.test(SRC);
+  console.log(`  renumberForeshadowing 不再弹原 confirm: ${t25_3 ? "✓" : "✗"}`);
+  if (!t25_3) allPass = false;
+
+  // 25.4 app.js：renumberForeshadowing 改为调 showRenumberCheckModal + checkForeshadowingContinuity
+  const t25_4a = /function renumberForeshadowing[\s\S]{0,400}showRenumberCheckModal\(\)/.test(SRC);
+  const t25_4b = /function renumberForeshadowing[\s\S]{0,600}checkForeshadowingContinuity/.test(SRC);
+  console.log(`  renumberForeshadowing 改调 showRenumberCheckModal: ${t25_4a ? "✓" : "✗"}`);
+  if (!t25_4a) allPass = false;
+  console.log(`  renumberForeshadowing 异步调 checkForeshadowingContinuity: ${t25_4b ? "✓" : "✗"}`);
+  if (!t25_4b) allPass = false;
+
+  // 25.5 app.js：checkForeshadowingContinuity 函数 + 返回值结构
+  const t25_5a = /function checkForeshadowingContinuity\(\)\s*\{[\s\S]{0,500}continuous:\s*true/.test(SRC);
+  const t25_5b = /function checkForeshadowingContinuity[\s\S]{0,1500}gaps\.push/.test(SRC);
+  const t25_5c = /parseChapterNo\(it\.fsNo\)/.test(SRC);
+  console.log(`  checkForeshadowingContinuity 存在 + 返回 continuous 字段: ${t25_5a ? "✓" : "✗"}`);
+  if (!t25_5a) allPass = false;
+  console.log(`  checkForeshadowingContinuity 收集 gaps: ${t25_5b ? "✓" : "✗"}`);
+  if (!t25_5b) allPass = false;
+  console.log(`  checkForeshadowingContinuity 用 parseChapterNo 解析 fsNo: ${t25_5c ? "✓" : "✗"}`);
+  if (!t25_5c) allPass = false;
+
+  // 25.6 app.js：applyRenumber 不再 saveAsJson（排除注释行后）
+  const _applyBody = SRC.match(/function applyRenumber[\s\S]{0,800}?\n  \}/);
+  const _applyNoComment = _applyBody && _applyBody[0].split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
+  const t25_6 = _applyNoComment && !/saveAsJson/.test(_applyNoComment);
+  console.log(`  applyRenumber 不再 saveAsJson: ${t25_6 ? "✓" : "✗"}`);
+  if (!t25_6) allPass = false;
+
+  // 25.7 app.js：showRenumberCheckModal + renderRenumberCheckResult + bindRenumberCheckEvents
+  const t25_7a = /function showRenumberCheckModal\(\)/.test(SRC);
+  const t25_7b = /function renderRenumberCheckResult\(/.test(SRC);
+  const t25_7c = /function bindRenumberCheckEvents\(/.test(SRC);
+  const t25_7d = /bindRenumberCheckEvents\(\)/.test(SRC);
+  console.log(`  showRenumberCheckModal 函数: ${t25_7a ? "✓" : "✗"}`);
+  if (!t25_7a) allPass = false;
+  console.log(`  renderRenumberCheckResult 函数: ${t25_7b ? "✓" : "✗"}`);
+  if (!t25_7b) allPass = false;
+  console.log(`  bindRenumberCheckEvents 函数: ${t25_7c ? "✓" : "✗"}`);
+  if (!t25_7c) allPass = false;
+  console.log(`  init 调 bindRenumberCheckEvents: ${t25_7d ? "✓" : "✗"}`);
+  if (!t25_7d) allPass = false;
+
+  // 25.8 app.js：renderRenumberCheckResult 处理连续 + 不连续分支
+  const _renResBody = SRC.match(/function renderRenumberCheckResult[\s\S]{0,2500}?\n  \}/);
+  const t25_8a = _renResBody && /编号连续/.test(_renResBody[0]);
+  const t25_8b = _renResBody && /不连续/.test(_renResBody[0]);
+  const t25_8c = _renResBody && /data-renumber-action="yes"/.test(_renResBody[0]);
+  const t25_8d = _renResBody && /data-renumber-action="no"/.test(_renResBody[0]);
+  console.log(`  renderRenumberCheckResult 连续分支显示"编号连续": ${t25_8a ? "✓" : "✗"}`);
+  if (!t25_8a) allPass = false;
+  console.log(`  renderRenumberCheckResult 不连续分支显示"不连续": ${t25_8b ? "✓" : "✗"}`);
+  if (!t25_8b) allPass = false;
+  console.log(`  不连续分支有"是"按钮 (data-renumber-action="yes"): ${t25_8c ? "✓" : "✗"}`);
+  if (!t25_8c) allPass = false;
+  console.log(`  不连续分支有"否"按钮 (data-renumber-action="no"): ${t25_8d ? "✓" : "✗"}`);
+  if (!t25_8d) allPass = false;
+
+  // 25.9 app.js：bindRenumberCheckEvents 处理 yes/no/close
+  const t25_9a = /data-renumber-action/.test(SRC);
+  const _bindRenBody = SRC.match(/function bindRenumberCheckEvents[\s\S]{0,1500}?\n  \}/);
+  const t25_9b = _bindRenBody && /applyRenumber/.test(_bindRenBody[0]);
+  console.log(`  使用 data-renumber-action 委托: ${t25_9a ? "✓" : "✗"}`);
+  if (!t25_9a) allPass = false;
+  console.log(`  bindRenumberCheckEvents 处理 yes 调 applyRenumber: ${t25_9b ? "✓" : "✗"}`);
+  if (!t25_9b) allPass = false;
+
+  // 25.10 index.html：modal-renumber-check 弹窗存在
+  const t25_10a = /id="modal-renumber-check" class="modal"/.test(_v25html);
+  const t25_10b = /id="renumber-check-status"/.test(_v25html);
+  const t25_10c = /id="renumber-check-result"/.test(_v25html);
+  const t25_10d = /id="renumber-check-footer"/.test(_v25html);
+  console.log(`  index.html 有 #modal-renumber-check 弹窗: ${t25_10a ? "✓" : "✗"}`);
+  if (!t25_10a) allPass = false;
+  console.log(`  index.html 有 #renumber-check-status: ${t25_10b ? "✓" : "✗"}`);
+  if (!t25_10b) allPass = false;
+  console.log(`  index.html 有 #renumber-check-result: ${t25_10c ? "✓" : "✗"}`);
+  if (!t25_10c) allPass = false;
+  console.log(`  index.html 有 #renumber-check-footer: ${t25_10d ? "✓" : "✗"}`);
+  if (!t25_10d) allPass = false;
+
+  // 25.11 index.html：删除 btn-import-fs-main-confirm / btn-import-fs-record-confirm
+  const t25_11a = !/id="btn-import-fs-main-confirm"/.test(_v25html);
+  const t25_11b = !/id="btn-import-fs-record-confirm"/.test(_v25html);
+  const t25_11c = /id="btn-import-fs-confirm"/.test(_v25html);
+  console.log(`  index.html 删除 btn-import-fs-main-confirm: ${t25_11a ? "✓" : "✗"}`);
+  if (!t25_11a) allPass = false;
+  console.log(`  index.html 删除 btn-import-fs-record-confirm: ${t25_11b ? "✓" : "✗"}`);
+  if (!t25_11b) allPass = false;
+  console.log(`  index.html 新增 btn-import-fs-confirm（合并按钮）: ${t25_11c ? "✓" : "✗"}`);
+  if (!t25_11c) allPass = false;
+
+  // 25.12 index.html：modal-import 弹窗内 form-actions 移出 modal-body
+  const _modalImportBlock = _v25html.match(/<div id="modal-import"[\s\S]*?<!--\s*=+\s*弹窗：打开文件\s*=+\s*-->/);
+  const _modalImportBody = _modalImportBlock && _modalImportBlock[0].match(/<div class="modal-body">([\s\S]*?)<\/div>\s*<!-- v25：modal-footer/);
+  const t25_12a = _modalImportBody && !/form-actions/.test(_modalImportBody[1]);
+  const t25_12b = _modalImportBody && !/btn-import-(confirm|fs|lingshi|items)-confirm/.test(_modalImportBody[1]);
+  console.log(`  modal-import 的 modal-body 内不再有 .form-actions: ${t25_12a ? "✓" : "✗"}`);
+  if (!t25_12a) allPass = false;
+  console.log(`  modal-import 的 modal-body 内不再有 confirm 按钮: ${t25_12b ? "✓" : "✗"}`);
+  if (!t25_12b) allPass = false;
+
+  // 25.13 index.html：底部按钮在 .modal-footer 内
+  const t25_13a = /<div class="modal-footer form-actions">[\s\S]{0,800}<button class="secondary-btn" data-close>取消<\/button>/.test(_v25html);
+  const t25_13b = /<div class="modal-footer form-actions">[\s\S]{0,1500}id="btn-import-fs-confirm"[^>]*>导入<\/button>/.test(_v25html);
+  console.log(`  底部固定区用 .modal-footer 包取消按钮: ${t25_13a ? "✓" : "✗"}`);
+  if (!t25_13a) allPass = false;
+  console.log(`  底部固定区含【导入】合并按钮（fs-confirm 文字=导入）: ${t25_13b ? "✓" : "✗"}`);
+  if (!t25_13b) allPass = false;
+
+  // 25.14 app.js：IMPORT_SECTIONS fs-main/fs-record 都用 btn-import-fs-confirm
+  const t25_14a = /"fs-main":\s*\{[\s\S]{0,1000}confirmId: "btn-import-fs-confirm"/.test(SRC);
+  const t25_14b = /"fs-record":\s*\{[\s\S]{0,1000}confirmId: "btn-import-fs-confirm"/.test(SRC);
+  console.log(`  IMPORT_SECTIONS.fs-main.confirmId = btn-import-fs-confirm: ${t25_14a ? "✓" : "✗"}`);
+  if (!t25_14a) allPass = false;
+  console.log(`  IMPORT_SECTIONS.fs-record.confirmId = btn-import-fs-confirm: ${t25_14b ? "✓" : "✗"}`);
+  if (!t25_14b) allPass = false;
+
+  // 25.15 app.js：updateFsCombinedConfirmBtn 合并 fs-main + fs-record 状态
+  const t25_15a = /function updateFsCombinedConfirmBtn/.test(SRC);
+  const _updFsBody = SRC.match(/function updateFsCombinedConfirmBtn[\s\S]{0,1500}?\n  \}/);
+  const t25_15b = _updFsBody && /fs-main/.test(_updFsBody[0]) && /fs-record/.test(_updFsBody[0]);
+  const t25_15c = _updFsBody && /btn\.disabled = !anyValid/.test(_updFsBody[0]);
+  console.log(`  updateFsCombinedConfirmBtn 函数存在: ${t25_15a ? "✓" : "✗"}`);
+  if (!t25_15a) allPass = false;
+  console.log(`  updateFsCombinedConfirmBtn 同时处理 fs-main + fs-record: ${t25_15b ? "✓" : "✗"}`);
+  if (!t25_15b) allPass = false;
+  console.log(`  updateFsCombinedConfirmBtn 任一 valid → 按钮启用: ${t25_15c ? "✓" : "✗"}`);
+  if (!t25_15c) allPass = false;
+
+  // 25.16 app.js：commitImportFsCombined 按 fs-main → fs-record 顺序
+  const t25_16a = /function commitImportFsCombined/.test(SRC);
+  const _ciBody = SRC.match(/function commitImportFsCombined[\s\S]{0,800}?\n  \}/);
+  const t25_16b = _ciBody && /for \(const key of \["fs-main", "fs-record"\]\)/.test(_ciBody[0]);
+  const t25_16c = _ciBody && /commitImportSection\(key\)/.test(_ciBody[0]);
+  const t25_16d = _ciBody && /hideModal\("modal-import"\)/.test(_ciBody[0]);
+  console.log(`  commitImportFsCombined 函数存在: ${t25_16a ? "✓" : "✗"}`);
+  if (!t25_16a) allPass = false;
+  console.log(`  commitImportFsCombined 按 fs-main → fs-record 顺序遍历: ${t25_16b ? "✓" : "✗"}`);
+  if (!t25_16b) allPass = false;
+  console.log(`  commitImportFsCombined 调 commitImportSection(key): ${t25_16c ? "✓" : "✗"}`);
+  if (!t25_16c) allPass = false;
+  console.log(`  commitImportFsCombined 末尾 hideModal 关弹窗: ${t25_16d ? "✓" : "✗"}`);
+  if (!t25_16d) allPass = false;
+
+  // 25.17 app.js：commitImportSection 走 fs combined 分支读 importState.lastParsed
+  const t25_17a = /isFsCombined = sec\.confirmId === "btn-import-fs-confirm"/.test(SRC);
+  const t25_17b = /st\.lastParsed/.test(SRC);
+  console.log(`  commitImportSection 检测 fs combined: ${t25_17a ? "✓" : "✗"}`);
+  if (!t25_17a) allPass = false;
+  console.log(`  commitImportSection 读 st.lastParsed: ${t25_17b ? "✓" : "✗"}`);
+  if (!t25_17b) allPass = false;
+
+  // 25.18 app.js：commitImportSection 末尾 fs combined 不重置
+  const _cisTail = SRC.match(/if \(sectionKey === "chapter"\)\s*\{[\s\S]{0,400}?else if \(sec\.confirmId === "btn-import-fs-confirm"\)[\s\S]{0,200}?\}/);
+  const t25_18 = !!_cisTail;
+  console.log(`  commitImportSection 末尾 fs combined 不 reset: ${t25_18 ? "✓" : "✗"}`);
+  if (!t25_18) allPass = false;
+
+  // 25.19 app.js：bindImportEvents 跳过 fs combined + 单独绑 fs-confirm
+  const t25_19a = /if \(sec\.confirmId === "btn-import-fs-confirm"\) continue;/.test(SRC);
+  const t25_19b = /\$\("#btn-import-fs-confirm"\)\?\.addEventListener\("click", commitImportFsCombined\)/.test(SRC);
+  console.log(`  bindImportEvents 跳过 fs combined 循环绑: ${t25_19a ? "✓" : "✗"}`);
+  if (!t25_19a) allPass = false;
+  console.log(`  bindImportEvents 单独绑 #btn-import-fs-confirm click: ${t25_19b ? "✓" : "✗"}`);
+  if (!t25_19b) allPass = false;
+
+  // 25.20 app.js：refreshImportPreviewSection fs combined 走 updateFsCombinedConfirmBtn
+  const _rpsBody = SRC.match(/function refreshImportPreviewSection[\s\S]{0,4000}?\n  \}/);
+  const t25_20a = _rpsBody && /const isFsCombined = sec\.confirmId === "btn-import-fs-confirm"/.test(_rpsBody[0]);
+  const t25_20b = _rpsBody && /updateFsCombinedConfirmBtn\(\)/.test(_rpsBody[0]);
+  const t25_20c = _rpsBody && /st\.lastParsed = \{ rows, sheet: target\.name, page: st\.targetPage \}/.test(_rpsBody[0]);
+  console.log(`  refreshImportPreviewSection 检测 isFsCombined: ${t25_20a ? "✓" : "✗"}`);
+  if (!t25_20a) allPass = false;
+  console.log(`  refreshImportPreviewSection 走 updateFsCombinedConfirmBtn: ${t25_20b ? "✓" : "✗"}`);
+  if (!t25_20b) allPass = false;
+  console.log(`  refreshImportPreviewSection 把解析结果写到 st.lastParsed: ${t25_20c ? "✓" : "✗"}`);
+  if (!t25_20c) allPass = false;
+
+  // 25.21 app.js：importState 初始化含 lastParsed: null
+  const t25_21 = /chapter: \{ allSheets: null, currentSheet: null, targetPage: null, allSheetsTarget: null, lastParsed: null \}/.test(SRC);
+  console.log(`  importState.chapter 初始化含 lastParsed: null: ${t25_21 ? "✓" : "✗"}`);
+  if (!t25_21) allPass = false;
+
+  // 25.22 styles.css：.modal-footer 样式存在
+  const t25_22a = /\.modal-footer\s*\{[\s\S]{0,400}flex-shrink: 0/.test(_v25css);
+  const t25_22b = /\.modal-footer\s*\{[\s\S]{0,400}border-top:/.test(_v25css);
+  console.log(`  .modal-footer 用 flex-shrink: 0 固定在底端: ${t25_22a ? "✓" : "✗"}`);
+  if (!t25_22a) allPass = false;
+  console.log(`  .modal-footer 有 border-top 视觉分界: ${t25_22b ? "✓" : "✗"}`);
+  if (!t25_22b) allPass = false;
+
+  // 25.23 styles.css：renumber 弹窗样式
+  const t25_23a = /\.renumber-spinner\s*\{[\s\S]{0,400}@keyframes renumber-spin/.test(_v25css);
+  const t25_23b = /\.renumber-status-ok\s*\{/.test(_v25css);
+  const t25_23c = /\.renumber-status-warn\s*\{/.test(_v25css);
+  const t25_23d = /\.renumber-gap-list\s*\{/.test(_v25css) && /\.renumber-gap-row\s*\{/.test(_v25css);
+  console.log(`  .renumber-spinner + @keyframes renumber-spin: ${t25_23a ? "✓" : "✗"}`);
+  if (!t25_23a) allPass = false;
+  console.log(`  .renumber-status-ok 样式: ${t25_23b ? "✓" : "✗"}`);
+  if (!t25_23b) allPass = false;
+  console.log(`  .renumber-status-warn 样式: ${t25_23c ? "✓" : "✗"}`);
+  if (!t25_23c) allPass = false;
+  console.log(`  .renumber-gap-list + .renumber-gap-row 样式: ${t25_23d ? "✓" : "✗"}`);
+  if (!t25_23d) allPass = false;
+
+  // 25.24 行为测试：模拟连续性检查算法
+  try {
+    const parseNum = (s) => {
+      const m = String(s).match(/(\d+)$/);
+      return m ? parseInt(m[1], 10) : NaN;
+    };
+    // 连续 [1,2,3] → gaps.length === 0
+    const sorted = [{ fsNo: "FS-001" }, { fsNo: "FS-002" }, { fsNo: "FS-003" }]
+      .slice().sort((a, b) => parseNum(a.fsNo) - parseNum(b.fsNo));
+    const gaps = [];
+    for (let i = 1; i < sorted.length; i++) {
+      if (parseNum(sorted[i].fsNo) - parseNum(sorted[i - 1].fsNo) !== 1) {
+        gaps.push({ prev: sorted[i - 1].fsNo, next: sorted[i].fsNo });
+      }
+    }
+    const t25_24a = gaps.length === 0;
+    // 不连续 [1,3] → 1 个 gap
+    const sorted2 = [{ fsNo: "FS-001" }, { fsNo: "FS-003" }];
+    const gaps2 = [];
+    for (let i = 1; i < sorted2.length; i++) {
+      if (parseNum(sorted2[i].fsNo) - parseNum(sorted2[i - 1].fsNo) !== 1) {
+        gaps2.push({ prev: sorted2[i - 1].fsNo, next: sorted2[i].fsNo });
+      }
+    }
+    const t25_24b = gaps2.length === 1 && gaps2[0].prev === "FS-001" && gaps2[0].next === "FS-003";
+    console.log(`  行为模拟: 连续 [1,2,3] → gaps.length === 0: ${t25_24a ? "✓" : "✗"}`);
+    if (!t25_24a) allPass = false;
+    console.log(`  行为模拟: 不连续 [1,3] → 1 个 gap: ${t25_24b ? "✓" : "✗"}`);
+    if (!t25_24b) allPass = false;
+  } catch (e) {
+    console.log(`  行为模拟异常: ${e.message}`);
+  }
+
+  const t25All = t25_1 && t25_2 && t25_3 && t25_4a && t25_4b && t25_5a && t25_5b && t25_5c && t25_6 && t25_7a && t25_7b && t25_7c && t25_7d && t25_8a && t25_8b && t25_8c && t25_8d && t25_9a && t25_9b && t25_10a && t25_10b && t25_10c && t25_10d && t25_11a && t25_11b && t25_11c && t25_12a && t25_12b && t25_13a && t25_13b && t25_14a && t25_14b && t25_15a && t25_15b && t25_15c && t25_16a && t25_16b && t25_16c && t25_16d && t25_17a && t25_17b && t25_18 && t25_19a && t25_19b && t25_20a && t25_20b && t25_20c && t25_21 && t25_22a && t25_22b && t25_23a && t25_23b && t25_23c && t25_23d;
+  console.log("  v25 改动:", t25All ? "PASS" : "FAIL");
+  if (!t25All) allPass = false;
 
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

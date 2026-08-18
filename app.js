@@ -4495,21 +4495,37 @@
     addNewItemInPage(state.currentPage);
   }
 
-  // v21：伏笔重新编号
+  // v21：伏笔重新编号（v25 重构：先做连续性检查，根据检查结果决定是否真的重编号）
   //  - 用途：删除中间的伏笔后，后续 fsNo 不连续（如 1/2/4/5），点此按钮让列表按 sortKey 排序后重排为 1/2/3/4
   //  - 沿用 detectFsNoFormat 检测的格式模板（FS-001/FS-002... → 新编号也是 FS-001/FS-002...）
   //  - 走 ui.fsSort 的当前方向（正序/倒序），与列表显示顺序一致
-  //  - 会 pushHistory + saveAsJson，撤销可恢复
+  //  - 会 pushHistory（撤销可恢复），**不再 saveAsJson**——避免每次点按钮都写一份 json
+  //    （重编号是临时性批量改动，自动保存/手动保存已经会落盘；写盘由用户操作触发）
   function renumberForeshadowing() {
     const p = state.pages.foreshadowing;
     if (!p || !Array.isArray(p.items) || p.items.length === 0) {
       toast("当前没有伏笔，无需重新编号", "info", 1500);
       return;
     }
-    if (!confirm(`确定按当前列表顺序重新连续编号 ${p.items.length} 条伏笔吗？\n这会改写所有伏笔的编号，撤销可恢复。`)) {
-      return;
+    // v25：先弹"检测中"弹窗 → 跑连续性检查 → 按结果显示"连续无需编号"或"不连续+上下编号+询问"
+    showRenumberCheckModal();
+    // 模拟一点延迟（给用户看到"检测中"动画，实际是同步计算）
+    setTimeout(() => {
+      const result = checkForeshadowingContinuity();
+      renderRenumberCheckResult(result);
+    }, 350);
+  }
+
+  // v25：检测伏笔编号的连续性
+  //  - 按 sortKey 排序（同列表展示顺序）
+  //  - 只检查"可解析为数字"的伏笔（"序章"/"楔子"等字符串前缀不参与检查）
+  //  - 返回 { continuous: true } 或 { continuous: false, gaps: [{prev, next}, ...] }
+  //    gaps 元素是「不连续的上下编号」对（保留原始 fsNo 字符串）
+  function checkForeshadowingContinuity() {
+    const p = state.pages.foreshadowing;
+    if (!p || !Array.isArray(p.items) || p.items.length === 0) {
+      return { continuous: true, total: 0 };
     }
-    // 按 sortKey 排序（沿用列表渲染的顺序）
     const sortDir = state.ui.fsSort === "desc" ? -1 : 1;
     const sorted = p.items.slice().sort((a, b) => {
       const ka = PAGES.foreshadowing.sortKey(a);
@@ -4517,7 +4533,38 @@
       if (ka.num !== kb.num) return (ka.num - kb.num) * sortDir;
       return ((ka.str || "").localeCompare(kb.str || "", "zh-CN")) * sortDir;
     });
-    // 检测格式，沿用 detectFsNoFormat
+    // 只取"有可解析数字"的项做检查
+    const numericItems = sorted
+      .map((it) => {
+        const parsed = parseChapterNo(it.fsNo);
+        return parsed.hasNum && Number.isFinite(parsed.num)
+          ? { it, num: parsed.num, display: String(it.fsNo || "").trim() || String(parsed.num) }
+          : null;
+      })
+      .filter(Boolean);
+    if (numericItems.length === 0) {
+      return { continuous: true, total: 0, sorted };
+    }
+    const gaps = [];
+    for (let i = 1; i < numericItems.length; i++) {
+      const a = numericItems[i - 1];
+      const b = numericItems[i];
+      if (b.num - a.num !== 1) {
+        gaps.push({ prev: a.display, next: b.display });
+      }
+    }
+    return {
+      continuous: gaps.length === 0,
+      gaps,
+      total: numericItems.length,
+      sorted,
+    };
+  }
+
+  // v25：把 sorted 顺序重排 fsNo（检测通过/用户点"是"后调用）
+  function applyRenumber(sorted) {
+    const p = state.pages.foreshadowing;
+    if (!p) return 0;
     const fmt = detectFsNoFormat(p.items);
     let n = 1;
     for (const it of sorted) {
@@ -4525,9 +4572,97 @@
       n++;
     }
     pushHistory();
-    saveAsJson();
+    // 注意：不再 saveAsJson()——用户明确要求"无需同步导出一个 json 文件"
+    //   状态通过 save()（localStorage 同步）保持；写盘由用户后续的"保存/导出"动作触发
+    save();
     renderAll();
-    toast(`已重新编号 ${sorted.length} 条伏笔`, "success", 1500);
+    return sorted.length;
+  }
+
+  // v25：弹"检测中" → 渲染"检测结果"二态弹窗
+  //  - 检测中：显示 spinner + 「正在检查伏笔编号连续性…」
+  //  - 完成 + 连续：显示 ✓「编号连续，无需重新编号」+ 关闭按钮
+  //  - 完成 + 不连续：显示不连续的「上下编号」列表 + 「是 / 否」按钮
+  function showRenumberCheckModal() {
+    const m = $("#modal-renumber-check");
+    if (!m) return;
+    m.hidden = false;
+    // 初始：检测中态
+    const status = $("#renumber-check-status");
+    if (status) {
+      status.innerHTML = `
+        <div class="renumber-spinner" aria-hidden="true"></div>
+        <div class="renumber-status-text">正在检查伏笔编号连续性…</div>`;
+    }
+    // 隐藏结果区
+    const result = $("#renumber-check-result");
+    if (result) result.hidden = true;
+    // 隐藏底部按钮
+    const footer = $("#renumber-check-footer");
+    if (footer) footer.hidden = true;
+  }
+
+  function renderRenumberCheckResult(result) {
+    const status = $("#renumber-check-status");
+    const resultEl = $("#renumber-check-result");
+    const footer = $("#renumber-check-footer");
+    if (!status || !resultEl || !footer) return;
+    if (result.continuous) {
+      // 连续：清掉 spinner，显示成功文案
+      status.innerHTML = `
+        <div class="renumber-status-icon renumber-status-ok">✓</div>
+        <div class="renumber-status-text">编号连续，无需重新编号</div>`;
+      resultEl.hidden = true;
+      footer.innerHTML = `<button class="primary-btn" data-renumber-action="close">关闭</button>`;
+      footer.hidden = false;
+      return;
+    }
+    // 不连续：显示不连续的「上下编号」列表
+    status.innerHTML = `
+      <div class="renumber-status-icon renumber-status-warn">!</div>
+      <div class="renumber-status-text">检测到 <strong>${result.gaps.length}</strong> 处编号不连续</div>`;
+    const listHtml = result.gaps
+      .map(
+        (g) =>
+          `<li class="renumber-gap-row"><span class="renumber-gap-from">${escapeHtml(g.prev)}</span><span class="renumber-gap-arrow">→</span><span class="renumber-gap-to">${escapeHtml(g.next)}</span></li>`
+      )
+      .join("");
+    resultEl.innerHTML = `<p class="muted hint renumber-gap-hint">以下位置的编号有跳跃：</p><ul class="renumber-gap-list">${listHtml}</ul>`;
+    resultEl.hidden = false;
+    footer.innerHTML = `
+      <button class="secondary-btn" data-renumber-action="no">否</button>
+      <button class="primary-btn" data-renumber-action="yes">是，重新编号</button>`;
+    footer.hidden = false;
+    // 把 sorted 暂存到 footer dataset 备用
+    footer.dataset.renumberApply = "1";
+  }
+
+  // v25：连续性检查弹窗的按钮委托（data-renumber-action）
+  function bindRenumberCheckEvents() {
+    const footer = $("#renumber-check-footer");
+    if (!footer) return;
+    footer.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-renumber-action]");
+      if (!btn) return;
+      const action = btn.dataset.renumberAction;
+      if (action === "close" || action === "no") {
+        hideModal("modal-renumber-check");
+        return;
+      }
+      if (action === "yes") {
+        // 重新跑一次连续性检查拿到 sorted（保证按最新列表顺序），直接 apply
+        const result = checkForeshadowingContinuity();
+        if (!result.continuous) {
+          const n = applyRenumber(result.sorted);
+          hideModal("modal-renumber-check");
+          toast(`已重新编号 ${n} 条伏笔`, "success", 1500);
+        } else {
+          // 极端情况：检查后又变连续了
+          hideModal("modal-renumber-check");
+          toast("编号已经连续，无需重新编号", "info", 1500);
+        }
+      }
+    });
   }
 
   /* ============================================================
@@ -4570,7 +4705,9 @@
       previewId: "import-fs-main-preview",
       fileInfoId: "import-fs-main-file-info",
       clearSel: '[data-clear-section="fs-main"]',
-      confirmId: "btn-import-fs-main-confirm",
+      // v25：伏笔两个 section 共享 #btn-import-fs-confirm 一个按钮，confirmId 在 HTML 上已隐藏
+      // 实际按钮状态由 updateFsCombinedConfirmBtn() 统一控制
+      confirmId: "btn-import-fs-confirm",
       allowTargetPage: false,
       isRecord: false,
     },
@@ -4589,7 +4726,8 @@
       previewId: "import-fs-record-preview",
       fileInfoId: "import-fs-record-file-info",
       clearSel: '[data-clear-section="fs-record"]',
-      confirmId: "btn-import-fs-record-confirm",
+      // v25：同上，共享 #btn-import-fs-confirm
+      confirmId: "btn-import-fs-confirm",
       allowTargetPage: false,
       isRecord: true,
     },
@@ -4636,13 +4774,14 @@
   };
 
   // 每个 section 的运行时状态
+  // v25：每个 section 加 lastParsed（伏笔双 section 共享 #btn-import-fs-confirm 时存最近一次解析结果）
   const importState = {
-    chapter: { allSheets: null, currentSheet: null, targetPage: null, allSheetsTarget: null },
-    "fs-main": { allSheets: null, currentSheet: null, targetPage: "foreshadowing", allSheetsTarget: null },
-    "fs-record": { allSheets: null, currentSheet: null, targetPage: "foreshadowing", allSheetsTarget: null },
+    chapter: { allSheets: null, currentSheet: null, targetPage: null, allSheetsTarget: null, lastParsed: null },
+    "fs-main": { allSheets: null, currentSheet: null, targetPage: "foreshadowing", allSheetsTarget: null, lastParsed: null },
+    "fs-record": { allSheets: null, currentSheet: null, targetPage: "foreshadowing", allSheetsTarget: null, lastParsed: null },
     // v21：lingshi / items 各自独立的导入 state
-    lingshi: { allSheets: null, currentSheet: null, targetPage: "lingshi", allSheetsTarget: null },
-    items: { allSheets: null, currentSheet: null, targetPage: "items", allSheetsTarget: null },
+    lingshi: { allSheets: null, currentSheet: null, targetPage: "lingshi", allSheetsTarget: null, lastParsed: null },
+    items: { allSheets: null, currentSheet: null, targetPage: "items", allSheetsTarget: null, lastParsed: null },
   };
 
   function getImportFieldsDef(sectionKey) {
@@ -4716,12 +4855,18 @@
     }
 
     // 通用：每个 section 的确认按钮
+    // v25：fs-main / fs-record 共享 #btn-import-fs-confirm，跳过循环绑定（避免双重 handler）
+    //   由下面的"#btn-import-fs-confirm 单独绑" 处理
     for (const key of Object.keys(IMPORT_SECTIONS)) {
       const sec = IMPORT_SECTIONS[key];
+      if (sec.confirmId === "btn-import-fs-confirm") continue;
       const btn = $("#" + sec.confirmId);
       if (!btn) continue;
       btn.addEventListener("click", () => commitImportSection(key));
     }
+
+    // v25：伏笔双 section 共享的【导入】按钮——智能判断哪些 section 有数据，按 fs-main → fs-record 顺序导入
+    $("#btn-import-fs-confirm")?.addEventListener("click", commitImportFsCombined);
 
     // chapter 专属：导入到目标页下拉
     $("#import-target-select")?.addEventListener("change", () => {
@@ -4802,6 +4947,8 @@
       currentSheet: null,
       targetPage: sec.allowTargetPage ? null : sec.pid,
       allSheetsTarget: null,
+      // v25：fs combined 场景下保存的"上一次解析结果"
+      lastParsed: null,
     };
     const text = $("#" + sec.textId);
     if (text) text.value = "";
@@ -4819,6 +4966,11 @@
       btn.dataset.parsed = "";
       btn.dataset.sheet = "";
       btn.dataset.page = "";
+      // v25：fs combined 共享按钮的 dataset 字段也要清
+      if (sec.confirmId === "btn-import-fs-confirm") {
+        btn.dataset.fsMain = "";
+        btn.dataset.fsRecord = "";
+      }
     }
   }
 
@@ -5044,32 +5196,43 @@
   function refreshImportPreviewSection(sectionKey) {
     const sec = IMPORT_SECTIONS[sectionKey];
     const st = importState[sectionKey];
+    // v25：fs-main / fs-record 共享 #btn-import-fs-confirm 一个按钮，状态由 updateFsCombinedConfirmBtn 合并控制
+    const isFsCombined = sec.confirmId === "btn-import-fs-confirm";
     if (st.allSheets) {
       const sheetName = ($("#" + sec.sheetSelectId)?.value) || st.currentSheet || st.allSheets[0]?.name;
       const target = st.allSheets.find((s) => s.name === sheetName);
       if (!target) {
         renderImportPreviewSection(null, sec, "items");
-        const btn = $("#" + sec.confirmId);
-        if (btn) {
-          btn.disabled = true;
-          btn.dataset.parsed = "";
-          btn.dataset.sheet = "";
-          btn.dataset.page = "";
-        }
         setSectionStats(sec, null);
+        if (isFsCombined) updateFsCombinedConfirmBtn();
+        else {
+          const btn = $("#" + sec.confirmId);
+          if (btn) {
+            btn.disabled = true;
+            btn.dataset.parsed = "";
+            btn.dataset.sheet = "";
+            btn.dataset.page = "";
+          }
+        }
         return;
       }
       // rows 来自 target.winner.parsed.rows
       const rows = target.winner?.parsed?.rows || [];
       renderImportPreviewSection(rows, sec, sec.isRecord ? "records" : "items");
       const okCount = rows.filter((r) => !r._error).length;
-      const btn = $("#" + sec.confirmId);
-      if (btn) {
-        btn.disabled = !st.targetPage || okCount === 0;
-        btn.dataset.parsed = JSON.stringify(rows);
-        btn.dataset.sheet = target.name;
-        btn.dataset.page = st.targetPage;
-        btn.dataset.table = sec.table;
+      if (isFsCombined) {
+        // 暂存到 importState 上，updateFsCombinedConfirmBtn 会读
+        st.lastParsed = { rows, sheet: target.name, page: st.targetPage };
+        updateFsCombinedConfirmBtn();
+      } else {
+        const btn = $("#" + sec.confirmId);
+        if (btn) {
+          btn.disabled = !st.targetPage || okCount === 0;
+          btn.dataset.parsed = JSON.stringify(rows);
+          btn.dataset.sheet = target.name;
+          btn.dataset.page = st.targetPage;
+          btn.dataset.table = sec.table;
+        }
       }
       st.currentSheet = target.name;
       setSectionStats(sec, rows, st.targetPage);
@@ -5078,16 +5241,75 @@
       const text = $("#" + sec.textId)?.value;
       const rows = parseImportTextFor(text, sectionKey);
       renderImportPreviewSection(rows, sec, sec.isRecord ? "records" : "items");
-      const btn = $("#" + sec.confirmId);
-      if (btn) {
-        const okCount = rows.filter((r) => !r._error).length;
-        btn.disabled = okCount === 0;
-        btn.dataset.parsed = JSON.stringify(rows);
-        btn.dataset.sheet = "";
-        btn.dataset.page = sec.pid;
-        btn.dataset.table = sec.table;
+      if (isFsCombined) {
+        st.lastParsed = { rows, sheet: "", page: sec.pid };
+        updateFsCombinedConfirmBtn();
+      } else {
+        const btn = $("#" + sec.confirmId);
+        if (btn) {
+          const okCount = rows.filter((r) => !r._error).length;
+          btn.disabled = okCount === 0;
+          btn.dataset.parsed = JSON.stringify(rows);
+          btn.dataset.sheet = "";
+          btn.dataset.page = sec.pid;
+          btn.dataset.table = sec.table;
+        }
       }
       setSectionStats(sec, rows, sec.pid);
+    }
+  }
+
+  // v25：合并刷新 fs-main + fs-record 共享的 #btn-import-fs-confirm 按钮
+  //  - 任一 section 有有效 rows → 按钮启用
+  //  - dataset 记录各 section 的解析结果（点击时按 fs-main → fs-record 顺序 commit）
+  function updateFsCombinedConfirmBtn() {
+    const btn = $("#btn-import-fs-confirm");
+    if (!btn) return;
+    let anyValid = false;
+    for (const key of ["fs-main", "fs-record"]) {
+      const st = importState[key];
+      const sec = IMPORT_SECTIONS[key];
+      const lp = st.lastParsed;
+      if (!lp) {
+        btn.dataset[key === "fs-main" ? "fsMain" : "fsRecord"] = "";
+        continue;
+      }
+      const okCount = lp.rows.filter((r) => !r._error).length;
+      if (okCount > 0) {
+        anyValid = true;
+        btn.dataset[key === "fs-main" ? "fsMain" : "fsRecord"] = JSON.stringify({
+          parsed: lp.rows,
+          sheet: lp.sheet,
+          page: lp.page,
+          table: sec.table,
+          okCount,
+        });
+      } else {
+        btn.dataset[key === "fs-main" ? "fsMain" : "fsRecord"] = "";
+      }
+    }
+    btn.disabled = !anyValid;
+  }
+
+  // v25：伏笔双 section 共享【导入】按钮的提交
+  //  - 按 fs-main → fs-record 顺序逐个 commitImportSection（每个独立走自己的解析/落盘逻辑）
+  //  - 没有有效数据的 section 自动跳过
+  //  - 全部处理完关闭弹窗
+  function commitImportFsCombined() {
+    let importedAny = false;
+    for (const key of ["fs-main", "fs-record"]) {
+      const st = importState[key];
+      const lp = st.lastParsed;
+      if (!lp) continue;
+      const okCount = lp.rows.filter((r) => !r._error).length;
+      if (okCount === 0) continue;
+      // commitImportSection 内部会读 st.targetPage / st.currentSheet / allSheets 等并自己解析
+      //   这里直接调用它即可——refreshImportPreviewSection 已经把所有状态同步到 importState 上
+      commitImportSection(key);
+      importedAny = true;
+    }
+    if (importedAny) {
+      hideModal("modal-import");
     }
   }
 
@@ -5233,12 +5455,26 @@
   // 确认导入 section
   function commitImportSection(sectionKey) {
     const sec = IMPORT_SECTIONS[sectionKey];
-    const btn = $("#" + sec.confirmId);
-    if (!btn) return;
-    const raw = btn.dataset.parsed;
-    const sheetName = btn.dataset.sheet || "";
-    const targetPid = btn.dataset.page || "";
-    const table = btn.dataset.table || sec.table;
+    // v25：fs-main / fs-record 共享 #btn-import-fs-confirm，数据从 importState.lastParsed 拿
+    //   （不走 btn.dataset.*——dataset 在合并按钮上不区分 section）
+    const isFsCombined = sec.confirmId === "btn-import-fs-confirm";
+    let raw, sheetName, targetPid, table;
+    if (isFsCombined) {
+      const st = importState[sectionKey];
+      const lp = st && st.lastParsed;
+      if (!lp) return;
+      raw = JSON.stringify(lp.rows);
+      sheetName = lp.sheet || "";
+      targetPid = lp.page || sec.pid;
+      table = sec.table;
+    } else {
+      const btn = $("#" + sec.confirmId);
+      if (!btn) return;
+      raw = btn.dataset.parsed;
+      sheetName = btn.dataset.sheet || "";
+      targetPid = btn.dataset.page || "";
+      table = btn.dataset.table || sec.table;
+    }
     if (!raw) return;
     const rows = JSON.parse(raw).filter((r) => !r._error);
     if (rows.length === 0) {
@@ -5338,6 +5574,8 @@
     // 章节 section 关弹窗；伏笔 section 留在弹窗让用户可继续填另一区
     if (sectionKey === "chapter") {
       hideModal("modal-import");
+    } else if (sec.confirmId === "btn-import-fs-confirm") {
+      // v25：fs combined 场景下不立即 reset——由 commitImportFsCombined 统一处理
     } else {
       // 重置当前 section 让用户继续填
       resetImportSection(sectionKey);
@@ -5705,7 +5943,9 @@
     // 列表项 class：.ch-item / .fs-item / .ls-item / .it-item / .ch2-item
     // 删除按钮：.ch-delete / .fs-delete / .ls-delete / .it-delete / .ch2-delete
     const chapterList = $("#chapter-list");
-    const fsList = $("#fs-list");
+    // v25 修复：容器 id 是 #fs-grid（v23 从 .fs-list 改成 .fs-grid），不是 #fs-list
+    //   之前绑错 id → onFsClick 永远不触发 → 整个伏笔展开/收起失效
+    const fsList = $("#fs-grid");
     const lingshiList = $("#lingshi-list");
     const itemsList = $("#items-list");
     const characterList = $("#character-list");
@@ -6675,6 +6915,7 @@
     bindListEvents();
     bindEditorButtons();
     bindImportEvents();
+    bindRenumberCheckEvents(); // v25：连续性检查弹窗
     bindTabs();
     bindThemeEvents();
     bindAllResizers();

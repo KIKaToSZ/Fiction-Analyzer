@@ -658,16 +658,44 @@
             <div id="import-items-preview" class="import-preview"></div>
           </div>
 
-          <!-- 通用底部按钮 -->
-          <div class="form-actions">
-            <button class="secondary-btn" data-close>取消</button>
-            <button id="btn-import-confirm" class="primary-btn" data-section-key="chapter" disabled>确认导入</button>
-            <button id="btn-import-fs-main-confirm" class="primary-btn" data-section-key="fs-main" hidden disabled>确认导入「数据表」</button>
-            <button id="btn-import-fs-record-confirm" class="primary-btn" data-section-key="fs-record" hidden disabled>确认导入「履历表」</button>
-            <button id="btn-import-lingshi-confirm" class="primary-btn" data-section-key="lingshi" hidden disabled>确认导入「灵石」</button>
-            <button id="btn-import-items-confirm" class="primary-btn" data-section-key="items" hidden disabled>确认导入「物品」</button>
-          </div>
+          <!-- v25：弹窗底部按钮移出 .modal-body，避免被滚动区吞掉 -->
+          <!--   每个 section 仍走自己的 confirm 按钮（章节/伏笔/灵石/物品），由 bindImportEvents 按当前打开的 section 启用对应那个 -->
         </div>
+        <!-- v25：modal-footer 作为 .modal-card 的直接子元素，固定在底端不参与滚动 -->
+        <div class="modal-footer form-actions">
+          <button class="secondary-btn" data-close>取消</button>
+          <button id="btn-import-confirm" class="primary-btn" data-section-key="chapter" hidden disabled>确认导入</button>
+          <!-- v25：伏笔导入按钮合并为一个【导入】，按 fs-main → fs-record 顺序智能判断哪些 section 有数据 -->
+          <button id="btn-import-fs-confirm" class="primary-btn" data-section-key="fs-combined" hidden disabled>导入</button>
+          <button id="btn-import-lingshi-confirm" class="primary-btn" data-section-key="lingshi" hidden disabled>确认导入「灵石」</button>
+          <button id="btn-import-items-confirm" class="primary-btn" data-section-key="items" hidden disabled>确认导入「物品」</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== 弹窗：重新编号连续性检查 ===================== -->
+    <!-- v25：点击「重新编号」按钮后先弹此弹窗
+         - 初始态：检测中（spinner + "正在检查伏笔编号连续性…"）
+         - 完成 + 连续：✓ "编号连续，无需重新编号" + 关闭按钮
+         - 完成 + 不连续：! "检测到 N 处编号不连续" + 上下编号列表 + 是/否按钮
+    -->
+    <div id="modal-renumber-check" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-card modal-card-narrow modal-card-renumber">
+        <header class="modal-header">
+          <h3>重新编号</h3>
+          <button class="icon-btn" data-close aria-label="关闭">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </header>
+        <div class="modal-body">
+          <div id="renumber-check-status" class="renumber-status"></div>
+          <div id="renumber-check-result" class="renumber-result" hidden></div>
+        </div>
+        <div class="modal-footer form-actions" id="renumber-check-footer" hidden></div>
       </div>
     </div>
 

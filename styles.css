@@ -1692,6 +1692,27 @@ input[type="range"]::-moz-range-thumb {
   margin-top: 16px;
 }
 
+/* v25：modal 底部固定区
+   - 之前 .form-actions 在 .modal-body 内，会被滚动条吞掉
+   - 改为作为 .modal-card 的直接子元素（用 .modal-footer 类）
+   - .modal-body 仍 flex:1 负责滚动；footer flex-shrink:0 固定在底端 */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-soft);
+  background: var(--bg-elev);
+  flex-shrink: 0;
+  /* 轻微视觉提升——避免与滚动内容融合 */
+  border-radius: 0 0 12px 12px;
+  margin-top: 0;
+}
+.modal-footer .form-actions,
+.modal-footer.form-actions {
+  margin-top: 0;
+}
+
 /* ============================================
    导入弹窗 - xlsx 上传区
    ============================================ */
@@ -3605,4 +3626,109 @@ input[type="range"]::-moz-range-thumb {
 #foreshadowing .fs-list,
 #foreshadowing .fs-list-row {
   display: none !important;
+}
+
+
+/* ============================================
+   重新编号连续性检查弹窗 (v25)
+   ============================================ */
+.modal-card-renumber {
+  min-width: 360px;
+}
+
+.renumber-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 18px 8px 8px;
+  min-height: 80px;
+  text-align: center;
+}
+
+.renumber-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-soft, #e6e0d4);
+  border-top-color: var(--accent, #4f46e5);
+  border-radius: 50%;
+  animation: renumber-spin 0.85s linear infinite;
+}
+@keyframes renumber-spin {
+  to { transform: rotate(360deg); }
+}
+
+.renumber-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+.renumber-status-ok {
+  background: color-mix(in srgb, #16a34a 12%, transparent);
+  color: #16a34a;
+  border: 2px solid #16a34a;
+}
+.renumber-status-warn {
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  color: #b45309;
+  border: 2px solid #f59e0b;
+}
+
+.renumber-status-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text, #2c2418);
+}
+
+.renumber-result {
+  margin-top: 8px;
+  padding: 4px 4px 8px;
+  border-top: 1px dashed var(--border-soft, #e6e0d4);
+}
+
+.renumber-gap-hint {
+  margin: 8px 0 6px;
+  font-size: 12px;
+}
+
+.renumber-gap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.renumber-gap-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-soft, #e6e0d4);
+  border-radius: 6px;
+  background: var(--bg-soft, transparent);
+  font-size: 13px;
+  font-family: var(--mono-font, ui-monospace, "SFMono-Regular", "Menlo", monospace);
+}
+
+.renumber-gap-from,
+.renumber-gap-to {
+  color: var(--accent, #4f46e5);
+  font-weight: 500;
+}
+
+.renumber-gap-arrow {
+  color: var(--muted, #8a7a66);
+  font-family: inherit;
 }
