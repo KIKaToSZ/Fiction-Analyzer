@@ -2098,7 +2098,7 @@
       return;
     }
     grid.innerHTML = items
-      .map((it, idx) => {
+      .map((it) => {
         const status = it.status || FS_STATUS_DEFAULT;
         // v17：状态 class 映射（未回收 / 部分回收 / 已回收）
         const cls =
@@ -2107,12 +2107,13 @@
             : status === "部分回收"
               ? "fs-status-partial"
               : "fs-status-unresolved";
-        const displayNo = idx + 1;
         const isExpanded = it.id === state.ui.fsExpandedId;
+        // v28：head 只显示伏笔编号（it.fsNo，如 "FS-001"）—— 去掉"序号 #N"，
+        // 编号距左固定值（head padding-left 12px），名称居中，状态距右固定值
         return `
           <article class="fs-item ${isExpanded ? "expanded" : ""} ${it.id === p.currentItemId ? "active border-selected" : ""}" data-id="${escapeHtml(it.id)}" data-action="toggle">
             <header class="fs-card-head" data-id="${escapeHtml(it.id)}">
-              <span class="fs-cell fs-col-no" title="序号">#${displayNo}</span>
+              <span class="fs-cell fs-col-fsno" title="伏笔编号 ${escapeHtml(it.fsNo || "")}">${escapeHtml(it.fsNo || "（无编号）")}</span>
               <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
               <span class="fs-cell fs-col-status ${cls}">${escapeHtml(status)}</span>
               <button class="fs-delete" data-id="${escapeHtml(it.id)}" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
@@ -2157,11 +2158,7 @@
     const editTitle = isEditing
       ? "切到查看态（履历原文可点击跳转）"
       : "切到编辑态（可改伏笔字段、新增/编辑履历）";
-    // v27：rec-badge 移到 detail 顶部（head 不再显示，避免和 status 抢"距右固定值"）
-    const recBadgeHtml =
-      recCount > 0
-        ? `<span class="fs-detail-rec-badge" title="${recCount} 条履历">📋 ${recCount} 条履历</span>`
-        : "";
+    // v28：删除"📋 N 条履历"徽标（编辑按钮旁的"x条履历"）
     detail.innerHTML = `
       <div class="fs-detail-meta ${mainClass}">
         <div class="fs-detail-row">
@@ -2180,7 +2177,6 @@
           <div class="meta-actions">
             <!-- v27：编辑按钮只保留 icon（✎ 编辑 / ✓ 完成编辑），无文字 -->
             <button id="btn-fs-toggle" class="secondary-btn icon-only" title="${editTitle}" aria-label="${editTitle}">${editIcon}</button>
-            ${recBadgeHtml}
           </div>
         </div>
       </div>
@@ -6085,6 +6081,16 @@
       {
         const id = itemEl.dataset.id;
         if (!id) return;
+        // v28：编辑态禁止折叠当前卡片 / 切换到其他卡片
+        // - 编辑态下若用户点了 head / 非交互区，应拦截折叠/切换，提示先完成编辑
+        if (state.ui.fsEditing && state.ui.fsExpandedId === id) {
+          toast("编辑中，请先完成编辑（点击 ✓ 退出编辑态）", "warn", 1800);
+          return;
+        }
+        if (state.ui.fsEditing && state.ui.fsExpandedId && state.ui.fsExpandedId !== id) {
+          toast("请先完成当前伏笔的编辑，再切换其他伏笔", "warn", 1800);
+          return;
+        }
         // 切前：编辑态下如果有 dirty，save
         if (state.ui.fsEditing && state.ui.fsExpandedId && state.ui.fsExpandedId !== id) {
           try {

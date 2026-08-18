@@ -1565,16 +1565,18 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  fs-record 确认按钮 id: ${t15_5b ? "✓" : "✗"}`);
   if (!(t15_5a && t15_5b && t15_5c)) allPass = false;
 
-  // 15.6 UI 4 列头（v15 改后是 3 列头：fs-col-fsno / fs-col-name / fs-col-status）
-  //     旧 v14 时代有 fs-col-no 列，v15 改后已删
-  //   v27：head 进一步精简为 3 列（fs-col-no 序号 / fs-col-name 名称 / fs-col-status 状态），
-  //        fs-col-fsno 迁到 detail 内的 input#fs-fsno
-  const t15_6a = /fs-cell\s+fs-col-no/.test(SRC);
-  const t15_6b = /fs-col-fsno/.test(SRC) ? false : true; // v27：head 不再用 fs-col-fsno
+  // 15.6 head 3 列内容演变：
+  //     v15 改后 3 列：fs-col-fsno / fs-col-name / fs-col-status
+  //     v23 改为 3 列：fs-col-no / fs-col-name / fs-col-status（fs-col-fsno 删，fs-col-no 引入"序号"）
+  //     v27 沿用 v23 3 列：fs-col-no / fs-col-name / fs-col-status
+  //     v28：head 3 列改为 fs-col-fsno / fs-col-name / fs-col-status——
+  //          删除"序号 #N"，改显示 it.fsNo（伏笔编号，如 FS-001）
+  const t15_6a = /fs-cell\s+fs-col-fsno/.test(SRC); // v28：head 改用 fs-col-fsno
+  const t15_6b = !/fs-cell\s+fs-col-no\b/.test(SRC); // v28：head 已删 fs-col-no
   const t15_6c = /fs-col-name/.test(SRC);
   const t15_6d = /fs-col-status/.test(SRC);
-  console.log(`  fs-cell fs-col-no (列表头): ${t15_6a ? "✓" : "✗"}`);
-  console.log(`  head 已删 fs-col-fsno (v27): ${t15_6b ? "✓" : "✗"}`);
+  console.log(`  fs-cell fs-col-fsno (v28 列表头): ${t15_6a ? "✓" : "✗"}`);
+  console.log(`  head 已删 fs-col-no (v28): ${t15_6b ? "✓" : "✗"}`);
   console.log(`  fs-col-name 类名: ${t15_6c ? "✓" : "✗"}`);
   console.log(`  fs-col-status 类名: ${t15_6d ? "✓" : "✗"}`);
   if (!(t15_6a && t15_6b && t15_6c && t15_6d)) allPass = false;
@@ -1631,9 +1633,9 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!(t15_11a && t15_11b)) allPass = false;
 
   // 15.12 CSS 样式齐全
-  //   v27：删 .fs-col-fsno 样式（head 不再展示伏笔编号）；改测 "已删"
-  const t15_12a = /\.fs-list-row\b/.test(_css) || /\.fs-cell\s+fs-col-no/.test(_css) || /\.fs-cell\b/.test(_css);
-  const t15_12b = !/\.fs-col-fsno\b/.test(_css); // v27：CSS 中已无 .fs-col-fsno
+  //   v28：删 .fs-col-no 样式（head 不再展示序号），改用 .fs-col-fsno 展示伏笔编号
+  const t15_12a = /\.fs-list-row\b/.test(_css) || /\.fs-cell\s+fs-col-fsno/.test(_css) || /\.fs-cell\b/.test(_css); // v28
+  const t15_12b = !/\.fs-col-no\b/.test(_css); // v28：CSS 中已无 .fs-col-no
   const t15_12c = /\.fs-records-section\b/.test(_css);
   const t15_12d = /\.fs-record-row\b/.test(_css);
   const t15_12e = /\.fs-rec-notes-link\b/.test(_css);
@@ -1733,16 +1735,17 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  makeItem 已去掉 no: ${t16_4e ? "✓" : "✗"}`);
   if (!(t16_4a && t16_4b && t16_4c && t16_4d && t16_4e)) allPass = false;
 
-  // v23 重新引入 fs-col-no（卡片头部左侧显示 #1/#2/#3 序号）
-  //   v27：head 进一步精简——fs-col-fsno 迁到 detail，head 只剩 3 列
-  const t16_5a = !/fs-cell\s+fs-col-fsno/.test(SRC); // v27：head 已删 fs-col-fsno
+  //   v23 引入 fs-col-no（卡片头部左侧 #1/#2/#3 序号）
+  //   v27 沿用 v23 3 列：fs-col-no / fs-col-name / fs-col-status
+  //   v28：head 改用 fs-col-fsno（显示 it.fsNo），不再用 fs-col-no
+  const t16_5a = /fs-cell\s+fs-col-fsno/.test(SRC); // v28：head 改回 fs-col-fsno
   const t16_5b = /fs-cell\s+fs-col-name/.test(SRC);
   const t16_5c = /fs-cell\s+fs-col-status/.test(SRC);
-  const t16_5d = /fs-cell\s+fs-col-no\b/.test(SRC);
-  console.log(`  head 已删 fs-col-fsno (v27): ${t16_5a ? "✓" : "✗"}`);
+  const t16_5d = !/fs-cell\s+fs-col-no\b/.test(SRC); // v28：head 已删 fs-col-no
+  console.log(`  head 含 fs-col-fsno 列 (v28): ${t16_5a ? "✓" : "✗"}`);
   console.log(`  列表含 fs-col-name 列: ${t16_5b ? "✓" : "✗"}`);
   console.log(`  列表含 fs-col-status 列: ${t16_5c ? "✓" : "✗"}`);
-  console.log(`  列表含 fs-col-no 列 (v23 重新引入): ${t16_5d ? "✓" : "✗"}`);
+  console.log(`  head 已删 fs-col-no (v28): ${t16_5d ? "✓" : "✗"}`);
   if (!(t16_5a && t16_5b && t16_5c && t16_5d)) allPass = false;
 
   // 16.6 编辑器 meta 字段只剩 3 个：meta-fsno / meta-title（伏笔名称）/ 状态
@@ -1768,11 +1771,12 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  v11→v12 迁移: fs.items.map((old) =>): ${t16_7c ? "✓" : "✗"}`);
   if (!(t16_7a && t16_7b && t16_7c)) allPass = false;
 
-  // v23 重新引入 .fs-col-no（卡片头部左侧 #编号列）
+  // v23 引入 .fs-col-no（卡片头部左侧 #编号列）
+  //   v28：改用 .fs-col-fsno 展示伏笔编号（it.fsNo），不再用 .fs-col-no
   const t16_8a = /\.fs-list-row\s*\{[^}]*grid-template-columns:\s*130px\s+1fr\s+110px/s.test(_css);
-  const t16_8b = /\.fs-col-no\s*\{/.test(_css);
+  const t16_8b = /\.fs-col-fsno\s*\{/.test(_css);
   console.log(`  CSS .fs-list-row 3 列 grid: ${t16_8a ? "✓" : "✗"}`);
-  console.log(`  CSS 含 .fs-col-no 样式 (v23 重新引入): ${t16_8b ? "✓" : "✗"}`);
+  console.log(`  CSS 含 .fs-col-fsno 样式 (v28 替代 fs-col-no): ${t16_8b ? "✓" : "✗"}`);
   if (!(t16_8a && t16_8b)) allPass = false;
 
   // 16.9 index.html 导入提示写明 3 字段
@@ -2174,13 +2178,13 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   const t19_8c = !/small-label">提及章节/.test(allTemplates);
   // 查看态:用 fs-rec-setup-num-static
   const t19_8d = /fs-rec-setup-num-static/.test(recRowsBlock19);
-  // CSS:章节数字号 font-size: 2em
-  const t19_8e = /\.fs-rec-setup-num\s*\{[^}]*font-size:\s*2em/.test(css19);
+  // CSS:章节数字号 font-size: 1.5em（v28：比 v18 的 2em 小 2 个字号档）
+  const t19_8e = /\.fs-rec-setup-num\s*\{[^}]*font-size:\s*1\.5em/.test(css19);
   console.log(`  履历行编辑态 input class fs-rec-setup-big: ${t19_8a ? "✓" : "✗"}`);
   console.log(`  履历行编辑态数字 span fs-rec-setup-num: ${t19_8b ? "✓" : "✗"}`);
   console.log(`  履历行不再显示"提及章节"标题: ${t19_8c ? "✓" : "✗"}`);
   console.log(`  查看态用 fs-rec-setup-num-static: ${t19_8d ? "✓" : "✗"}`);
-  console.log(`  CSS .fs-rec-setup-num font-size 2em: ${t19_8e ? "✓" : "✗"}`);
+  console.log(`  CSS .fs-rec-setup-num font-size 1.5em (v28): ${t19_8e ? "✓" : "✗"}`);
   if (!(t19_8a && t19_8b && t19_8c && t19_8d && t19_8e)) allPass = false;
 
   // 19.9 状态色 - 未回收/已回收 互换
@@ -3307,13 +3311,15 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!detailScroll) allPass = false;
 
   // 26.4 .fs-record-row 第一列减半到 minmax(40px, 55px)
-  const recordCol = /\.fs-record-row\s*\{[\s\S]{0,400}grid-template-columns:\s*minmax\(40px,\s*55px\)/.test(cssText);
-  console.log(`  CSS: .fs-record-row grid 第 1 列减半 (minmax(40,55)): ${recordCol ? "✓" : "✗"}`);
+  //   v28：再减 10——minmax(40,55) → minmax(30,45)
+  const recordCol = /\.fs-record-row\s*\{[\s\S]{0,400}grid-template-columns:\s*minmax\(30px,\s*45px\)/.test(cssText);
+  console.log(`  CSS: .fs-record-row grid 第 1 列 v28 再减 10 (minmax(30,45)): ${recordCol ? "✓" : "✗"}`);
   if (!recordCol) allPass = false;
 
   // 26.5 .fs-rec-setup-num-static min-width 同步减半（48px → 24px）
-  const setupNumW = /\.fs-rec-setup-num-static\s*\{[\s\S]{0,200}min-width:\s*24px/.test(cssText);
-  console.log(`  CSS: .fs-rec-setup-num-static min-width 24px: ${setupNumW ? "✓" : "✗"}`);
+  //   v28：再减 10（24px → 14px）
+  const setupNumW = /\.fs-rec-setup-num-static\s*\{[\s\S]{0,200}min-width:\s*14px/.test(cssText);
+  console.log(`  CSS: .fs-rec-setup-num-static min-width 14px (v28): ${setupNumW ? "✓" : "✗"}`);
   if (!setupNumW) allPass = false;
 
   // 26.6 .fs-card-head 不再有 cursor: pointer（迁到外层 .fs-item）
@@ -3362,16 +3368,16 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   // ========================================
   console.log("\n测试 27：v27 - 伏笔卡片 UI 改造（head 三段 + 删除唯一 + 无 caret + icon 编辑 + 折叠过渡）");
 
-  // 27.1 head 模板只有 3 列：fs-col-no / fs-col-name / fs-col-status；不含 fs-col-fsno
-  const headNoFsNo = !/fs-cell\s+fs-col-fsno/.test(appText);
-  const headHasNo = /fs-cell\s+fs-col-no\b/.test(appText);
+  // 27.1 head 模板只有 3 列：fs-col-fsno / fs-col-name / fs-col-status；不含 fs-col-no（v28）
+  const headHasFsNo = /fs-cell\s+fs-col-fsno\b/.test(appText); // v28：head 显示伏笔编号
+  const headNoNo = !/fs-cell\s+fs-col-no\b/.test(appText); // v28：head 已删 fs-col-no（序号）
   const headHasName = /fs-cell\s+fs-col-name\b/.test(appText);
   const headHasStatus = /fs-cell\s+fs-col-status/.test(appText);
-  console.log(`  head 不再含 fs-col-fsno 列 (v27): ${headNoFsNo ? "✓" : "✗"}`);
-  console.log(`  head 含 fs-col-no 编号列: ${headHasNo ? "✓" : "✗"}`);
+  console.log(`  head 含 fs-col-fsno 伏笔编号列 (v28): ${headHasFsNo ? "✓" : "✗"}`);
+  console.log(`  head 已删 fs-col-no 序号列 (v28): ${headNoNo ? "✓" : "✗"}`);
   console.log(`  head 含 fs-col-name 名称列: ${headHasName ? "✓" : "✗"}`);
   console.log(`  head 含 fs-col-status 状态列: ${headHasStatus ? "✓" : "✗"}`);
-  if (!(headNoFsNo && headHasNo && headHasName && headHasStatus)) allPass = false;
+  if (!(headHasFsNo && headNoNo && headHasName && headHasStatus)) allPass = false;
 
   // 27.2 CSS: fs-col-name 居中，fs-col-status 距右（margin-left: auto）
   const nameCenter = /\.fs-item\s+\.fs-col-name[\s\S]{0,200}text-align:\s*center/.test(cssText);
@@ -3399,12 +3405,14 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  CSS 不再含 .fs-caret 样式: ${cssNoCaret ? "✓" : "✗"}`);
   if (!(headNoCaret && cssNoCaret)) allPass = false;
 
-  // 27.6 head 不再含 fs-rec-badge（履历数迁到 detail）
+  // 27.6 head 不再含 fs-rec-badge（履历数）；v28 连 detail 内的 fs-detail-rec-badge 也一并删除
   const headNoRecBadge = !/class="fs-rec-badge"/.test(appText);
-  const detailHasRecBadge = /class="fs-detail-rec-badge"/.test(appText);
+  const detailNoRecBadge = !/class="fs-detail-rec-badge"/.test(appText);
+  const cssNoRecBadge = !/\.fs-detail-rec-badge\b/.test(cssText);
   console.log(`  head 不再含 fs-rec-badge 徽标: ${headNoRecBadge ? "✓" : "✗"}`);
-  console.log(`  detail 已含 fs-detail-rec-badge 徽标: ${detailHasRecBadge ? "✓" : "✗"}`);
-  if (!(headNoRecBadge && detailHasRecBadge)) allPass = false;
+  console.log(`  detail 已无 fs-detail-rec-badge 徽标 (v28): ${detailNoRecBadge ? "✓" : "✗"}`);
+  console.log(`  CSS 已无 .fs-detail-rec-badge 样式 (v28): ${cssNoRecBadge ? "✓" : "✗"}`);
+  if (!(headNoRecBadge && detailNoRecBadge && cssNoRecBadge)) allPass = false;
 
   // 27.7 编辑按钮（btn-fs-toggle）只保留 icon：✎ / ✓，无 "编辑" / "完成编辑" 文字
   const editIconOnly = /id="btn-fs-toggle"[\s\S]{0,500}class="secondary-btn icon-only"/.test(appText);
@@ -3446,12 +3454,12 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  JS: renderFsList 模板中 detail 容器始终渲染: ${detailAlways ? "✓" : "✗"}`);
   if (!detailAlways) allPass = false;
 
-  const t27All = headNoFsNo && headHasNo && headHasName && headHasStatus
+  const t27All = headHasFsNo && headNoNo && headHasName && headHasStatus
     && nameCenter && statusRight
     && headHasDelete
     && detailNoDeleteBtn && detailNoDeleteBind
     && headNoCaret && cssNoCaret
-    && headNoRecBadge && detailHasRecBadge
+    && headNoRecBadge && detailNoRecBadge && cssNoRecBadge
     && editIconOnly && editBtnClean
     && detailTransition && detailCollapsed && detailExpanded
     && expandFn && collapseFn
@@ -3459,6 +3467,68 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     && detailAlways;
   console.log("  v27 改动:", t27All ? "PASS" : "FAIL");
   if (!t27All) allPass = false;
+
+  // ========================================
+  // 测试 28：v28 - 伏笔卡片 UI 进一步调整
+  //   1) 编辑态下禁止折叠/切换
+  //   2) 编辑按钮旁的 "x条履历" 徽标删除
+  //   3) 履历章节号字号减小 2 号（2em → 1.5em）、列宽减 10（minmax(40,55)→minmax(30,45)）
+  //   4) 缩略标题只保留伏笔编号 it.fsNo（去掉"序号 #N"），head 横向填充满
+  //   5) 展开后缩略标题 .fs-card-head 隐藏
+  // ========================================
+  console.log("\n测试 28：v28 - 编辑态保护 + 缩略标题精简 + 履历号小化 + 展开隐藏 head");
+
+  // 28.1 onFsClick 编辑态保护：state.ui.fsEditing && state.ui.fsExpandedId === id 时拦截折叠
+  const fsEditGuardSame = /state\.ui\.fsEditing\s*&&\s*state\.ui\.fsExpandedId\s*===\s*id[\s\S]{0,200}toast\(["']编辑中/.test(appText);
+  // 编辑态 + 切换其他：toast("请先完成当前伏笔的编辑...")
+  const fsEditGuardSwitch = /state\.ui\.fsEditing\s*&&\s*state\.ui\.fsExpandedId\s*&&\s*state\.ui\.fsExpandedId\s*!==\s*id[\s\S]{0,200}toast\(["']请先完成当前伏笔/.test(appText);
+  console.log(`  JS: 编辑态禁止折叠当前卡 (toast 提示): ${fsEditGuardSame ? "✓" : "✗"}`);
+  console.log(`  JS: 编辑态禁止切换其他卡 (toast 提示): ${fsEditGuardSwitch ? "✓" : "✗"}`);
+  if (!(fsEditGuardSame && fsEditGuardSwitch)) allPass = false;
+
+  // 28.2 renderFsCardDetail 已无 fs-detail-rec-badge / recBadgeHtml
+  const noRecBadgeJs = !/recBadgeHtml/.test(appText) && !/class="fs-detail-rec-badge"/.test(appText);
+  console.log(`  JS: renderFsCardDetail 已删 recBadgeHtml/徽标: ${noRecBadgeJs ? "✓" : "✗"}`);
+  if (!noRecBadgeJs) allPass = false;
+
+  // 28.3 CSS：.fs-rec-setup-num font-size 1.5em
+  const t28_3a = /\.fs-rec-setup-num\s*\{[^}]*font-size:\s*1\.5em/.test(cssText);
+  // .fs-record-row 第 1 列 minmax(30px, 45px)
+  const t28_3b = /\.fs-record-row\s*\{[\s\S]{0,400}grid-template-columns:\s*minmax\(30px,\s*45px\)/.test(cssText);
+  // .fs-rec-setup-num-static min-width 14px
+  const t28_3c = /\.fs-rec-setup-num-static\s*\{[\s\S]{0,200}min-width:\s*14px/.test(cssText);
+  console.log(`  CSS: .fs-rec-setup-num font-size 1.5em (v28 减小 2 号): ${t28_3a ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-record-row grid 第 1 列 minmax(30,45) (v28 减 10): ${t28_3b ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-rec-setup-num-static min-width 14px (v28 减 10): ${t28_3c ? "✓" : "✗"}`);
+  if (!(t28_3a && t28_3b && t28_3c)) allPass = false;
+
+  // 28.4 缩略标题只显示伏笔编号（it.fsNo），不再有"序号 #N"
+  const fsNoSpan = /<span class="fs-cell fs-col-fsno"[^>]*>\$\{escapeHtml\(it\.fsNo/.test(appText);
+  const noDisplayNoVar = !/const displayNo = idx\s*\+\s*1/.test(appText);
+  const noHashPrefix = !/span class="fs-cell fs-col-no"[^>]*>#\$\{/.test(appText);
+  // CSS .fs-col-fsno 样式存在
+  const fsNoCss = /\.fs-item\s+\.fs-col-fsno\s*\{/.test(cssText);
+  // CSS 已删 .fs-col-no
+  const noFsColNoCss = !/\.fs-item\s+\.fs-col-no\s*\{/.test(cssText);
+  console.log(`  JS: 缩略标题显示 it.fsNo (fs-col-fsno span): ${fsNoSpan ? "✓" : "✗"}`);
+  console.log(`  JS: 已删 const displayNo = idx+1 变量: ${noDisplayNoVar ? "✓" : "✗"}`);
+  console.log(`  JS: 已删 fs-col-no #序号 span: ${noHashPrefix ? "✓" : "✗"}`);
+  console.log(`  CSS: .fs-item .fs-col-fsno 样式 (v28 替代 fs-col-no): ${fsNoCss ? "✓" : "✗"}`);
+  console.log(`  CSS: 已删 .fs-item .fs-col-no 样式: ${noFsColNoCss ? "✓" : "✗"}`);
+  if (!(fsNoSpan && noDisplayNoVar && noHashPrefix && fsNoCss && noFsColNoCss)) allPass = false;
+
+  // 28.5 展开后 .fs-card-head 隐藏
+  const hideHeadOnExpand = /\.fs-item\.expanded\s+\.fs-card-head\s*\{[^}]*display:\s*none/.test(cssText);
+  console.log(`  CSS: .fs-item.expanded .fs-card-head { display: none } (v28): ${hideHeadOnExpand ? "✓" : "✗"}`);
+  if (!hideHeadOnExpand) allPass = false;
+
+  const t28All = fsEditGuardSame && fsEditGuardSwitch
+    && noRecBadgeJs
+    && t28_3a && t28_3b && t28_3c
+    && fsNoSpan && noDisplayNoVar && noHashPrefix && fsNoCss && noFsColNoCss
+    && hideHeadOnExpand;
+  console.log("  v28 改动:", t28All ? "PASS" : "FAIL");
+  if (!t28All) allPass = false;
 
 
 console.log("\n" + (allPass ? "✅ 全部测试通过" : "❌ 有测试失败"));

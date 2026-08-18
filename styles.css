@@ -2309,21 +2309,23 @@ input[type="range"]::-moz-range-thumb {
   word-break: break-word;
   align-items: stretch; /* 让 input/span 横向上填满列宽 */
 }
-/* v18：章节数字号 - 字号 2em（≈26px），粗体,跟右侧 textarea 高度接近 */
+/* v28：章节数字号 - 字号 1.5em（≈19.5px，比 v18 的 2em 小 2 个字号档）
+   粗体 + 强调色，仍跟右侧 textarea 视觉对齐 */
 .fs-rec-setup-num {
-  font-size: 2em;
+  font-size: 1.5em;
   font-weight: 700;
   color: var(--accent, #785a3c);
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
-  min-height: 32px;
+  min-height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .fs-rec-setup-num-static {
-  /* v26：列宽减半后,数字容器也减半 */
-  min-width: 24px;
+  /* v26：列宽减半后,数字容器也减半（24px）
+     v28：再减 10（24px → 14px），跟新列宽 minmax(30,45) 对齐 */
+  min-width: 14px;
 }
 .fs-rec-setup-big {
   /* 编辑态 - input 自身保持原大小,旁边显示大字号数字 */
@@ -2412,8 +2414,8 @@ input[type="range"]::-moz-range-thumb {
 .fs-record-row {
   display: grid;
   /* v26：第 1 列（章节号）宽度减半——minmax(80,110) → minmax(40,55)
-     给中间原文描述让出更多空间 */
-  grid-template-columns: minmax(40px, 55px) 1fr auto;
+     v28：再减 10——minmax(40,55) → minmax(30,45)，给中间原文描述让出更多空间 */
+  grid-template-columns: minmax(30px, 45px) 1fr auto;
   gap: 10px;
   padding: 8px;
   background: var(--card-bg, rgba(255, 255, 255, 0.4));
@@ -3469,13 +3471,17 @@ input[type="range"]::-moz-range-thumb {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.fs-item .fs-col-no {
+.fs-item .fs-col-fsno {
+  /* v28：head 左侧的伏笔编号（如 FS-001）—— 距左固定值（head padding-left 12px），
+     等宽 + 粗体 + 主题强调色，与"序号 #N"做视觉区分 */
   flex-shrink: 0;
-  font-size: 11px;
-  color: var(--muted);
+  font-size: 12px;
+  color: var(--accent, #785a3c);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  width: 28px;
-  text-align: right;
+  width: 60px;
+  text-align: left;
+  letter-spacing: 0.02em;
 }
 .fs-item .fs-col-name {
   flex: 1 1 auto;
@@ -3539,17 +3545,9 @@ input[type="range"]::-moz-range-thumb {
   border-top-width: 1px;
   overflow-y: auto;
 }
-
-/* v27：detail 顶部显示履历数徽标（从 head 移过来） */
-.fs-detail-rec-badge {
-  display: inline-block;
-  font-size: 11px;
-  color: var(--muted);
-  background: var(--hover, rgba(0, 0, 0, 0.05));
-  padding: 2px 8px;
-  border-radius: 8px;
-  white-space: nowrap;
-  margin-left: 4px;
+/* v28：展开后隐藏 head（缩略标题折叠到 detail 顶部，整张卡片只显示 detail） */
+.fs-item.expanded .fs-card-head {
+  display: none;
 }
 
 /* v27：编辑按钮只显示 icon（无文字），更紧凑 */
