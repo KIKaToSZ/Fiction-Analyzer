@@ -1281,6 +1281,8 @@
         threeList: LAYOUT_DEFAULTS.threeList,
         threeRight: LAYOUT_DEFAULTS.threeRight,
         twoList: LAYOUT_DEFAULTS.twoList,
+        // v35：伏笔 panel 宽度兜底
+        fsPanel: LAYOUT_DEFAULTS.fsPanel,
         ...(state.ui.layout || {}),
       };
 
@@ -2225,6 +2227,9 @@
     // v10.1：panel innerHTML 重写后 #fs-file-path 是新元素,
     // 必须补一次 updateFilePathDisplay()，否则保存后路径消失
     updateFilePathDisplay();
+    // v35：履历 textarea 渲染后调一次 autoResize，让高度匹配内容
+    // （rows="1" 是初始默认值，但 r.notes 已有内容时，textarea 高度应自动展开显示全部）
+    autoResizeAllNotesTextareas();
   }
 
   // v32：设置 panel 显示的伏笔（点卡片 / 新增伏笔时调用）
@@ -2404,6 +2409,8 @@
     // v10.1：editor.innerHTML 重写后 #fs-file-path 是新元素，
     // 必须补一次 updateFilePathDisplay()，否则保存/切伏笔后路径消失
     updateFilePathDisplay();
+    // v35：履历 textarea 渲染后调一次 autoResize（非 grid 模式兼容）
+    autoResizeAllNotesTextareas();
   }
 
   /* ============================================================
@@ -3129,9 +3136,28 @@
     return list;
   }
 
+  // v35：textarea 自动拓展
+  //  - el 高度先 reset 成 auto（让 scrollHeight 重新计算）
+  //  - 然后设成 scrollHeight（精确匹配内容，不出现滚动条）
+  //  - 仅作于 .fs-rec-notes-autogrow，限定范围防误伤
+  function autoResizeTextarea(el) {
+    if (!el || !el.classList.contains("fs-rec-notes-autogrow")) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }
+
+  // v35：把 fs-records-list 里所有 notes textarea 调一次 autoResize
+  function autoResizeAllNotesTextareas() {
+    const list = $("#fs-records-list");
+    if (!list) return;
+    list.querySelectorAll(".fs-rec-notes-autogrow").forEach(autoResizeTextarea);
+  }
+
   // v14：渲染履历列表 HTML
   //  - 编辑态：每行可编辑（提到章节 / 原文描述）+ 删除按钮
   //  - 查看态：原文描述 clickable，hover 高亮，点击跳转章节
+  // v35：原文描述 textarea 恢复 value 渲染（v34 误删导致 textarea 是空白的），
+  //      rows 改 1，autoResize 初始化后调一次让高度匹配内容
   function renderFsRecordRows(itemId) {
     const item = state.pages.foreshadowing.items.find((x) => x.id === itemId);
     if (!item) return "";
@@ -3154,7 +3180,7 @@
               <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="章节号" class="fs-rec-setup-big fs-rec-underline" />
             </div>
             <div class="fs-rec-col-notes">
-              <textarea data-field="notes" rows="2" placeholder="原文描述" class="fs-rec-underline"></textarea>
+              <textarea data-field="notes" rows="1" placeholder="原文描述" class="fs-rec-underline fs-rec-notes-autogrow">${escapeHtml(r.notes || "")}</textarea>
             </div>
             <button class="fs-rec-delete" data-record-id="${escapeHtml(r.id)}" title="删除该履历" aria-label="删除该履历" type="button">×</button>
           </div>`;
@@ -3278,6 +3304,7 @@
     });
     // v14 → v32 改造：履历编辑（事件委托：input/textarea change 时写回 state）
     //   v32：input 期间不重渲染 panel（避免 textarea 失焦），仅写 state + 入 history
+    //   v35：textarea input 时同步调 autoResize——用户输入时 textarea 实时拓展显示全部
     const list = $("#fs-records-list");
     list?.addEventListener("input", (e) => {
       const target = e.target;
@@ -3292,6 +3319,10 @@
       if (rec) {
         rec[field] = target.value;
         debouncedPushHistory();
+        // v35：textarea 自动拓展（仅作用于 .fs-rec-notes-autogrow）
+        if (field === "notes") {
+          autoResizeTextarea(target);
+        }
       }
     });
     // v14：删除履历（点击每行 × 按钮）
@@ -6336,12 +6367,16 @@
     threeList: 280,
     threeRight: 320,
     twoList: 320,
+    // v35：伏笔详情 panel 默认宽度（原 420 → +30 = 450）
+    fsPanel: 450,
   };
   const LAYOUT_LIMITS = {
     nav: { min: 160, max: 380 },
     threeList: { min: 200, max: 560 },
     threeRight: { min: 240, max: 680 },
     twoList: { min: 200, max: 560 },
+    // v35：伏笔 panel 宽度范围（避免过窄看不清 / 过宽挤占卡片）
+    fsPanel: { min: 320, max: 700 },
   };
 
   function clamp(n, min, max) {
@@ -6354,12 +6389,16 @@
     "three-list": "--col-list-width",
     "three-right": "--col-right-width",
     "two-list": "--two-col-list-width",
+    // v35：伏笔详情 panel 宽度变量
+    "fs-panel": "--fs-panel-width",
   };
   const RESIZER_DEFAULT = {
     nav: LAYOUT_DEFAULTS.nav,
     "three-list": LAYOUT_DEFAULTS.threeList,
     "three-right": LAYOUT_DEFAULTS.threeRight,
     "two-list": LAYOUT_DEFAULTS.twoList,
+    // v35
+    "fs-panel": LAYOUT_DEFAULTS.fsPanel,
   };
 
   // 初始化：把 state.ui.layout 写到 CSS 变量上
@@ -6376,12 +6415,16 @@
     set("three-list", layout.threeList);
     set("three-right", layout.threeRight);
     set("two-list", layout.twoList);
+    // v35
+    set("fs-panel", layout.fsPanel);
   }
   const RESIZER_DEFAULT_KEY = {
     nav: "nav",
     "three-list": "threeList",
     "three-right": "threeRight",
     "two-list": "twoList",
+    // v35
+    "fs-panel": "fsPanel",
   };
 
   // 写入 state.ui.layout 并持久化
@@ -6399,8 +6442,9 @@
     const cssVar = RESIZER_VAR[key];
     const def = RESIZER_DEFAULT[key];
     const lim = LAYOUT_LIMITS[RESIZER_DEFAULT_KEY[key]];
-    // 右侧栏（three-right）位于布局最右，鼠标拖右时栏应变窄，方向与鼠标相反
-    const dir = key === "three-right" ? -1 : 1;
+    // 右侧栏（three-right / fs-panel）位于布局最右，鼠标拖右时栏应变窄，方向与鼠标相反
+    // v35：fs-panel 也是右侧栏，dir = -1
+    const dir = (key === "three-right" || key === "fs-panel") ? -1 : 1;
 
     let startX = 0;
     let startVal = 0;

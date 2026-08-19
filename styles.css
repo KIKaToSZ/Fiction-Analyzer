@@ -30,6 +30,8 @@
   --col-list-width: 280px;
   --col-right-width: 320px;
   --two-col-list-width: 320px;
+  /* v35：伏笔详情 panel 宽度——默认 450px（原 420 + 用户要求 +30） */
+  --fs-panel-width: 450px;
   --resizer-size: 6px;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -2317,7 +2319,9 @@ input[type="range"]::-moz-range-thumb {
 .fs-record-row .fs-rec-notes {
   width: 100%;
   box-sizing: border-box;
-  resize: vertical;
+  /* v35：textarea 模式——加 overflow:hidden + resize:none 让 autoResize 接管高度 */
+  resize: none;
+  overflow: hidden;
   min-height: 40px;
   text-align: left;
   white-space: pre-wrap;
@@ -2395,8 +2399,11 @@ input[type="range"]::-moz-range-thumb {
    * v26：第 1 列（章节号）宽度 minmax(40,55)
    * v28：再减 10——minmax(40,55) → minmax(30,45)，给中间原文描述让出更多空间
    * v34：去掉第 3 列 jump，第 4 列 delete → 共 2 列 [setup, notes]
-   * v34：position:relative → 锚定右上角 absolute 定位的删除按钮 */
-  grid-template-columns: minmax(60px, 90px) 1fr;
+   * v34：第 1 列宽度略增从 minmax(30,45) → minmax(60,90)
+   * v34：position:relative → 锚定右上角 absolute 定位的删除按钮
+   * v35：再减半——minmax(60,90) → minmax(30,45)，回到 v28 数值
+   *      （用户要求"章节号输入框太长，缩短到当前的一半"） */
+  grid-template-columns: minmax(30px, 45px) 1fr;
   gap: 10px;
   padding: 10px 32px 10px 10px;
   background: var(--card-bg, rgba(255, 255, 255, 0.4));
@@ -2469,6 +2476,10 @@ input[type="range"]::-moz-range-thumb {
 
 /* 只读态 - 原文描述可点击 */
 /* v32：原文描述改纯展示 span（不再 clickable）；跳转改右侧箭头按钮触发 */
+/* v35：textarea 形态——初始 1 行高度（min-height: 1em + padding），
+ *     JS 在 input 时根据 scrollHeight 调高度 → 自动拓展显示全部内容
+ *     - overflow: hidden 防止内部滚动条
+ *     - resize: none 禁用手动拖拽（auto-grow 已替用户处理） */
 .fs-rec-notes {
   display: block;
   padding: 8px 10px;
@@ -2483,8 +2494,13 @@ input[type="range"]::-moz-range-thumb {
   font-family: inherit;
   white-space: pre-wrap;
   word-break: break-word;
-  min-height: 32px;
+  /* v35：min-height 改为「1 行 + 上下 padding」(font-size 13 * line-height 1.5 + 16 padding = 35.5)
+   *      上面 .fs-rec-notes 第一条规则的 min-height: 60px 会被这条覆盖（更具体或同特异性后定义胜出）
+   *      这里给个更小的初始高度作为 1 行起步的视觉基准 */
+  min-height: 0;
   box-sizing: border-box;
+  overflow: hidden;
+  resize: none;
 }
 .fs-rec-notes:empty::before {
   content: "(空)";
@@ -3361,17 +3377,16 @@ input[type="range"]::-moz-range-thumb {
 .fs-grid {
   display: grid;
   /* v34：一行最多 3 个（>=1280 宽屏）—— 多出的空间平均到 item 之间的 gap（10 → 18）
-     —— 旧：4 列 (>=1280) / 3 列 (>=900) / 2 列 (>=600) / 1 列 (<600)
-     —— 新：3 列 / 3 列 / 2 列 / 1 列 */
+   * v35：item 间距再增大一半（18 → 27）——用户要求"item 之间的间距增大一半" */
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
+  gap: 27px;
   padding: 12px 0;
   /* v32：高度由 .fs-page-body 撑开（grid 占 1fr 列），不再用 flex:1 */
   min-height: 0;
   overflow-y: auto;
   /* v30：align-content: start 阻止 grid track 被 stretch 到容器高度
-     —— CSS Grid 默认 align-content: stretch，剩 1 个 item 时会被拉伸到 grid 容器高度（填充满界面）
-     —— 加 start 后 track 高度 = max-content（item 自然高度），空状态和 1 个 item 都不再被拉伸 */
+   * —— CSS Grid 默认 align-content: stretch，剩 1 个 item 时会被拉伸到 grid 容器高度（填充满界面）
+   * —— 加 start 后 track 高度 = max-content（item 自然高度），空状态和 1 个 item 都不再被拉伸 */
   align-content: start;
   /* 滚动条跟主题色统一（webkit 系） */
   scrollbar-width: thin;
@@ -3391,10 +3406,12 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 899px) {
   .fs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* v32.1：窄屏不再常驻 panel——改回 modal 模式（v31 抽屉式样）
-     - grid 满宽（block 布局）
-     - panel 变 fixed 定位 + transform 滑入/滑出
-     - mask 半透明背景，点击关闭 */
+   * - grid 满宽（block 布局）
+   * - panel 变 fixed 定位 + transform 滑入/滑出
+   * - mask 半透明背景，点击关闭
+   * v35：窄屏时 resizer 不可见（modal 模式 panel 是 fixed 浮层，拖宽度无意义） */
   .fs-page-body { display: block; grid-template-columns: none; }
+  .fs-page-body > .resizer-fs-panel { display: none; }
   .fs-page-body > .fs-panel {
     position: fixed;
     top: 0;
@@ -3618,20 +3635,29 @@ input[type="range"]::-moz-range-thumb {
 
 /* ============================================
    v32 改造：抽屉改常驻 panel（去滑入/滑出/遮罩/关闭按钮）
-   - .fs-page-body: 2 列布局（grid + panel）
-   - .fs-panel: 常驻右侧详情区，宽度 420px，始终可见
+   - .fs-page-body: 3 列布局（grid + resizer + panel）
+   - .fs-panel: 常驻右侧详情区，宽度由 --fs-panel-width 控制（v35 引入，默认 450px）
    - .fs-panel-head: panel 顶部（编号+名称+删除）
    - .fs-panel-body: panel 正文（状态+履历+底栏）
+   - v35：加中间 resizer 列——用户可拖拽调整 panel 宽度
+     - 行为：拖右 → panel 变窄（dir = -1，因为 panel 在最右）
+     - 范围：min 320, max 700（避免过小/过大）
+     - 双击重置 → 450
    ============================================ */
 .fs-page-body {
   display: grid;
-  grid-template-columns: 1fr 420px;
-  gap: 12px;
+  /* v35：grid-template-columns 改为 1fr resizer fs-panel-width——中间列是拖拽条 */
+  grid-template-columns: 1fr var(--resizer-size) var(--fs-panel-width, 450px);
+  /* v35：去掉 gap（resizer 单独占一列，gap 不再需要） */
   min-height: 0;
   flex: 1 1 auto;
 }
 .fs-page-body > .fs-grid { min-width: 0; }
 .fs-page-body > .fs-panel { min-width: 0; }
+/* v35：fs-panel 拖拽条 - 占中间第 2 列 */
+.fs-page-body > .resizer-fs-panel {
+  grid-column: 2;
+}
 
 .fs-panel {
   display: flex;

@@ -4082,12 +4082,105 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  v33 schema (含 directoryName) 已记录（v34 是纯 UI 改动，无 schema 升级）: ${v33SnapshotHas ? "✓" : "✗"}`);
   if (!v33SnapshotHas) allPass = false;
 
-  const t34All = cardHeightDouble && itemStatusBg && itemStatusClassOk && gridMaxThree
+  const t34All = cardHeightDouble && itemBgUnresolved && itemBgPartial && itemBgResolved
+    && itemHasStatusClass && noItemStatusSpan
+    && gridThreeCol && gridGap
     && noJumpBtnRender && noNotesLabelRender && rowClickJump && rowLayoutOk
     && underlineStyle && recDeleteAbsolute && noColStatusCss && noJumpBtnCss
     && syncItemClass && v33SnapshotHas;
   console.log("  v34 改动:", t34All ? "PASS" : "FAIL");
   if (!t34All) allPass = false;
+
+  // v35 改动测试
+  // - 1) --fs-panel-width 默认 450px（v32 旧 420 + 用户 +30）
+  // - 2) .fs-page-body 用 var(--fs-panel-width) 三列布局（grid + resizer + panel）
+  // - 3) LAYOUT_DEFAULTS.fsPanel = 450
+  // - 4) LAYOUT_LIMITS.fsPanel = { min: 320, max: 700 }
+  // - 5) RESIZER_VAR["fs-panel"] = "--fs-panel-width"
+  // - 6) RESIZER_DEFAULT_KEY["fs-panel"] = "fsPanel"
+  // - 7) dir = -1 for fs-panel (right side)
+  // - 8) load() 兜底 layout.fsPanel
+  // - 9) index.html 加 resizer-fs-panel 节点 + data-resizer="fs-panel"
+  // - 10) 窄屏（≤899）隐藏 resizer
+  // - 11) .fs-record-row 章节号列宽 minmax(30px, 45px)（v34 60-90 → 减半）
+  // - 12) .fs-grid gap: 27px（v34 18 → +50%）
+  // - 13) renderFsRecordRows 恢复 textarea value（v34 误删的回归）
+  // - 14) rows="1"（v34 rows="2" → 用户要求初始 1 行）
+  // - 15) autoResizeTextarea 函数存在
+  // - 16) .fs-rec-notes 样式：overflow: hidden + resize: none
+  console.log("测试 35：v35 - 4 项 UI 调整（panel resizer + 章节号半宽 + textarea 自动拓展 + gap +50%）");
+  // 35.1 CSS 变量 --fs-panel-width 默认 450px
+  const fsPanelVar = /--fs-panel-width:\s*450px/.test(cssText);
+  console.log(`  CSS 变量 --fs-panel-width 默认 450px: ${fsPanelVar ? "✓" : "✗"}`);
+  if (!fsPanelVar) allPass = false;
+  // 35.2 .fs-page-body 三列布局（用 var(--fs-panel-width)）
+  const fsPageBody3Col = /\.fs-page-body\s*\{[^}]*grid-template-columns:\s*1fr var\(--resizer-size\) var\(--fs-panel-width/.test(cssText);
+  console.log(`  .fs-page-body 三列布局 (1fr resizer fs-panel-width): ${fsPageBody3Col ? "✓" : "✗"}`);
+  if (!fsPageBody3Col) allPass = false;
+  // 35.3 LAYOUT_DEFAULTS.fsPanel = 450
+  const layoutDefaultsFsPanel = /LAYOUT_DEFAULTS\s*=\s*\{[\s\S]{0,500}fsPanel:\s*450/.test(appText);
+  console.log(`  LAYOUT_DEFAULTS.fsPanel = 450: ${layoutDefaultsFsPanel ? "✓" : "✗"}`);
+  if (!layoutDefaultsFsPanel) allPass = false;
+  // 35.4 LAYOUT_LIMITS.fsPanel = { min: 320, max: 700 }
+  const layoutLimitsFsPanel = /LAYOUT_LIMITS\s*=\s*\{[\s\S]{0,500}fsPanel:\s*\{\s*min:\s*320,\s*max:\s*700/.test(appText);
+  console.log(`  LAYOUT_LIMITS.fsPanel = { min: 320, max: 700 }: ${layoutLimitsFsPanel ? "✓" : "✗"}`);
+  if (!layoutLimitsFsPanel) allPass = false;
+  // 35.5 RESIZER_VAR["fs-panel"] = "--fs-panel-width"
+  const resizerVarFsPanel = /RESIZER_VAR\s*=\s*\{[\s\S]{0,500}"fs-panel":\s*"--fs-panel-width"/.test(appText);
+  console.log(`  RESIZER_VAR["fs-panel"] = "--fs-panel-width": ${resizerVarFsPanel ? "✓" : "✗"}`);
+  if (!resizerVarFsPanel) allPass = false;
+  // 35.6 RESIZER_DEFAULT_KEY["fs-panel"] = "fsPanel"
+  const resizerKeyFsPanel = /RESIZER_DEFAULT_KEY\s*=\s*\{[\s\S]{0,500}"fs-panel":\s*"fsPanel"/.test(appText);
+  console.log(`  RESIZER_DEFAULT_KEY["fs-panel"] = "fsPanel": ${resizerKeyFsPanel ? "✓" : "✗"}`);
+  if (!resizerKeyFsPanel) allPass = false;
+  // 35.7 bindResizer dir = -1 for fs-panel
+  const resizerDirFsPanel = /key === "three-right"\s*\|\|\s*key === "fs-panel"\)?\s*:\s*-1/.test(appText)
+    || /key === "fs-panel"\s*\)\s*\?\s*-1/.test(appText);
+  console.log(`  bindResizer dir = -1 for fs-panel (right side): ${resizerDirFsPanel ? "✓" : "✗"}`);
+  if (!resizerDirFsPanel) allPass = false;
+  // 35.8 load() 兜底 layout.fsPanel
+  const loadFallbackFsPanel = /state\.ui\.layout\s*=\s*\{[\s\S]{0,500}fsPanel:\s*LAYOUT_DEFAULTS\.fsPanel/.test(appText);
+  console.log(`  load() 兜底 layout.fsPanel: ${loadFallbackFsPanel ? "✓" : "✗"}`);
+  if (!loadFallbackFsPanel) allPass = false;
+  // 35.9 index.html 加 resizer-fs-panel 节点 + data-resizer="fs-panel"
+  const fsPanelResizerHtml = /<div class="resizer resizer-fs-panel"\s+data-resizer="fs-panel"/.test(htmlText);
+  console.log(`  index.html 加 resizer-fs-panel 节点 (data-resizer="fs-panel"): ${fsPanelResizerHtml ? "✓" : "✗"}`);
+  if (!fsPanelResizerHtml) allPass = false;
+  // 35.10 窄屏（≤899）隐藏 resizer
+  const hideResizerNarrow = /@media\s*\(max-width:\s*899px\)\s*\{[\s\S]{0,1500}\.fs-page-body\s*>\s*\.resizer-fs-panel\s*\{\s*display:\s*none/.test(cssText);
+  console.log(`  窄屏（≤899）隐藏 resizer: ${hideResizerNarrow ? "✓" : "✗"}`);
+  if (!hideResizerNarrow) allPass = false;
+  // 35.11 .fs-record-row 章节号列宽 minmax(30px, 45px)
+  const recRowSetupHalf = /\.fs-record-row\s*\{[^}]*grid-template-columns:\s*minmax\(30px,\s*45px\)\s*1fr/.test(cssText);
+  console.log(`  .fs-record-row 章节号列宽 minmax(30px, 45px): ${recRowSetupHalf ? "✓" : "✗"}`);
+  if (!recRowSetupHalf) allPass = false;
+  // 35.12 .fs-grid gap: 27px
+  const fsGridGap27 = /\.fs-grid\s*\{[^}]*gap:\s*27px/.test(cssText);
+  console.log(`  .fs-grid gap: 27px (v34 18 + 50%): ${fsGridGap27 ? "✓" : "✗"}`);
+  if (!fsGridGap27) allPass = false;
+  // 35.13 renderFsRecordRows 恢复 textarea value（v34 误删回归）
+  const notesValueRestored = /<textarea data-field="notes"[^>]*>\s*\$\{escapeHtml\(r\.notes/.test(appText);
+  console.log(`  renderFsRecordRows 恢复 textarea value (v34 误删回归): ${notesValueRestored ? "✓" : "✗"}`);
+  if (!notesValueRestored) allPass = false;
+  // 35.14 rows="1"（v34 rows="2" → 用户要求初始 1 行）
+  const rowsOne = /<textarea data-field="notes"\s+rows="1"/.test(appText);
+  console.log(`  textarea rows="1" (初始 1 行高度): ${rowsOne ? "✓" : "✗"}`);
+  if (!rowsOne) allPass = false;
+  // 35.15 autoResizeTextarea 函数存在
+  const autoResizeFn = /function autoResizeTextarea\([\s\S]{0,500}scrollHeight/.test(appText);
+  console.log(`  autoResizeTextarea 函数存在 (用 scrollHeight 调高度): ${autoResizeFn ? "✓" : "✗"}`);
+  if (!autoResizeFn) allPass = false;
+  // 35.16 .fs-rec-notes overflow: hidden + resize: none
+  const recNotesOverflow = /\.fs-rec-notes\s*\{[^}]*overflow:\s*hidden[^}]*resize:\s*none/s.test(cssText);
+  console.log(`  .fs-rec-notes overflow: hidden + resize: none: ${recNotesOverflow ? "✓" : "✗"}`);
+  if (!recNotesOverflow) allPass = false;
+
+  const t35All = fsPanelVar && fsPageBody3Col && layoutDefaultsFsPanel && layoutLimitsFsPanel
+    && resizerVarFsPanel && resizerKeyFsPanel && resizerDirFsPanel && loadFallbackFsPanel
+    && fsPanelResizerHtml && hideResizerNarrow && recRowSetupHalf && fsGridGap27
+    && notesValueRestored && rowsOne && autoResizeFn && recNotesOverflow;
+  console.log("  v35 改动:", t35All ? "PASS" : "FAIL");
+  if (!t35All) allPass = false;
 
   // v32 改造后 v14-v30 历史测试的部分断言因 v31 时代 API 已删而失败（fsDrawerId / .fs-drawer / fs-rec-notes-link 等）
   // 实际功能覆盖由 v32 测试块保障（v32 测试块已 PASS），历史断言标记为「v32 已替代」
@@ -4097,7 +4190,8 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   //   - v32 测试块「履历行有 .fs-rec-jump 跳转按钮」「fs-rec-jump click 调 jumpToChapterForRecord」——v34 删了 fs-rec-jump（跳转改整行）
   //   - v33 测试块「.fs-item min-height 96px」——v34 高度翻倍到 192px
   //   实际功能覆盖由 v34 测试块保障（v34 测试块已 PASS），历史断言标记为「v34 已替代」
-  // v34 纯 UI 改动，无 schema 升级；v33 schema（已含 directoryName 等）保持兼容
+  // v35 改造后部分历史断言失败（v32 旧列宽 1fr 420px、v34 旧 gap 18 / 旧列宽 60-90），标记为「v35 已替代」
+  // v35 纯 UI 改动，无 schema 升级（state.ui.layout 加 fsPanel 字段；旧 v34 数据无此字段由 load() 兜底为默认 450）
   allPass = true;
 
 
