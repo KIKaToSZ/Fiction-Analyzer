@@ -10,8 +10,12 @@
      常量
      ============================================================ */
   const STORAGE_KEY = "novel-app-data";
-  // v31：右侧抽屉替换原地展开（fsExpandedId → fsDrawerId）
-  const SCHEMA_VERSION = 15;
+  // v32：抽屉改常驻 panel（fsDrawerId → fsDetailId）
+//      去 fsEditing 编辑态（always editable）
+//      履历跳转改箭头 icon 按钮触发
+//      保存策略：200ms 防抖写 state + 1.5s 静默期入 history
+//      flush 时机：切卡/切页面/切 sheet/Ctrl+S/60s 定时/关页
+  const SCHEMA_VERSION = 16;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
   // 持久化 directory handle 的 key 前缀（完整 key = "dir:" + currentFileName）
@@ -553,6 +557,12 @@
     root && root.querySelectorAll
       ? Array.from(root.querySelectorAll(sel))
       : [];
+  // v32.1：判断是否窄屏（与 styles.css @media (max-width: 899px) 对齐）
+  const NARROW_VIEWPORT_PX = 900;
+  const isNarrowViewport = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia &&
+    window.matchMedia(`(max-width: ${NARROW_VIEWPORT_PX - 1}px)`).matches;
   const uid = (prefix = "id") =>
     `${prefix}_${Date.now().toString(36)}${Math.random()
       .toString(36)
@@ -862,9 +872,12 @@
     if (r) r.disabled = !(history.idx >= 0 && history.idx < history.stack.length - 1);
   }
 
-  // 持续编辑场景下用：800ms 停顿才入栈，避免每个字符都打一格
+  // 持续编辑场景下用：1500ms 停顿才入栈（v32 加大：避免长文本输入产生海量 undo 步骤）
+  //   与 debouncedSyncFsState（200ms 写 state）配合：
+  //     - 输入时 200ms 内就写 state（不丢数据）
+  //     - 但 1.5s 静默期才入 history 栈（按"停顿"为粒度切 undo）
   let _pushHistoryDebounce = null;
-  function debouncedPushHistory(delay = 800) {
+  function debouncedPushHistory(delay = 1500) {
     if (history.suspended) return;
     clearTimeout(_pushHistoryDebounce);
     _pushHistoryDebounce = setTimeout(() => {
@@ -1243,9 +1256,10 @@
     fsSort: "asc",
     fsStatusFilter: "all", // "all" | "未回收" | "部分回收" | "已回收"
     fsRecordSort: "asc",
-    fsDrawerId: null,      // v31：抽屉打开的伏笔 id（null = 抽屉关闭）
-    // v31 兼容：旧版用 fsExpandedId 表示"原地展开"，新版改为右侧抽屉；
-    //        load() 末尾会把 fsExpandedId 迁移到 fsDrawerId 并删除旧字段
+    fsDetailId: null,      // v32：panel 显示的伏笔 id（null = panel 显示空态）
+    // v32 兼容：v31 用 fsDrawerId 表示"右侧抽屉打开的伏笔 id"；
+    //        v32 改常驻 panel 后语义一致（指向当前显示的伏笔），
+    //        load() 末尾会把 fsDrawerId 迁移到 fsDetailId 并删除旧字段
     layout: {},
     ...(data.ui || {}),
   };
@@ -1253,11 +1267,14 @@
   if (!state.ui.fsSort) state.ui.fsSort = "asc";
   if (!state.ui.fsStatusFilter) state.ui.fsStatusFilter = "all";
   if (!state.ui.fsRecordSort) state.ui.fsRecordSort = "asc";
-  if (state.ui.fsDrawerId === undefined) {
-    // v31 兼容：旧版有 fsExpandedId 的话,自动迁到 fsDrawerId（让"原地展开"的旧数据打开抽屉）
-    state.ui.fsDrawerId = state.ui.fsExpandedId || null;
-    if (state.ui.fsExpandedId !== undefined) delete state.ui.fsExpandedId;
+  if (state.ui.fsDetailId === undefined) {
+    // v32 兼容：v31 用 fsDrawerId 标记抽屉打开的伏笔，新版改 fsDetailId
+    state.ui.fsDetailId = state.ui.fsDrawerId || null;
+    if (state.ui.fsDrawerId !== undefined) delete state.ui.fsDrawerId;
   }
+  if (state.ui.fsExpandedId !== undefined) delete state.ui.fsExpandedId;
+  // v32 兼容：v28 之前的 fsEditing 字段——v32 起不再有"编辑态"概念
+  if (state.ui.fsEditing !== undefined) delete state.ui.fsEditing;
       // 兜底：ui.layout 各字段补默认
       state.ui.layout = {
         nav: LAYOUT_DEFAULTS.nav,
@@ -1469,37 +1486,7 @@
   //  - 履历（setup / notes）：每行 .fs-record-row 的 input/textarea .value vs 匹配的 record
   //  - 用途：toggle 按钮切回查看态时、以及切伏笔时，决定是否调 saveCurrentItem()
   //    （避免无变化时也调 save → pushHistory 产生无意义 undo 节点）
-  //  - 只在伏笔页有主表+履历；章节页不会调它
-  function isFsEditorDirty() {
-    if (state.currentPage !== "foreshadowing") return false;
-    const it = curItem();
-    if (!it) return false;
-    // 主表字段
-    const fsNoEl = document.getElementById("fs-fsno");
-    const nameEl = document.getElementById("fs-name");
-    const statusEl = document.getElementById("fs-status");
-    if (fsNoEl && String(fsNoEl.value ?? "").trim() !== String(it.fsNo ?? "").trim()) return true;
-    if (nameEl && String(nameEl.value ?? "").trim() !== String(it.name ?? "").trim()) return true;
-    if (statusEl && String(statusEl.value ?? "") !== String(it.status ?? "")) return true;
-    // 履历（编辑态下才有 input/textarea，但查看态 DOM 结构不同——只看存在的字段）
-    const list = document.getElementById("fs-records-list");
-    if (list) {
-      const rows = list.querySelectorAll(".fs-record-row");
-      for (const row of rows) {
-        const recId = row.dataset && row.dataset.recordId;
-        if (!recId) continue;
-        const rec = (state.pages.foreshadowing.records || []).find(
-          (r) => r.id === recId
-        );
-        if (!rec) continue;
-        const setupEl = row.querySelector('input[data-field="setup"]');
-        const notesEl = row.querySelector('textarea[data-field="notes"]');
-        if (setupEl && String(setupEl.value ?? "") !== String(rec.setup ?? "")) return true;
-        if (notesEl && String(notesEl.value ?? "") !== String(rec.notes ?? "")) return true;
-      }
-    }
-    return false;
-  }
+
   function curSheet() {
     return curPage().currentSheet;
   }
@@ -2067,10 +2054,10 @@
     if (sortLabel) sortLabel.textContent = state.ui.sort === "asc" ? "正序" : "倒序";
   }
 
-  // v31：渲染伏笔网格
-  //   - 卡片只有 head（编号/名称/状态/删除），不再有 in-place detail
-  //   - 详情走右侧抽屉：state.ui.fsDrawerId 控制哪个 id 在抽屉里（null = 抽屉关闭）
-  //   - 切换抽屉项时其他行不动；点卡片 → 抽屉打开/切换
+  // v32：渲染伏笔网格
+  //   - 卡片只有 head（编号/名称/状态/删除）
+  //   - 右侧常驻 panel 显示 state.ui.fsDetailId 指向的伏笔详情（null = panel 显示空态）
+  //   - 点卡片 → 切到该卡（panel 同步切换）
   function renderFsList() {
     const grid = $("#fs-grid");
     if (!grid) return;
@@ -2087,10 +2074,9 @@
         b.classList.toggle("active", b.dataset.fsStatus === state.ui.fsStatusFilter);
       });
     }
-    // v31：兜底——fsDrawerId 指向已删除/不存在的项时，重置为 null（不打开抽屉）
-    if (state.ui.fsDrawerId && !items.some((it) => it.id === state.ui.fsDrawerId)) {
-      state.ui.fsDrawerId = null;
-      state.ui.fsEditing = false;
+    // v32：兜底——fsDetailId 指向已删除/不存在的项时，重置为 null（panel 显示空态）
+    if (state.ui.fsDetailId && !items.some((it) => it.id === state.ui.fsDetailId)) {
+      state.ui.fsDetailId = null;
     }
     if (items.length === 0) {
       grid.innerHTML = `
@@ -2115,12 +2101,12 @@
             : status === "部分回收"
               ? "fs-status-partial"
               : "fs-status-unresolved";
-        // v31：选中态 = 抽屉里正在显示的那张卡（active + 描边工具类）
-        const isInDrawer = it.id === state.ui.fsDrawerId;
+        // v32：选中态 = panel 里正在显示的那张卡（active + 描边工具类）
+        const isInPanel = it.id === state.ui.fsDetailId;
         // v28：head 只显示伏笔编号（it.fsNo，如 "FS-001"）—— 去掉"序号 #N"，
         // 编号距左固定值（head padding-left 12px），名称居中，状态距右固定值
         return `
-          <article class="fs-item ${isInDrawer ? "active border-selected" : ""}" data-id="${escapeHtml(it.id)}" data-action="open-drawer">
+          <article class="fs-item ${isInPanel ? "active border-selected" : ""}" data-id="${escapeHtml(it.id)}" data-action="open-panel">
             <header class="fs-card-head" data-id="${escapeHtml(it.id)}">
               <span class="fs-cell fs-col-fsno" title="伏笔编号 ${escapeHtml(it.fsNo || "")}">${escapeHtml(it.fsNo || "（无编号）")}</span>
               <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
@@ -2134,95 +2120,102 @@
     if (count) count.textContent = `${items.length} 条`;
   }
 
-  // v31：渲染伏笔详情抽屉（右侧滑出）
-  //   - 内容结构 = 原来的 renderFsCardDetail（伏笔编号/名称/状态 + 履历 + 编辑按钮）
-  //   - 抽屉外层 .fs-drawer 控制显隐 + 滑入/滑出动画（CSS）
-  //   - 背景 .fs-drawer-mask 提供半透明遮罩（点击关闭）
-  //   - 编辑/查看态切换：state.ui.fsEditing 仍控制；UI 保留 inline 编辑按钮
-  //   - 空状态：state.ui.fsDrawerId 为 null → 抽屉整体 hidden，不渲染内容
-  function renderFsDrawer() {
-    const drawer = $("#fs-drawer");
-    const mask = $("#fs-drawer-mask");
-    if (!drawer) return;
-    const drawerId = state.ui.fsDrawerId;
-    if (!drawerId) {
-      // 抽屉关闭
-      drawer.classList.remove("open");
-      if (mask) mask.classList.remove("open");
-      // 略等动画结束再 hidden（避免抽屉内容瞬变）
-      setTimeout(() => {
-        if (!state.ui.fsDrawerId) {
-          drawer.hidden = true;
-          if (mask) mask.hidden = true;
-          drawer.innerHTML = "";
-        }
-      }, 280);
+  // v32：渲染伏笔详情 panel（宽屏常驻 + 窄屏 modal）
+  //   - 宽屏（≥900）：panel 常驻右侧，无 drawer/mask 动画
+  //   - 窄屏（≤899）：panel 走 v31 modal 式样（fixed + transform 滑入 + mask 遮罩）
+  //   - state.ui.fsDetailId 决定显示哪条伏笔
+  //     - null → 空态（窄屏下 panel 滑出隐藏区，宽屏下显示空态提示）
+  //     - 有值 → 渲染该伏笔的 meta + 履历
+  //   - always editable：删除"查看/编辑"切换；字段直接 input，无 readonly
+  //   - 履历每行右侧新增箭头 icon 按钮触发跳转（替代"点原文描述"）
+  function renderFsPanel() {
+    const panel = $("#fs-panel");
+    if (!panel) return;
+    const mask = $("#fs-panel-mask");
+    const detailId = state.ui.fsDetailId;
+    // v32.1：同步 panel + mask 的 modal 状态（窄屏 modal 模式才会用到）
+    if (detailId) {
+      panel.classList.add("has-detail");
+      panel.classList.add("open");
+      if (mask) {
+        mask.hidden = false;
+        // 下一帧再加 .open（保证 hidden=false 先 commit，触发 transition）
+        requestAnimationFrame(() => {
+          if (mask) mask.classList.add("open");
+        });
+      }
+    } else {
+      panel.classList.remove("has-detail");
+      panel.classList.remove("open");
+      if (mask) {
+        mask.classList.remove("open");
+        // 略等动画结束再 hidden（避免 mask 闪一下）
+        setTimeout(() => {
+          if (mask && !state.ui.fsDetailId) mask.hidden = true;
+        }, 300);
+      }
+      // 空态
+      panel.innerHTML = `
+        <div class="fs-panel-empty">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+            <path d="M3 7h18M3 12h18M3 17h12" />
+          </svg>
+          <p>选中左侧伏笔查看详情</p>
+          <p class="hint">点卡片即可在右侧编辑字段、查看履历、跳转到原文</p>
+        </div>`;
       return;
     }
-    const item = state.pages.foreshadowing.items.find((x) => x.id === drawerId);
+    const item = state.pages.foreshadowing.items.find((x) => x.id === detailId);
     if (!item) {
-      // 兜底：找不到 item（外部删了/筛选掉了）→ 关闭
-      state.ui.fsDrawerId = null;
-      state.ui.fsEditing = false;
+      // 兜底：找不到 item（外部删了/筛选掉了）→ 回到空态
+      state.ui.fsDetailId = null;
       renderFsList();
+      renderFsPanel();
       return;
     }
     const opts = FS_STATUS_OPTIONS.map(
       (s) =>
         `<option value="${escapeHtml(s)}" ${item.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`
     ).join("");
-    const isEditing = !!state.ui.fsEditing;
-    const readonlyAttr = isEditing ? "" : "readonly";
-    const disabledAttr = isEditing ? "" : "disabled";
-    const mainClass = isEditing ? "" : "readonly";
     const recordsHtml = renderFsRecordRows(item.id);
     const recCount = getFsRecordsByFsNo(item).length;
-    // v27：编辑按钮只保留 icon（笔/对勾），删除"完成编辑"和"编辑"等文字
-    const editIcon = isEditing ? "✓" : "✎";
-    const editTitle = isEditing
-      ? "切到查看态（履历原文可点击跳转）"
-      : "切到编辑态（可改伏笔字段、新增/编辑履历）";
-    // v31：抽屉布局 = head (编号+名称+关闭) + meta (状态+编辑) + body (履历+底栏)
-    drawer.innerHTML = `
-      <div class="fs-drawer-head">
-        <div class="fs-drawer-head-left">
-          <span class="fs-drawer-fsno" title="伏笔编号">${escapeHtml(item.fsNo || "（无编号）")}</span>
-          <span class="fs-drawer-name" title="${escapeHtml(item.name || "")}">${escapeHtml(item.name || "（无名）")}</span>
+    // v32：panel 布局 = head (编号+名称+删除) + meta (状态) + section (履历+底栏)
+    panel.innerHTML = `
+      <div class="fs-panel-head">
+        <div class="fs-panel-head-left">
+          <span class="fs-panel-fsno" title="伏笔编号">${escapeHtml(item.fsNo || "（无编号）")}</span>
+          <span class="fs-panel-name" title="${escapeHtml(item.name || "")}">${escapeHtml(item.name || "（无名）")}</span>
         </div>
-        <button id="btn-fs-drawer-close" class="fs-drawer-close" title="关闭抽屉" aria-label="关闭抽屉" type="button">×</button>
+        <button id="btn-fs-panel-delete" class="fs-panel-delete" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
       </div>
-      <div class="fs-drawer-body">
-        <div class="fs-drawer-meta ${mainClass}">
-          <div class="fs-drawer-meta-row">
+      <div class="fs-panel-body">
+        <div class="fs-panel-meta">
+          <div class="fs-panel-meta-row">
             <div class="meta-field">
               <label>伏笔编号</label>
-              <input id="fs-fsno" type="text" ${readonlyAttr} value="${escapeHtml(item.fsNo || "")}" placeholder="如：FS-001" />
+              <input id="fs-fsno" type="text" value="${escapeHtml(item.fsNo || "")}" placeholder="如：FS-001" />
             </div>
             <div class="meta-field meta-title">
               <label>伏笔名称</label>
-              <input id="fs-name" type="text" ${readonlyAttr} value="${escapeHtml(item.name || "")}" placeholder="给伏笔起个名字" />
+              <input id="fs-name" type="text" value="${escapeHtml(item.name || "")}" placeholder="给伏笔起个名字" />
             </div>
           </div>
-          <div class="fs-drawer-meta-row">
-            <div class="meta-field">
+          <div class="fs-panel-meta-row">
+            <div class="meta-field" style="grid-column: 1 / -1;">
               <label>状态</label>
-              <select id="fs-status" ${disabledAttr}>${opts}</select>
-            </div>
-            <div class="meta-actions">
-              <!-- v27：编辑按钮只保留 icon（✎ 编辑 / ✓ 完成编辑），无文字 -->
-              <button id="btn-fs-toggle" class="secondary-btn icon-only" title="${editTitle}" aria-label="${editTitle}">${editIcon}</button>
+              <select id="fs-status">${opts}</select>
             </div>
           </div>
         </div>
-        <div class="fs-drawer-section">
+        <div class="fs-panel-section">
           <div class="fs-records-header">
             <span class="fs-records-title">📋 伏笔履历</span>
-            <span class="fs-records-meta muted">${isEditing ? `${recCount} 条 · 按提及章节` : `${recCount} 条 · 点击原文描述可跳转`}</span>
+            <span class="fs-records-meta muted">${recCount} 条 · 点右侧 → 跳转</span>
             <button id="btn-fs-record-sort" class="link-btn" title="切换正/倒序（按提及章节）">${state.ui.fsRecordSort === "asc" ? "正序" : "倒序"}</button>
-            <button id="btn-fs-add-record" class="link-btn" ${isEditing ? "" : "hidden"}>+ 新增履历</button>
+            <button id="btn-fs-add-record" class="link-btn">+ 新增履历</button>
           </div>
           <div class="fs-records-list" id="fs-records-list">
-            ${recordsHtml || `<div class="fs-records-empty muted">${isEditing ? "还没有履历，点上方「+ 新增履历」添加" : "还没有履历"}</div>`}
+            ${recordsHtml || `<div class="fs-records-empty muted">还没有履历，点上方「+ 新增履历」添加</div>`}
           </div>
         </div>
         <div class="body-stats">
@@ -2232,74 +2225,71 @@
           <span id="fs-file-path" class="muted file-path" title=""></span>
         </div>
       </div>`;
-    // 抽屉外层 + 遮罩：从 hidden 切到 open（CSS 滑入动画）
-    drawer.hidden = false;
-    if (mask) {
-      mask.hidden = false;
-      // 下一帧再加 .open（保证 hidden=false 先 commit，触发 transition）
-      requestAnimationFrame(() => {
-        drawer.classList.add("open");
-        mask.classList.add("open");
-        // v31：抽屉打开 → 给父 page-view 加 foreshadowing-page--drawer-open 类
-        //   → CSS 让 .fs-grid 右侧加 padding-right 避免被抽屉遮住
-        const pageView = drawer.closest("[data-page-view='foreshadowing']");
-        if (pageView) pageView.classList.add("foreshadowing-page--drawer-open");
-      });
-    } else {
-      drawer.classList.add("open");
-      const pageView = drawer.closest("[data-page-view='foreshadowing']");
-      if (pageView) pageView.classList.add("foreshadowing-page--drawer-open");
-    }
     bindFsEditorEvents();
-    // v10.1：抽屉 innerHTML 重写后 #fs-file-path 是新元素,
+    // v10.1：panel innerHTML 重写后 #fs-file-path 是新元素,
     // 必须补一次 updateFilePathDisplay()，否则保存后路径消失
     updateFilePathDisplay();
   }
 
-  // v31：打开抽屉（点卡片 / 新增伏笔时调用）
-  //   - 如果抽屉已开的就是同一条 → 什么都不做（点击不响应）
-  //   - 如果抽屉开的是另一条 → 切换（先 save 旧 dirty、关旧抽屉、开新抽屉）
-  //   - 如果抽屉没开 → 直接开
-  //   - 编辑态下点了不同卡片 → 拦截，toast 提示先完成编辑
-  function openFsDrawer(itemId) {
-    if (!itemId) return;
-    if (state.ui.fsDrawerId === itemId) return;
-    // 编辑态下点了不同卡片 → 拦截
-    if (state.ui.fsEditing && state.ui.fsDrawerId && state.ui.fsDrawerId !== itemId) {
-      toast("请先完成当前伏笔的编辑，再切换其他伏笔", "warn", 1800);
+  // v32：设置 panel 显示的伏笔（点卡片 / 新增伏笔时调用）
+  //   - 同一项：什么都不做（点击不响应）
+  //   - 不同项：flush 旧项（如果 dirty）→ 切到新项 → save → 重渲染
+  // v32：setFsDetail（去 fsEditing 拦截；总是 flush + 切换 + 重渲染）
+  function setFsDetail(itemId) {
+    // v32.1：null = 关闭 modal
+    if (!itemId) {
+      if (!state.ui.fsDetailId) return;
+      try { flushFsDetail(); } catch (_) {}
+      state.ui.fsDetailId = null;
+      save();
+      renderFsList();
+      renderFsPanel();
       return;
     }
-    // 切前：编辑态下当前项有 dirty → save
-    if (state.ui.fsEditing && state.ui.fsDrawerId && state.ui.fsDrawerId !== itemId) {
-      try {
-        if (isFsEditorDirty()) {
-          saveCurrentItem();
-        }
-      } catch (_) {}
-      state.ui.fsEditing = false;
-    }
+    if (state.ui.fsDetailId === itemId) return;
+    // 切前：把当前 panel 里的伏笔 flush（取消防抖，立即写 state）
+    flushFsDetail();
     // 同步 currentItemId（删除/auto-save 等场景仍依赖它）
     const fsPage = state.pages.foreshadowing;
     fsPage.currentItemId = itemId;
-    state.ui.fsDrawerId = itemId;
+    state.ui.fsDetailId = itemId;
     save();
     renderFsList();      // 更新 active 描边
-    renderFsDrawer();    // 渲染抽屉
+    renderFsPanel();     // 渲染 panel
   }
 
-  // v31：关闭抽屉
-  //   - 编辑态下有关闭按钮 → 拦截，toast 提示先完成编辑
-  //   - 否则：save dirty（如果有）→ 重置 fsEditing → 关闭抽屉 → renderFsList
-  function closeFsDrawer() {
-    if (state.ui.fsEditing) {
-      toast("编辑中，请先完成编辑（点击 ✓ 退出编辑态）", "warn", 1800);
-      return;
-    }
-    state.ui.fsDrawerId = null;
-    state.ui.fsEditing = false;
-    save();
-    renderFsDrawer();
-    renderFsList();
+  // v32：把 panel 当前显示伏笔的"未保存输入"flush 到 state
+  //   - 取消防抖：syncMeta/履历 input 的 200ms 防抖 + 1.5s history 入栈
+  //   - 直接从 DOM 抓值写回 state + 入 history 栈
+  //   - 不需要 dirty check（always editable，input 期间已经在写）
+  function flushFsDetail() {
+    const itemId = state.ui.fsDetailId;
+    if (!itemId) return;
+    const item = state.pages.foreshadowing.items.find((x) => x.id === itemId);
+    if (!item) return;
+    // 从 DOM 抓 fs-fsno/fs-name/fs-status 当前值
+    const fsFsno = $("#fs-fsno");
+    const fsName = $("#fs-name");
+    const fsStatus = $("#fs-status");
+    if (fsFsno) item.fsNo = String(fsFsno.value ?? "").trim();
+    if (fsName) item.name = fsName.value ?? "";
+    if (fsStatus) item.status = fsStatus.value || item.status || FS_STATUS_DEFAULT;
+    // 履历也 flush
+    const rows = document.querySelectorAll("#fs-records-list .fs-record-row");
+    rows.forEach((row) => {
+      const recId = row.dataset.recordId;
+      if (!recId) return;
+      const rec = (state.pages.foreshadowing.records || []).find((r) => r.id === recId);
+      if (!rec) return;
+      const setup = row.querySelector('input[data-field="setup"]');
+      const notes = row.querySelector('textarea[data-field="notes"]');
+      if (setup) rec.setup = setup.value;
+      if (notes) rec.notes = notes.value;
+    });
+    // 入 history 栈
+    clearTimeout(_pushHistoryDebounce);
+    _pushHistoryDebounce = null;
+    pushHistory();
   }
 
   function renderChapterEditor() {
@@ -2344,9 +2334,9 @@
   }
 
   function renderFsEditor() {
-    // v23：grid 模式下没有 #fs-editor 容器——所有渲染都在 renderFsList 内联完成
-    //   保留这个函数是为了让旧调用点（renderCurrentPage / bindFsEditorEvents 内部）依然可调
-    //   实际效果：grid 模式下 delegate 到 renderFsList；非 grid 模式（理论上不再有）走旧逻辑
+    // v32：grid 模式下没有 #fs-editor 容器——所有渲染都在 renderFsList + renderFsPanel 内联完成
+    //   保留这个函数是为了让旧调用点（renderCurrentPage）依然可调
+    //   实际效果：grid 模式下 delegate 到 renderFsList；非 grid 模式（理论上不再有）走旧逻辑（已删 fsEditing）
     if ($("#fs-grid") && !$("#fs-editor")) {
       renderFsList();
       return;
@@ -2367,19 +2357,17 @@
       (s) =>
         `<option value="${escapeHtml(s)}" ${it.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`
     ).join("");
-    // v14：编辑/查看态标记
-    const isEditing = !!state.ui.fsEditing;
-    const readonlyAttr = isEditing ? "" : "readonly";
-    const disabledAttr = isEditing ? "" : "disabled";
-    const mainClass = isEditing ? "" : "readonly";
+    // v32：grid 模式下没有 #fs-editor 容器，此函数 grid 分支已 return；这里只服务理论上的非 grid 模式
+    //      永远可编辑——没有 readonly/disabled（v32 去掉编辑态）
+    const readonlyAttr = "";
+    const disabledAttr = "";
+    const mainClass = "";
     // 渲染当前伏笔的履历（按提及章节排序）
     const recordsHtml = renderFsRecordRows(it.id);
     editor.innerHTML = `
       <div class="editor-meta editor-meta-fs ${mainClass}">
-        <!-- v18：「编辑」按钮挪到「伏笔编号」前 -->
-        <div class="meta-actions meta-actions-first">
-          <button id="btn-fs-toggle" class="secondary-btn" title="${isEditing ? "切到查看态（履历原文可点击跳转）" : "切到编辑态（可改伏笔字段、新增/编辑履历）"}">${isEditing ? "✓ 完成编辑" : "✎ 编辑"}</button>
-        </div>
+        <!-- v32：删 btn-fs-toggle（编辑/查看态切换不再需要，常驻可编辑） -->
+        <div class="meta-actions meta-actions-first"></div>
         <div class="meta-field meta-fsno">
           <label>伏笔编号</label>
           <input id="fs-fsno" type="text" ${readonlyAttr} value="${escapeHtml(it.fsNo || "")}" placeholder="如：FS-001" />
@@ -2393,8 +2381,8 @@
           <select id="fs-status" ${disabledAttr}>${opts}</select>
         </div>
         <div class="meta-actions meta-actions-last">
-          <!-- v19：移除"保存"按钮——编辑态下点 "完成编辑"（btn-fs-toggle）会自动检查 dirty 并落盘+入栈；
-                 切伏笔时也会自动 dirty 检测 + 退出编辑态；不需要显式保存按钮 -->
+          <!-- v32：移除"保存"按钮 + "完成编辑"按钮（常驻编辑无需切换态）
+                 切伏笔时自动 flush panel 内容到 state + 写 localStorage；不需要显式保存按钮 -->
           <!-- v17：编辑按钮旁的"删除"按钮移除——删除统一在左侧列表的 .fs-delete 叉号触发，避免重复入口 -->
         </div>
       </div>
@@ -2402,13 +2390,13 @@
         <div class="fs-records-section">
           <div class="fs-records-header">
             <span class="fs-records-title">📋 伏笔履历</span>
-            <span class="fs-records-meta muted">${isEditing ? `${getFsRecordsByFsNo(it).length} 条 · 按提及章节` : `${getFsRecordsByFsNo(it).length} 条 · 点击原文描述可跳转`}</span>
+            <span class="fs-records-meta muted">${getFsRecordsByFsNo(it).length} 条 · 按提及章节</span>
             <!-- v18：履历排序（按提及章节正/倒序） -->
             <button id="btn-fs-record-sort" class="link-btn" title="切换正/倒序（按提及章节）">${state.ui.fsRecordSort === "asc" ? "正序" : "倒序"}</button>
-            <button id="btn-fs-add-record" class="link-btn" ${isEditing ? "" : "hidden"}>+ 新增履历</button>
+            <button id="btn-fs-add-record" class="link-btn">+ 新增履历</button>
           </div>
           <div class="fs-records-list" id="fs-records-list">
-            ${recordsHtml || `<div class="fs-records-empty muted">${isEditing ? "还没有履历，点上方「+ 新增履历」添加" : "还没有履历"}</div>`}
+            ${recordsHtml || `<div class="fs-records-empty muted">还没有履历，点上方「+ 新增履历」添加</div>`}
           </div>
         </div>
         <div class="body-stats">
@@ -3154,41 +3142,29 @@
     const item = state.pages.foreshadowing.items.find((x) => x.id === itemId);
     if (!item) return "";
     const records = getFsRecordsByFsNo(item);
-    const isEditing = !!state.ui.fsEditing;
     if (records.length === 0) return "";
+    // v32：always editable —— 删查看态/编辑态分支，所有行统一为可编辑 + 跳转箭头按钮
     return records
       .map((r) => {
-        // v18：编辑态 & 查看态 - 都不再显示"提及章节"标题文字,只显示数字
-        //  - 数字解析自 r.setup (parseChapterNo)
-        //  - 数字字号放大 2 倍 (~2em),与右侧文本框高度差不多
-        //  - 原文描述(label) 保留,跟"右侧文本框高差不多"的对照需要
+        // 数字解析自 r.setup (parseChapterNo)
+        // - 有数字 → 显示数字；无数字（"序章"等）→ 留空
         const setupParsed = parseChapterNo(r.setup || "");
         const setupNum = setupParsed.hasNum && Number.isFinite(setupParsed.num)
           ? String(setupParsed.num)
           : "";
-        if (isEditing) {
-          return `
-            <div class="fs-record-row" data-record-id="${escapeHtml(r.id)}">
-              <div class="fs-rec-col-setup">
-                <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="如：第3章" class="fs-rec-setup-big" />
-                <span class="fs-rec-setup-num" title="解析后的章节号">${escapeHtml(setupNum)}</span>
-              </div>
-              <div class="fs-rec-col-notes">
-                <span class="muted small-label">原文描述</span>
-                <textarea data-field="notes" rows="2" placeholder="原文描述…">${escapeHtml(r.notes || "")}</textarea>
-              </div>
-              <button class="fs-rec-delete" data-record-id="${escapeHtml(r.id)}" title="删除该履历" aria-label="删除该履历" type="button">×</button>
-            </div>`;
-        } else {
-          // 查看态：原文描述 clickable
-          return `
-            <div class="fs-record-row readonly" data-record-id="${escapeHtml(r.id)}">
-              <div class="fs-rec-col-setup">
-                <span class="fs-rec-setup-num fs-rec-setup-num-static" title="${escapeHtml(r.setup || "")}">${escapeHtml(setupNum || "—")}</span>
-              </div>
-              <button class="fs-rec-notes-link" data-record-id="${escapeHtml(r.id)}" title="点击跳转到该章节">${escapeHtml(r.notes || "（无描述）")}</button>
-            </div>`;
-        }
+        return `
+          <div class="fs-record-row" data-record-id="${escapeHtml(r.id)}">
+            <div class="fs-rec-col-setup">
+              <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="如：第3章" class="fs-rec-setup-big" />
+              <span class="fs-rec-setup-num" title="解析后的章节号">${escapeHtml(setupNum)}</span>
+            </div>
+            <div class="fs-rec-col-notes">
+              <span class="muted small-label">原文描述</span>
+              <textarea data-field="notes" rows="2" placeholder="原文描述…">${escapeHtml(r.notes || "")}</textarea>
+            </div>
+            <button class="fs-rec-jump" data-record-id="${escapeHtml(r.id)}" title="跳转到该章节并高亮原文" aria-label="跳转到该章节">→</button>
+            <button class="fs-rec-delete" data-record-id="${escapeHtml(r.id)}" title="删除该履历" aria-label="删除该履历" type="button">×</button>
+          </div>`;
       })
       .join("");
   }
@@ -3219,7 +3195,10 @@
   function bindFsEditorEvents() {
     const it = curItem();
     if (!it) return;
-    // v14：主表字段（除 no 只读外）实时写回 state
+    // v32：主表字段（fsNo/name/status）实时写回 state
+    //   - input 事件立即写 state + 同步卡片 head 显示（无 200ms 防抖，避免闪字）
+    //   - 入 history 栈仍走 debouncedPushHistory（1.5s 静默期）
+    //   - always editable：删 readonly/disabled + 删 fsEditing 切换按钮
     const fsFsno = $("#fs-fsno");
     const fsName = $("#fs-name");
     const fsStatus = $("#fs-status");
@@ -3227,8 +3206,7 @@
       it.fsNo = String(fsFsno?.value ?? it.fsNo ?? "").trim();
       it.name = fsName?.value ?? it.name;
       it.status = fsStatus?.value ?? it.status;
-      // v31：抽屉模式——同步当前卡片的 head 显示
-      //   head 只显示 3 列（编号 fsNo / 名称 / 状态），状态 class 需要根据值切换
+      // 同步左侧卡片的 head 显示（编号/名称/状态）
       const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
       if (li) {
         const nameCell = li.querySelector(".fs-col-name");
@@ -3242,46 +3220,23 @@
           );
         }
       }
-      // 抽屉 head 上的编号/名称也要同步（用户改 fsNo/name 时）
-      const drawerFsNo = $(".fs-drawer-fsno");
-      const drawerName = $(".fs-drawer-name");
-      if (drawerFsNo) drawerFsNo.textContent = it.fsNo || "（无编号）";
-      if (drawerName) drawerName.textContent = it.name || "（无名）";
+      // panel head 上的编号/名称也要同步
+      const panelFsNo = $(".fs-panel-fsno");
+      const panelName = $(".fs-panel-name");
+      if (panelFsNo) panelFsNo.textContent = it.fsNo || "（无编号）";
+      if (panelName) panelName.textContent = it.name || "（无名）";
       debouncedPushHistory();
     };
     [fsFsno, fsName, fsStatus].forEach((el) => {
       el?.addEventListener("input", syncMeta);
       el?.addEventListener("change", syncMeta);
     });
-    // v19：编辑/查看态切换
-    //  - 切回查看态时：先检查内容是否真的变了（isFsEditorDirty），
-    //    有变化才调 saveCurrentItem() 落盘 + 入 undo 栈；
-    //    无变化时直接切回查看态，避免无意义 undo 节点
-    //  - 切到编辑态时：不需要保存（只把按钮文字/状态从查看态改为编辑态）
-    $("#btn-fs-toggle")?.addEventListener("click", () => {
-      if (state.ui.fsEditing) {
-        if (isFsEditorDirty()) {
-          saveCurrentItem();
-        }
-      }
-      state.ui.fsEditing = !state.ui.fsEditing;
-      save();
-      // v31：抽屉模式——重画抽屉
-      if (state.ui.fsDrawerId && $("#fs-drawer")) {
-        renderFsDrawer();
-      } else {
-        renderFsEditor();
-      }
-    });
+    // v32：常驻编辑、无 btn-fs-toggle
     // v18：履历排序（按提及章节正/倒序）
     $("#btn-fs-record-sort")?.addEventListener("click", () => {
       state.ui.fsRecordSort = state.ui.fsRecordSort === "asc" ? "desc" : "asc";
       save();
-      if (state.ui.fsDrawerId && $("#fs-drawer")) {
-        renderFsDrawer();
-      } else {
-        renderFsEditor();
-      }
+      renderFsPanel();
     });
     // v14：新增履历
     $("#btn-fs-add-record")?.addEventListener("click", () => {
@@ -3294,11 +3249,7 @@
       );
       state.pages.foreshadowing.records.push(newRec);
       // 不立刻 save()，等用户编辑完输入框内容再统一存
-      if (state.ui.fsDrawerId && $("#fs-drawer")) {
-        renderFsDrawer();
-      } else {
-        renderFsEditor();
-      }
+      renderFsPanel();
       // 聚焦到新行的 setup 输入
       setTimeout(() => {
         const row = document.querySelector(
@@ -3310,7 +3261,8 @@
         }
       }, 30);
     });
-    // v14：履历编辑（事件委托：input/textarea change 时写回 state）
+    // v14 → v32 改造：履历编辑（事件委托：input/textarea change 时写回 state）
+    //   v32：input 期间不重渲染 panel（避免 textarea 失焦），仅写 state + 入 history
     const list = $("#fs-records-list");
     list?.addEventListener("input", (e) => {
       const target = e.target;
@@ -3327,7 +3279,7 @@
         debouncedPushHistory();
       }
     });
-    // v14：删除履历
+    // v14：删除履历（点击每行 × 按钮）
     list?.addEventListener("click", (e) => {
       const btn = e.target.closest(".fs-rec-delete");
       if (!btn) return;
@@ -3340,27 +3292,26 @@
       state.pages.foreshadowing.records.splice(idx, 1);
       save();
       pushHistory();
-      if (state.ui.fsDrawerId && $("#fs-drawer")) {
-        renderFsDrawer();
-      } else {
-        renderFsEditor();
-      }
+      renderFsPanel();
     });
-    // v14：点击原文描述 → 跳转到章节
+    // v32：履历跳转——点每行右侧箭头按钮 → 复用 jumpToChapterForRecord
     list?.addEventListener("click", (e) => {
-      const link = e.target.closest(".fs-rec-notes-link");
-      if (!link) return;
-      const recId = link.dataset?.recordId;
+      const jumpBtn = e.target.closest(".fs-rec-jump");
+      if (!jumpBtn) return;
+      const recId = jumpBtn.dataset?.recordId;
       if (!recId) return;
       const rec = state.pages.foreshadowing.records.find(
         (r) => r.id === recId
       );
       if (!rec) return;
+      // 跳转前先 flush 当前 panel（避免 input 内容未保存）
+      flushFsDetail();
       jumpToChapterForRecord(rec);
     });
-    // v31：抽屉 head 上的关闭按钮 → closeFsDrawer（编辑态下拦截，提示先完成编辑）
-    $("#btn-fs-drawer-close")?.addEventListener("click", () => {
-      closeFsDrawer();
+    // v32：panel head 上的删除按钮 → 删当前 panel 显示的伏笔
+    $("#btn-fs-panel-delete")?.addEventListener("click", () => {
+      if (!it) return;
+      deleteCurrentItem();
     });
   }
 
@@ -3604,11 +3555,9 @@
       renderChapterEditor();
     } else if (state.currentPage === "foreshadowing") {
       renderFsList();
-      // v31：抽屉（详情/编辑）独立渲染；renderFsList 之后立即调 renderFsDrawer
-      //   renderFsDrawer 会根据 state.ui.fsDrawerId 决定渲染/关闭抽屉
-      //   （v23 的 renderFsEditor 函数在 grid+drawer 模式下是 no-op，
-      //    内部检测到 #fs-grid 存在就直接 return，详情完全在抽屉里）
-      renderFsDrawer();
+      // v32：panel（详情/编辑）独立渲染；renderFsList 之后立即调 renderFsPanel
+      //   renderFsPanel 会根据 state.ui.fsDetailId 决定渲染指定伏笔或空态
+      renderFsPanel();
     } else if (state.currentPage === "goods") {
       // v21：goods 是 compound，渲染时调 renderCompoundGoods 一次性渲染 lingshi + items
       renderCompoundGoods();
@@ -4487,10 +4436,9 @@
     const def = curPageDef();
     const label = it.title || it.name || it.no;
     if (!confirm(`确定删除${def.label}「${label}」？`)) return;
-    // v31：伏笔页删除时——如果删的就是当前抽屉里的项，fsDrawerId 也要重置
-    if (state.currentPage === "foreshadowing" && state.ui.fsDrawerId === it.id) {
-      state.ui.fsDrawerId = null;
-      state.ui.fsEditing = false;
+    // v32：伏笔页删除时——如果删的就是 panel 里正在显示的项，fsDetailId 要重置
+    if (state.currentPage === "foreshadowing" && state.ui.fsDetailId === it.id) {
+      state.ui.fsDetailId = null;
     }
     p.items = p.items.filter((x) => x.id !== it.id);
     p.currentItemId = null;
@@ -4536,10 +4484,9 @@
     const it = def.makeItem(data, targetSheet);
     p.items.push(it);
     p.currentItemId = it.id;
-    // v31：新增伏笔时自动打开抽屉 + 进入编辑态——用户新建后马上能填字段
+    // v32：新增伏笔时 panel 自动定位到该伏笔——用户新建后马上能填字段（常驻 panel 总是可编辑）
     if (pid === "foreshadowing") {
-      state.ui.fsDrawerId = it.id;
-      state.ui.fsEditing = true;
+      state.ui.fsDetailId = it.id;
     }
     save();
     pushHistory();
@@ -6059,13 +6006,9 @@
       if (curPage().currentItemId === item.dataset.id) return;
       if (state.currentPage === "chapter" || state.currentPage === "character") {
         try { saveCurrentItem(); } catch (_) {}
-      } else if (state.currentPage === "foreshadowing" && state.ui.fsEditing) {
-        try {
-          if (isFsEditorDirty()) {
-            saveCurrentItem();
-          }
-        } catch (_) {}
-        state.ui.fsEditing = false;
+      } else if (state.currentPage === "foreshadowing") {
+        // v32：常驻 panel 总是可编辑——切伏笔时直接 flushFsDetail 把当前 panel 的内容写回 state
+        try { flushFsDetail(); } catch (_) {}
       }
       curPage().currentItemId = item.dataset.id;
       save();
@@ -6101,11 +6044,10 @@
       renderPair();
     };
 
-    // v31：fs 列表改用 onFsClick——点 .fs-item 打开抽屉（不是 currentItemId）
+    // v32：fs 列表改用 onFsClick——点 .fs-item 切换 panel 显示（不是 currentItemId）
     //   - 删除走 .fs-delete 叉号（与之前一致）
-    //   - 抽屉开着的当前卡再点一次不响应（仍开着）；点其他卡 = 切换抽屉
-    //   - 编辑态下点其他卡 → 拦截，提示先完成编辑（保留 v28 行为）
-    //   - 抽屉外 .fs-drawer-mask 点击会触发 closeFsDrawer（见 bindEditorButtons 全局监听）
+    //   - 切到其他卡 → flush 当前 panel 内容到 state 后再切换
+    //   - panel 常驻、无编辑态切换，删除按钮直接在 panel 头部
     const onFsClick = (e) => {
       // 1) 删除按钮（保留原 .fs-delete 行为）
       if (e.target.closest(".fs-delete")) {
@@ -6116,27 +6058,32 @@
         const fsPage = state.pages.foreshadowing;
         const targetItem = fsPage.items.find((x) => x.id === id);
         if (!targetItem) return;
-        // v31：如果删的就是当前抽屉里的项，需要先关抽屉
-        if (state.ui.fsDrawerId === id) {
-          state.ui.fsDrawerId = null;
-          state.ui.fsEditing = false;
+        // v32：如果删的就是当前 panel 里的项，需要清 fsDetailId
+        if (state.ui.fsDetailId === id) {
+          state.ui.fsDetailId = null;
         }
         fsPage.currentItemId = id;
         deleteCurrentItem();
         return;
       }
-      // 2) 点 .fs-item 卡片（非交互区）→ 打开抽屉
+      // 2) 点 .fs-item 卡片（非交互区）→ 设置 panel 显示该伏笔
       const itemEl = e.target.closest(".fs-item");
       if (!itemEl) return;
       // v26 沿用：排除 input/textarea/select/button/label 等交互元素
-      //   v31 改造：head 现在只有纯展示元素（编号/名称/状态/删除），不会命中下面这些
+      //   v32：head 只有纯展示元素（编号/名称/状态/删除），不会命中下面这些
       if (e.target.closest("input, textarea, select, button, label, [contenteditable]")) {
         return;
       }
       const id = itemEl.dataset.id;
       if (!id) return;
-      // 调用 openFsDrawer（已处理 编辑态拦截 / dirty save / currentItemId 同步 / 抽屉切换）
-      openFsDrawer(id);
+      // v32.1：窄屏下点当前 active 卡 → 关闭 modal（v31 抽屉式样）
+      //        宽屏下 setFsDetail(id) 无变化（panel 始终显示）
+      if (isNarrowViewport() && state.ui.fsDetailId === id) {
+        setFsDetail(null);
+        return;
+      }
+      // v32：setFsDetail 无 fsEditing 拦截；总是 flush + 切换 + 重渲染 panel
+      setFsDetail(id);
     };
     if (chapterList) chapterList.addEventListener("click", onMainClick);
     if (fsList) fsList.addEventListener("click", onFsClick);
@@ -6149,17 +6096,27 @@
       renderItemsList();
       renderItemsEditor();
     }));
-    // v31：抽屉遮罩点击 → 关闭抽屉
-    const fsMask = $("#fs-drawer-mask");
-    if (fsMask) {
-      fsMask.addEventListener("click", () => {
-        closeFsDrawer();
+    // v32.1：恢复 mask 点击 / Esc 键关闭 modal（窄屏有效，宽屏 mask 不存在无影响）
+    const fsPanelMask = $("#fs-panel-mask");
+    if (fsPanelMask) {
+      fsPanelMask.addEventListener("click", () => {
+        if (isNarrowViewport()) setFsDetail(null);
       });
     }
-    // v31：键盘 Esc 关闭抽屉
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && state.currentPage === "foreshadowing" && state.ui.fsDrawerId) {
-        closeFsDrawer();
+      if (e.key === "Escape" && state.currentPage === "foreshadowing" && state.ui.fsDetailId && isNarrowViewport()) {
+        setFsDetail(null);
+      }
+    });
+    // v32.1：resize 监听——宽屏→窄屏时关闭 modal（避免 panel 突然滑入）
+    let _lastNarrow = isNarrowViewport();
+    window.addEventListener("resize", () => {
+      const nowNarrow = isNarrowViewport();
+      if (_lastNarrow === nowNarrow) return;
+      _lastNarrow = nowNarrow;
+      // 宽屏 → 窄屏：关闭 modal（保留 fsDetailId 也行，但视觉上 panel 会突然滑出，比较突兀）
+      if (nowNarrow && state.ui.fsDetailId) {
+        setFsDetail(null);
       }
     });
   }

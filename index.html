@@ -296,13 +296,15 @@
               <button class="seg-btn" data-fs-status="部分回收" title="只显示部分回收的伏笔">部分回收</button>
               <button class="seg-btn" data-fs-status="已回收" title="只显示已回收的伏笔">已回收</button>
             </div>
-            <!-- v23：三列多行网格容器（替代原来的「左列表+右详情」双栏） -->
-            <div class="fs-grid" id="fs-grid"></div>
-            <!-- v31：详情改右侧抽屉（不再用 in-place 展开）
-                 - 抽屉里 = 伏笔编号/名称/状态 + 履历 + 编辑/完成编辑 + 关闭
-                 - 遮罩 = 背景半透明 + 点击关闭 -->
-            <div id="fs-drawer-mask" class="fs-drawer-mask" hidden></div>
-            <aside id="fs-drawer" class="fs-drawer" hidden></aside>
+            <!-- v32：grid + 常驻 panel 两列布局（替代 v31 抽屉）
+                 - 左侧：fs-grid 卡片网格
+                 - 右侧：fs-panel 详情 panel（始终可见）
+                 - v32.1：窄屏（≤899）切回 modal 模式——grid 满宽 + panel 滑入 + mask 遮罩 -->
+            <div class="fs-page-body">
+              <div class="fs-grid" id="fs-grid"></div>
+              <aside id="fs-panel" class="fs-panel"></aside>
+              <div id="fs-panel-mask" class="fs-panel-mask" hidden></div>
+            </div>
           </section>
 
           <!-- ===================== 财物详情页（v21：左右双台账） =====================
