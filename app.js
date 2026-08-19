@@ -2103,14 +2103,12 @@
               : "fs-status-unresolved";
         // v32：选中态 = panel 里正在显示的那张卡（active + 描边工具类）
         const isInPanel = it.id === state.ui.fsDetailId;
-        // v28：head 只显示伏笔编号（it.fsNo，如 "FS-001"）—— 去掉"序号 #N"，
-        // 编号距左固定值（head padding-left 12px），名称居中，状态距右固定值
+        // v34：item 整张用状态色作背景，删掉内部状态文字 span（颜色已足够表达状态）
         return `
-          <article class="fs-item ${isInPanel ? "active border-selected" : ""}" data-id="${escapeHtml(it.id)}" data-action="open-panel">
+          <article class="fs-item ${cls} ${isInPanel ? "active border-selected" : ""}" data-id="${escapeHtml(it.id)}" data-action="open-panel">
             <header class="fs-card-head" data-id="${escapeHtml(it.id)}">
               <span class="fs-cell fs-col-fsno" title="伏笔编号 ${escapeHtml(it.fsNo || "")}">${escapeHtml(it.fsNo || "（无编号）")}</span>
               <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
-              <span class="fs-cell fs-col-status ${cls}">${escapeHtml(status)}</span>
               <button class="fs-delete" data-id="${escapeHtml(it.id)}" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
             </header>
           </article>`;
@@ -3139,7 +3137,9 @@
     if (!item) return "";
     const records = getFsRecordsByFsNo(item);
     if (records.length === 0) return "";
-    // v32：always editable —— 删查看态/编辑态分支，所有行统一为可编辑 + 跳转箭头按钮
+    // v32：always editable —— 删查看态/编辑态分支，所有行统一为可编辑
+    // v34：删每行右侧的 → 跳转按钮（跳转改成点整条履历空白区域触发）
+    // v34：删【原文描述】小标题（输入框已有 placeholder + 下划线样式，无需标题）
     return records
       .map((r) => {
         // 数字解析自 r.setup (parseChapterNo)
@@ -3151,13 +3151,11 @@
         return `
           <div class="fs-record-row" data-record-id="${escapeHtml(r.id)}">
             <div class="fs-rec-col-setup">
-              <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="如：第3章" class="fs-rec-setup-big" />
+              <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="章节号" class="fs-rec-setup-big fs-rec-underline" />
             </div>
             <div class="fs-rec-col-notes">
-              <span class="muted small-label">原文描述</span>
-              <textarea data-field="notes" rows="2" placeholder="原文描述…">${escapeHtml(r.notes || "")}</textarea>
+              <textarea data-field="notes" rows="2" placeholder="原文描述" class="fs-rec-underline"></textarea>
             </div>
-            <button class="fs-rec-jump" data-record-id="${escapeHtml(r.id)}" title="跳转到该章节并高亮原文" aria-label="跳转到该章节">→</button>
             <button class="fs-rec-delete" data-record-id="${escapeHtml(r.id)}" title="删除该履历" aria-label="删除该履历" type="button">×</button>
           </div>`;
       })
@@ -3200,14 +3198,16 @@
     const statusCls = (s) =>
       s === "已回收" ? "fs-status-resolved" :
       s === "部分回收" ? "fs-status-partial" : "fs-status-unresolved";
-    // 同步状态按钮 + 卡片 head 状态 cell 显示
+    // 同步状态按钮 + 卡片背景状态 class
+    // v34：fs-item 不再有内部 .fs-col-status 文字 span（item 背景色已表示状态），
+    //   这里改同步 fs-item 的状态 class（resolved/partial/unresolved）
     const syncStatusCell = (s) => {
       const text = s || FS_STATUS_DEFAULT;
       const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
-      const cardStatus = li?.querySelector(".fs-col-status");
-      if (cardStatus) {
-        cardStatus.textContent = text;
-        cardStatus.className = "fs-cell fs-col-status " + statusCls(text);
+      if (li) {
+        // 移除旧状态 class，加上新的
+        li.classList.remove("fs-status-resolved", "fs-status-partial", "fs-status-unresolved");
+        li.classList.add(statusCls(text));
       }
       const panelBtn = $("#btn-fs-status-toggle");
       if (panelBtn) {
@@ -3309,11 +3309,15 @@
       pushHistory();
       renderFsPanel();
     });
-    // v32：履历跳转——点每行右侧箭头按钮 → 复用 jumpToChapterForRecord
+    // v34：履历跳转——点整条履历的空白区域 → 复用 jumpToChapterForRecord
+    //   排除 input / textarea / .fs-rec-delete 上的点击（这些元素自己处理交互）
     list?.addEventListener("click", (e) => {
-      const jumpBtn = e.target.closest(".fs-rec-jump");
-      if (!jumpBtn) return;
-      const recId = jumpBtn.dataset?.recordId;
+      const tag = e.target && e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.target.closest(".fs-rec-delete")) return;
+      const row = e.target.closest(".fs-record-row");
+      if (!row) return;
+      const recId = row.dataset?.recordId;
       if (!recId) return;
       const rec = state.pages.foreshadowing.records.find(
         (r) => r.id === recId

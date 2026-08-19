@@ -2206,15 +2206,6 @@ input[type="range"]::-moz-range-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.fs-col-status {
-  text-align: center;
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--tag-bg, rgba(120, 90, 60, 0.12));
-  color: var(--tag-fg, #6a4a2c);
-}
-
 @media (max-width: 600px) {
   .fs-list-row {
     grid-template-columns: 100px 1fr 90px;
@@ -2288,9 +2279,36 @@ input[type="range"]::-moz-range-thumb {
   min-width: 14px;
 }
 .fs-rec-setup-big {
-  /* 编辑态 - input 自身保持原大小,旁边显示大字号数字 */
+  /* 编辑态 - input 自身保持原大小,旁边显示大字号数字
+   * v34：下划线样式（章节号输入框只有一条下划线） */
   font-size: 13px;
-  text-align: center;
+  text-align: left;
+}
+/* v34：章节号 / 原文描述 输入框共用下划线样式
+ * - 去掉边框 + 背景，只保留下划线
+ * - 跟 .meta-field input.readonly-field 不同的：readonly-field 是完全不可编辑背景淡化，
+ *   .fs-rec-underline 是可编辑的下划线 */
+.fs-rec-underline {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--border, #e2d6c4) !important;
+  border-radius: 0 !important;
+  padding: 4px 2px !important;
+  font-size: 13px !important;
+  color: var(--text, #2c2418) !important;
+  outline: none !important;
+  box-shadow: none !important;
+  transition: border-color 0.12s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+.fs-rec-underline:hover {
+  border-bottom-color: var(--accent, #785a3c) !important;
+}
+.fs-rec-underline:focus {
+  border-bottom-color: var(--accent, #785a3c) !important;
+  border-bottom-width: 2px !important;
+  padding-bottom: 3px !important;
 }
 /* 编辑态 textarea / view 态链接 - 横向填满 */
 .fs-record-row .fs-rec-col-notes {
@@ -2305,9 +2323,11 @@ input[type="range"]::-moz-range-thumb {
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* v17：编辑态尾部的叉号按钮 */
+/* v34：删除按钮 absolute 定位在 fs-record-row 右上角（无需垂直居中） */
 .fs-rec-delete {
-  align-self: center;
+  position: absolute;
+  top: 4px;
+  right: 4px;
   background: transparent;
   border: 0;
   color: var(--muted, #8a7a66);
@@ -2322,6 +2342,7 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
   opacity: 0.5;
   transition: opacity var(--transition), color var(--transition), background var(--transition);
+  padding: 0;
 }
 .fs-record-row:hover .fs-rec-delete,
 .fs-rec-delete:focus-visible {
@@ -2370,16 +2391,21 @@ input[type="range"]::-moz-range-thumb {
 }
 .fs-record-row {
   display: grid;
-  /* v26：第 1 列（章节号）宽度减半——minmax(80,110) → minmax(40,55)
-     v28：再减 10——minmax(40,55) → minmax(30,45)，给中间原文描述让出更多空间
-     v32：加 1 列右侧箭头按钮 → 4 列布局 */
-  grid-template-columns: minmax(30px, 45px) 1fr auto auto;
-  gap: 8px;
-  padding: 8px;
+  /* v34：删 .fs-rec-jump 按钮列——跳转改为点整条空白区域触发（3 列 → 2 列）
+   * v26：第 1 列（章节号）宽度 minmax(40,55)
+   * v28：再减 10——minmax(40,55) → minmax(30,45)，给中间原文描述让出更多空间
+   * v34：去掉第 3 列 jump，第 4 列 delete → 共 2 列 [setup, notes]
+   * v34：position:relative → 锚定右上角 absolute 定位的删除按钮 */
+  grid-template-columns: minmax(60px, 90px) 1fr;
+  gap: 10px;
+  padding: 10px 32px 10px 10px;
   background: var(--card-bg, rgba(255, 255, 255, 0.4));
   border: 1px solid var(--border, #e2d6c4);
   border-radius: 4px;
   align-items: start;
+  position: relative;
+  /* v34：整条履历可点跳转（但 input/textarea/删除按钮上的点击排除） */
+  cursor: pointer;
 }
 .fs-record-row.is-readonly {
   background: transparent;
@@ -2464,47 +2490,6 @@ input[type="range"]::-moz-range-thumb {
   content: "(空)";
   color: var(--muted, #8a7a66);
   font-style: italic;
-}
-
-/* v32：每行右侧的箭头跳转按钮（替代点击原文描述触发） */
-.fs-rec-jump {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--border, #e2d6c4);
-  border-radius: 3px;
-  cursor: pointer;
-  padding: 0;
-  width: 28px;
-  height: 32px;
-  font-size: 14px;
-  color: var(--muted, #8a7a66);
-  transition: all 0.12s ease;
-  flex-shrink: 0;
-  align-self: start;
-}
-.fs-rec-jump:hover {
-  background: var(--accent, #785a3c);
-  color: var(--on-accent, #fff);
-  border-color: var(--accent, #785a3c);
-}
-.fs-rec-jump:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-@media (max-width: 700px) {
-  .fs-record-row {
-    grid-template-columns: 1fr 1fr;
-  }
-  .fs-rec-col-actions {
-    flex-direction: row;
-    justify-content: flex-end;
-  }
-  .fs-rec-jump {
-    align-self: center;
-  }
 }
 
 /* 编辑/查看切换按钮 */
@@ -3375,11 +3360,11 @@ input[type="range"]::-moz-range-thumb {
    ============================================ */
 .fs-grid {
   display: grid;
-  /* v31：从 3 列升到 4 列（>=1280），让"中等大小"卡片在宽屏一页能看到 8-12 个
-     —— 视需求"卡片大小适中，无需一页只显示 4 个"，方案 3 的 4 列被否了
-        （不要按状态分列），但 4 列 + 中等卡片 = 8-12 个/页刚好 */
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  /* v34：一行最多 3 个（>=1280 宽屏）—— 多出的空间平均到 item 之间的 gap（10 → 18）
+     —— 旧：4 列 (>=1280) / 3 列 (>=900) / 2 列 (>=600) / 1 列 (<600)
+     —— 新：3 列 / 3 列 / 2 列 / 1 列 */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
   padding: 12px 0;
   /* v32：高度由 .fs-page-body 撑开（grid 占 1fr 列），不再用 flex:1 */
   min-height: 0;
@@ -3505,15 +3490,34 @@ input[type="range"]::-moz-range-thumb {
   align-items: stretch;
   border: 1px solid var(--border, #e2d6c4);
   border-radius: 8px;
+  /* v34：item 背景用状态色（resolved/partial/unresolved）
+   * —— item 内部不再显示状态文字 span，背景色已表达状态
+   * —— 默认 fallback 是 card-bg 变量，万一没加状态 class 也不至于没背景 */
   background: var(--card-bg, rgba(255, 255, 255, 0.4));
   transition: box-shadow 0.12s ease, border-color 0.12s ease;
   min-width: 0;
-  /* v33：变方块——min-height 96px（保持现有宽度，竖排内容）
-   * 删除按钮 absolute 定位右上角，需要 position:relative 锚点 */
+  /* v33：变方块——min-height 96px
+   * v34：高度再翻一倍 → 192px（保持宽度，竖排内容更舒展） */
   position: relative;
-  min-height: 96px;
+  min-height: 192px;
   /* v26：整张卡片都是点击/hover 命中区 */
   cursor: pointer;
+}
+/* v34：状态色作为 item 整张背景（轻微色调，跟 card-bg 区分开但不喧宾夺主） */
+.fs-item.fs-status-unresolved {
+  background: rgba(92, 130, 178, 0.16);
+}
+.fs-item.fs-status-partial {
+  background: rgba(214, 158, 79, 0.16);
+}
+.fs-item.fs-status-resolved {
+  background: rgba(106, 158, 92, 0.16);
+}
+[data-accent="slate"] .fs-item.fs-status-unresolved {
+  background: rgba(92, 107, 122, 0.16);
+}
+[data-accent="slate"] .fs-item.fs-status-resolved {
+  background: rgba(122, 155, 126, 0.16);
 }
 .fs-item:hover {
   border-color: var(--accent, #785a3c);
@@ -3577,17 +3581,6 @@ input[type="range"]::-moz-range-thumb {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.fs-item .fs-col-status {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 10px;
-  text-align: center;
-  /* v33：column 布局——状态贴左下（margin-left:0 避免老规则） */
-  align-self: flex-start;
-}
-
 .fs-item .fs-delete {
   /* v33：absolute 定位右上角（fs-item 已 position:relative） */
   position: absolute;
