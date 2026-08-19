@@ -3350,6 +3350,119 @@ input[type="range"]::-moz-range-thumb {
 .ch2-delete:hover { color: #c0392b; }
 
 /* ============================================
+   v38：角色详情扩展（角色信息 textarea + 角色履历多 record）
+   样式参考 .fs-records-section / .fs-record-row（同样的数据形态）
+   ============================================ */
+
+/* v38：角色信息 textarea 视觉（跟 ch2-description 一致，但允许更高） */
+.editor-body textarea.ch2-info {
+  width: 100%;
+  min-height: 80px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #e2d6c4);
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--input-bg, #faf6ed);
+  color: var(--fg, #2c2418);
+  resize: vertical;
+  box-sizing: border-box;
+  line-height: 1.6;
+}
+.body-label-info {
+  margin-top: 14px !important;
+}
+
+/* v38：角色履历区（section + header + list） */
+.ch2-records-section {
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: var(--records-bg, rgba(120, 90, 60, 0.05));
+  border: 1px solid var(--border, #e2d6c4);
+  border-radius: 6px;
+}
+.ch2-records-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--accent, #785a3c);
+}
+.ch2-records-title { flex-shrink: 0; }
+.ch2-records-meta { font-size: 12px; font-weight: normal; flex: 1; }
+.ch2-records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ch2-record-row {
+  display: grid;
+  grid-template-columns: minmax(30px, 45px) 1fr;
+  gap: 10px;
+  padding: 10px 32px 10px 10px;
+  background: var(--card-bg, rgba(255, 255, 255, 0.4));
+  border: 1px solid var(--border, #e2d6c4);
+  border-radius: 4px;
+  align-items: start;
+  position: relative;
+}
+.ch2-rec-col-setup,
+.ch2-rec-col-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ch2-rec-col-setup {
+  align-self: start;
+  word-break: break-word;
+  align-items: stretch;
+}
+.ch2-rec-setup-big {
+  font-size: 13px;
+  text-align: left;
+}
+/* v38：复用 .fs-rec-underline 的下划线样式——直接共用同一个 class
+   （.fs-rec-underline 已是全局样式，ch2- 不需要再定义） */
+.ch2-rec-col-notes { width: 100%; }
+.ch2-rec-notes {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
+  min-height: 40px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ch2-rec-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: transparent;
+  border: 0;
+  color: var(--muted, #8a7a66);
+  font-size: 16px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+  padding: 0;
+}
+.ch2-record-row:hover .ch2-rec-delete,
+.ch2-rec-delete:focus-visible { opacity: 1; }
+.ch2-rec-delete:hover { color: #c0392b; background: rgba(192, 57, 43, 0.12); }
+
+
+/* ============================================
    伏笔管理 v31 — 卡片网格 + 右侧抽屉详情
    - .fs-grid: grid 容器,响应式列数（>=1280 4列,>=900 3列,>=600 2列,<600 1列）
      —— 比 v23 的 3 列布局更密，一页能多看 1-2 张卡（用户要求"大小适中，无需一页只显示4个"）

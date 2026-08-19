@@ -440,6 +440,9 @@
     // v19：角色详情页
     //  - 角色台账（手动维护：名称 / 身份 / 描述 / 首次出场章节）
     //  - 描述可填角色在文章中的相关描述 + 剧情走向
+    // v38：新增「角色信息」(info, 单 textarea) + 「角色履历」(多 record，章节号+原文描述)
+    //   - 履历存储在 state.pages.character.records[]，跟伏笔履历同样的数据形态
+    //   - 切角色时由 flushCharacterDetail 把当前 panel 的 input/textarea 写回 state
     character: {
       id: "character",
       kind: "list",
@@ -452,9 +455,21 @@
         role: ["身份", "角色", "职位", "定位"],
         description: ["描述", "人物描述", "剧情", "相关描述"],
         firstCh: ["首次出场", "出场章节", "首章"],
+        // v38：角色信息——单 textarea 字段，存放角色的设定/背景/外貌/性格等长描述
+        info: ["角色信息", "信息", "角色简介", "设定"],
+      },
+      // v38：角色履历表 recordFields（多 record 结构，章节号 + 原文描述）
+      //   - 跟伏笔履历同样的数据形态：setup(章节号) + notes(原文描述)
+      //   - 按 setup 章节号排序
+      recordFields: {
+        setup: ["提及章节", "章节号", "章节"],
+        notes: ["原文描述", "描述", "备注"],
       },
       defaults() {
-        return { name: "", role: "", description: "", firstCh: "" };
+        return { name: "", role: "", description: "", firstCh: "", info: "" };
+      },
+      recordDefaults() {
+        return { setup: "", notes: "" };
       },
       makeItem(data, sheet) {
         return {
@@ -463,8 +478,24 @@
           role: data.role || "",
           description: data.description || "",
           firstCh: String(data.firstCh ?? "").trim(),
+          // v38：角色信息字段（兼容旧数据，缺字段时默认空）
+          info: data.info || "",
           sheet,
         };
+      },
+      makeRecord(data, sheet) {
+        return {
+          id: uid("ch2r"),
+          // v38：name 字段——履历按 name 关联角色（name 是用户的核心标识，跨设备/导入时可移植）
+          name: String(data.name ?? "").trim(),
+          setup: data.setup || "",
+          notes: data.notes || "",
+          sheet,
+        };
+      },
+      recordSortKey(rec) {
+        // 角色履历按 setup 章节号排序
+        return parseChapterNo(rec.setup);
       },
       sortKey(item) {
         // 主角置顶，其余按首次出场章节号升序
@@ -485,7 +516,7 @@
               <path d="M4 21c0 -4 4 -7 8 -7s8 3 8 7" />
             </svg>
             <p>从左侧选一个角色查看，或新增一个</p>
-            <p class="hint">身份含"主角"会自动置顶；描述可写角色在小说中的相关描述 + 剧情走向</p>
+            <p class="hint">身份含"主角"会自动置顶；描述=相关描述+剧情走向；信息=角色设定/背景/外貌等；履历=按章节号记录的剧情痕迹</p>
           </div>`;
       },
     },
@@ -969,6 +1000,10 @@
             });
             it.records = recs;
           } catch (_) {}
+        } else if (state.currentPage === "character") {
+          // v38：主表字段实时写 state，这里只同步 info
+          it.info = String($("#ch2-info")?.value ?? it.info ?? "");
+          // 履历由 input 事件实时写回 state.pages.character.records，这里不重复处理
         }
       }
     } catch (_) {}
@@ -1269,6 +1304,8 @@
     // v32 兼容：v31 用 fsDrawerId 表示"右侧抽屉打开的伏笔 id"；
     //        v32 改常驻 panel 后语义一致（指向当前显示的伏笔），
     //        load() 末尾会把 fsDrawerId 迁移到 fsDetailId 并删除旧字段
+    // v38：角色履历排序（按章节号正/倒序）——独立字段，不复用 fsRecordSort
+    ch2RecordSort: "asc",
     layout: {},
     ...(data.ui || {}),
   };
@@ -1276,6 +1313,7 @@
   if (!state.ui.fsSort) state.ui.fsSort = "asc";
   if (!state.ui.fsStatusFilter) state.ui.fsStatusFilter = "all";
   if (!state.ui.fsRecordSort) state.ui.fsRecordSort = "asc";
+  if (!state.ui.ch2RecordSort) state.ui.ch2RecordSort = "asc";  // v38：角色履历排序默认值
   if (state.ui.fsDetailId === undefined) {
     // v32 兼容：v31 用 fsDrawerId 标记抽屉打开的伏笔，新版改 fsDetailId
     state.ui.fsDetailId = state.ui.fsDrawerId || null;
@@ -1302,6 +1340,10 @@
           state.pages[pid].items = [];
         if (!Array.isArray(state.pages[pid].sheets))
           state.pages[pid].sheets = [];
+        // v38：character 加 records 字段（兼容旧数据）
+        if (pid === "character" && !Array.isArray(state.pages[pid].records)) {
+          state.pages[pid].records = [];
+        }
       }
       // v23：hiddenInNav 类型的 page（lingshi/items）不参与 PAGE_IDS，但 state.pages 仍要存数据
       // ——load() 上面 1088 行的循环按 PAGE_IDS 遍历，lingshi/items 数据不会回填；
@@ -1320,6 +1362,10 @@
           state.pages[pid].items = [];
         if (!Array.isArray(state.pages[pid].sheets))
           state.pages[pid].sheets = [];
+        // v38：character records 兼容（虽然 character 不是 hiddenInNav，但保持字段统一）
+        if (pid === "character" && !Array.isArray(state.pages[pid].records)) {
+          state.pages[pid].records = [];
+        }
       }
       // 兜底：sheetsRaw 里的 sheet 必须有 page 字段（默认 chapter）
       for (const s of state.sheetsRaw) {
@@ -2657,10 +2703,7 @@
             <option value="极品灵石"></option>
           </datalist>
         </div>
-        <div class="meta-actions">
-          <button id="ls-save" class="primary-btn">保存</button>
-          <button id="ls-delete" class="danger-btn">删除</button>
-        </div>
+        <!-- v38：删 meta-actions 区里的"保存"+"删除"按钮——input 实时写 state + 列表行× 删条目 -->
       </div>
       <div class="editor-body">
         <label class="body-label">原文描述</label>
@@ -2717,22 +2760,7 @@
     const wc = $("#ls-word-count");
     if (wc) wc.textContent = `${charCount(it.description)} 字`;
 
-    // 保存按钮
-    const saveBtn = $("#ls-save");
-    if (saveBtn) {
-      saveBtn.addEventListener("click", () => {
-        save();
-        pushHistory();
-        saveAsJson();
-        toast("已保存");
-      });
-    }
-    const delBtn = $("#ls-delete");
-    if (delBtn) {
-      delBtn.addEventListener("click", () => {
-        deleteItemFromPage("lingshi", it.id);
-      });
-    }
+    // v38：删 ls-save / ls-delete 按钮监听——input 实时写 state + 列表行× 删条目
   }
 
   // —— 物品台账 ——
@@ -2824,10 +2852,7 @@
             <option value="出售" ${it.status === "出售" ? "selected" : ""}>出售</option>
           </select>
         </div>
-        <div class="meta-actions">
-          <button id="it-save" class="primary-btn">保存</button>
-          <button id="it-delete" class="danger-btn">删除</button>
-        </div>
+        <!-- v38：删 meta-actions 区里的"保存"+"删除"按钮——input 实时写 state + 列表行× 删条目 -->
       </div>
       <div class="editor-body">
         <label class="body-label">原文描述</label>
@@ -2885,22 +2910,7 @@
     const wc = $("#it-word-count");
     if (wc) wc.textContent = `${charCount(it.description)} 字`;
 
-    // 保存按钮
-    const saveBtn = $("#it-save");
-    if (saveBtn) {
-      saveBtn.addEventListener("click", () => {
-        save();
-        pushHistory();
-        saveAsJson();
-        toast("已保存");
-      });
-    }
-    const delBtn = $("#it-delete");
-    if (delBtn) {
-      delBtn.addEventListener("click", () => {
-        deleteItemFromPage("items", it.id);
-      });
-    }
+    // v38：删 it-save / it-delete 按钮监听——input 实时写 state + 列表行× 删条目
   }
 
   // v24：物品未使用 top5 — 同一物品 name 分组取最新一条，
@@ -3091,6 +3101,9 @@
     }
     empty.hidden = true;
     editor.hidden = false;
+    // v38：角色履历（多 record，章节号+原文描述，跟伏笔履历同构）
+    const recordsHtml = renderCharacterRecordRows(it.id);
+    const recCount = getCharacterRecordsByName(it).length;
     editor.innerHTML = `
       <div class="editor-meta">
         <div class="meta-field">
@@ -3113,14 +3126,27 @@
           <label>首次出场</label>
           <input id="ch2-firstCh" type="text" value="${escapeHtml(it.firstCh || "")}" placeholder="如：第3章" />
         </div>
-        <div class="meta-actions">
-          <button id="ch2-save" class="primary-btn">保存</button>
-          <button id="ch2-delete" class="danger-btn">删除</button>
-        </div>
+        <!-- v38：删 meta-actions 区里的"保存"+"删除"按钮——input 实时写 state + 列表行× 删条目，
+             editor 内不再需要这两个按钮 -->
       </div>
       <div class="editor-body">
         <label class="body-label">描述 / 剧情走向</label>
         <textarea id="ch2-description" placeholder="角色在文章中的相关描述、剧情走向、关键事件…">${escapeHtml(it.description || "")}</textarea>
+        <!-- v38：新增「角色信息」textarea——meta 区下方、履历上方，默认空 -->
+        <label class="body-label body-label-info">角色信息 <span class="muted hint">（设定/背景/外貌/性格等）</span></label>
+        <textarea id="ch2-info" class="ch2-info" placeholder="角色的设定、背景、性格、外貌、能力、关系网络等长描述…">${escapeHtml(it.info || "")}</textarea>
+        <!-- v38：新增「角色履历」区——多条 record，每行 = 章节号 + 原文描述 + 删除按钮 -->
+        <div class="ch2-records-section">
+          <div class="ch2-records-header">
+            <span class="ch2-records-title">📋 角色履历</span>
+            <span class="ch2-records-meta muted">${recCount} 条 · 按章节号</span>
+            <button id="btn-ch2-record-sort" class="link-btn" title="切换正/倒序（按章节号）">${state.ui.ch2RecordSort === "desc" ? "倒序" : "正序"}</button>
+            <button id="btn-ch2-add-record" class="link-btn">+ 新增履历</button>
+          </div>
+          <div class="ch2-records-list" id="ch2-records-list">
+            ${recordsHtml || `<div class="ch2-records-empty muted">还没有履历，点上方「+ 新增履历」添加</div>`}
+          </div>
+        </div>
         <div class="body-stats">
           <div class="stats-left">
             <span id="ch2-word-count" class="muted">0 字</span>
@@ -3133,6 +3159,9 @@
     updateFilePathDisplay();
   }
 
+  // v38：删 ch2-save/ch2-delete 按钮监听——input 实时写 state + 列表行 × 删条目
+  //   + 加 ch2-info input 监听（角色信息实时写 state）
+  //   + 加角色履历 input 监听 + 新增/删除/排序按钮 + 行内删除
   function bindCharacterEditorEvents() {
     const it = curItem();
     if (!it) return;
@@ -3148,6 +3177,7 @@
           const wc = $("#ch2-word-count");
           if (wc) wc.textContent = `${charCount(it.description)} 字`;
         }
+        // v38：ch2-info 实时写 state（不刷列表，只存）
         save();
       });
     };
@@ -3155,27 +3185,143 @@
     wire("ch2-role", "role");
     wire("ch2-firstCh", "firstCh");
     wire("ch2-description", "description");
+    wire("ch2-info", "info");
 
     const wc = $("#ch2-word-count");
     if (wc) wc.textContent = `${charCount(it.description)} 字`;
 
-    const saveBtn = $("#ch2-save");
-    if (saveBtn) {
-      saveBtn.addEventListener("click", () => {
-        save();
-        pushHistory();
-        saveAsJson();
-        toast("已保存");
-      });
-    }
-    const delBtn = $("#ch2-delete");
-    if (delBtn) {
-      delBtn.addEventListener("click", () => {
-        if (confirm(`确定要删除角色「${it.name || "该角色"}」吗？`)) {
-          deleteCurrentItem();
+    // v38：履历排序（按章节号正/倒序切换）
+    $("#btn-ch2-record-sort")?.addEventListener("click", () => {
+      state.ui.ch2RecordSort = state.ui.ch2RecordSort === "asc" ? "desc" : "asc";
+      save();
+      renderCharacterEditor();
+    });
+    // v38：新增履历
+    $("#btn-ch2-add-record")?.addEventListener("click", () => {
+      if (!Array.isArray(state.pages.character.records)) {
+        state.pages.character.records = [];
+      }
+      const newRec = PAGES.character.makeRecord(
+        { name: it.name || "", setup: "", notes: "" },
+        it.sheet
+      );
+      state.pages.character.records.push(newRec);
+      renderCharacterEditor();
+      // 聚焦到新行的 setup 输入
+      setTimeout(() => {
+        const row = document.querySelector(
+          `.ch2-record-row[data-record-id="${CSS.escape(newRec.id)}"]`
+        );
+        const input = row?.querySelector(".ch2-rec-setup");
+        if (input) input.focus();
+      }, 30);
+    });
+    // v38：履历编辑（事件委托：input/textarea input 时写回 state）
+    const list = $("#ch2-records-list");
+    list?.addEventListener("input", (e) => {
+      const target = e.target;
+      if (!target) return;
+      const field = target.dataset?.field;
+      const row = target.closest(".ch2-record-row");
+      const recId = row?.dataset?.recordId;
+      if (!field || !recId) return;
+      const rec = (state.pages.character.records || []).find(
+        (r) => r.id === recId
+      );
+      if (rec) {
+        rec[field] = target.value;
+        debouncedPushHistory();
+        if (field === "notes") {
+          autoResizeTextarea(target);
         }
-      });
+      }
+    });
+    // v38：删除履历（点击每行 × 按钮）
+    list?.addEventListener("click", (e) => {
+      const btn = e.target.closest(".ch2-rec-delete");
+      if (!btn) return;
+      const recId = btn.dataset?.recordId;
+      if (!recId) return;
+      const idx = (state.pages.character.records || []).findIndex(
+        (r) => r.id === recId
+      );
+      if (idx < 0) return;
+      state.pages.character.records.splice(idx, 1);
+      save();
+      pushHistory();
+      renderCharacterEditor();
+    });
+  }
+
+  // v38：渲染角色履历行 HTML（章节号 + 原文描述 + 删除按钮）
+  function renderCharacterRecordRows(itemId) {
+    const item = state.pages.character.items.find((x) => x.id === itemId);
+    if (!item) return "";
+    const records = getCharacterRecordsByName(item);
+    if (records.length === 0) return "";
+    return records
+      .map((r) => {
+        const setupParsed = parseChapterNo(r.setup || "");
+        const setupNum = setupParsed.hasNum && Number.isFinite(setupParsed.num)
+          ? String(setupParsed.num)
+          : "";
+        return `
+          <div class="ch2-record-row" data-record-id="${escapeHtml(r.id)}">
+            <div class="ch2-rec-col-setup">
+              <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="章节号" class="ch2-rec-setup-big ch2-rec-underline" />
+            </div>
+            <div class="ch2-rec-col-notes">
+              <textarea data-field="notes" rows="1" placeholder="原文描述" class="ch2-rec-underline ch2-rec-notes-autogrow">${escapeHtml(r.notes || "")}</textarea>
+            </div>
+            <button class="ch2-rec-delete" data-record-id="${escapeHtml(r.id)}" title="删除该履历" aria-label="删除该履历" type="button">×</button>
+          </div>`;
+      })
+      .join("");
+  }
+
+  // v38：取当前角色的所有履历（按 setup 章节号排序，方向取 state.ui.ch2RecordSort）
+  function getCharacterRecordsByName(item) {
+    if (!item) return [];
+    const name = String(item.name || "").trim();
+    const p = state.pages.character;
+    if (!Array.isArray(p.records)) p.records = [];
+    // 履历按 name 关联（不按 id，删除角色后履历仍可保留）
+    const list = p.records.filter(
+      (r) => String(r.name || "").trim() === name
+    );
+    const dir = state.ui.ch2RecordSort === "desc" ? "desc" : "asc";
+    list.sort((a, b) => {
+      const ka = PAGES.character.recordSortKey(a);
+      const kb = PAGES.character.recordSortKey(b);
+      const cmp = compareChapterNo(ka, kb);
+      return dir === "asc" ? cmp : -cmp;
+    });
+    return list;
+  }
+
+  // v38：切角色时从 DOM 抓 records / info 写回 state（参考 v32 flushFsDetail）
+  function flushCharacterDetail() {
+    const it = curItem();
+    if (!it) return;
+    if (!Array.isArray(state.pages.character.records)) {
+      state.pages.character.records = [];
     }
+    // ch2-info
+    const chInfo = $("#ch2-info");
+    if (chInfo) it.info = chInfo.value ?? "";
+    // 履历：遍历所有 ch2-record-row 抓 setup/notes
+    const rows = document.querySelectorAll("#ch2-records-list .ch2-record-row");
+    const records = state.pages.character.records;
+    rows.forEach((row) => {
+      const recId = row.dataset.recordId;
+      if (!recId) return;
+      const rec = records.find((r) => r.id === recId);
+      if (!rec) return;
+      const setup = row.querySelector('input[data-field="setup"]');
+      const notes = row.querySelector('textarea[data-field="notes"]');
+      if (setup) rec.setup = setup.value;
+      if (notes) rec.notes = notes.value;
+    });
   }
 
   // v14：获取当前伏笔的所有履历（按"提及章节"排序）
@@ -4553,6 +4699,12 @@
       // v36：简介字段
       it.intro = String($("#fs-intro")?.value ?? it.intro ?? "").trim();
       // 履历编辑在 input 事件里已经实时写回 records，这里不再处理
+    } else if (state.currentPage === "character") {
+      // v38：主表字段（name/role/firstCh/description）实时写 state 已经在 input 事件里处理
+      // 这里调 flushCharacterDetail 抓 info + records（切 tab / 切 sheet 等场景兜底用）
+      //  - input 事件里 records 已经实时写回 state.pages.character.records
+      //  - 切 tab 时 saveCurrentItem 走这条路径，确保 records 不丢
+      try { flushCharacterDetail(); } catch (_) {}
     }
     save();
     // 显式保存：取消任何在等的 debounce 入栈，立即入栈
@@ -6153,7 +6305,14 @@
       if (!item) return;
       if (curPage().currentItemId === item.dataset.id) return;
       if (state.currentPage === "chapter" || state.currentPage === "character") {
-        try { saveCurrentItem(); } catch (_) {}
+        // v38：character 也走 flushCharacterDetail 写回 info + records
+        //  - 章节页走 saveCurrentItem（独立 textarea，无 records）
+        //  - 角色页走 flushCharacterDetail（editor 内有 info + records 履历区）
+        if (state.currentPage === "character") {
+          try { flushCharacterDetail(); } catch (_) {}
+        } else {
+          try { saveCurrentItem(); } catch (_) {}
+        }
       } else if (state.currentPage === "foreshadowing") {
         // v32：常驻 panel 总是可编辑——切伏笔时直接 flushFsDetail 把当前 panel 的内容写回 state
         try { flushFsDetail(); } catch (_) {}

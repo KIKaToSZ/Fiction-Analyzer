@@ -4397,6 +4397,159 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v37 改动:", t37All ? "PASS" : "FAIL");
   if (!t37All) allPass = false;
 
+  // ============================================================
+  // v38 改动测试
+  //   需求 1：删除角色详情 / 物品详情 / 灵石详情 的「保存」「删除」按钮
+  //   需求 2：角色详情加「角色信息」(info, 单 textarea)
+  //   需求 3：角色详情加「角色履历」(多 record，章节号+原文描述，像伏笔履历)
+  // ============================================================
+  console.log("\n--- v38 改动测试 ---");
+
+  // 38.1 PAGES.character.fields 加 info 字段
+  const charFieldsInfo = /character:\s*\{[\s\S]{0,2000}info:\s*\[\s*"角色信息"[\s\S]{0,200}\]/.test(appText);
+  console.log(`  PAGES.character.fields 加 info 字段: ${charFieldsInfo ? "✓" : "✗"}`);
+  if (!charFieldsInfo) allPass = false;
+
+  // 38.2 PAGES.character 加 recordFields（章节号+原文描述）
+  const charRecordFields = /character:\s*\{[\s\S]{0,2500}recordFields:\s*\{[\s\S]{0,500}setup:\s*\[\s*"提及章节"[\s\S]{0,200}\][\s\S]{0,200}notes:\s*\[\s*"原文描述"[\s\S]{0,200}\]/.test(appText);
+  console.log(`  PAGES.character 加 recordFields (setup + notes): ${charRecordFields ? "✓" : "✗"}`);
+  if (!charRecordFields) allPass = false;
+
+  // 38.3 PAGES.character.defaults 加 info 字段
+  const charDefaultsInfo = /character:\s*\{[\s\S]{0,2500}defaults\(\)\s*\{[\s\S]{0,500}info:\s*""/.test(appText);
+  console.log(`  PAGES.character.defaults() 加 info 字段: ${charDefaultsInfo ? "✓" : "✗"}`);
+  if (!charDefaultsInfo) allPass = false;
+
+  // 38.4 PAGES.character.makeItem 加 info 字段
+  const charMakeItemInfo = /character:\s*\{[\s\S]{0,3000}makeItem\(data,\s*sheet\)[\s\S]{0,800}info:\s*data\.info\s*\|\|\s*""/.test(appText);
+  console.log(`  PAGES.character.makeItem 加 info 字段（兼容旧数据）: ${charMakeItemInfo ? "✓" : "✗"}`);
+  if (!charMakeItemInfo) allPass = false;
+
+  // 38.5 PAGES.character 加 makeRecord（带 name 字段做关联）
+  const charMakeRecord = /character:\s*\{[\s\S]{0,3500}makeRecord\(data,\s*sheet\)\s*\{[\s\S]{0,500}name:\s*String\(data\.name[\s\S]{0,200}setup:\s*data\.setup[\s\S]{0,200}notes:\s*data\.notes/.test(appText);
+  console.log(`  PAGES.character.makeRecord 存 name/setup/notes: ${charMakeRecord ? "✓" : "✗"}`);
+  if (!charMakeRecord) allPass = false;
+
+  // 38.6 PAGES.character.recordSortKey 按 setup 章节号排序
+  const charRecordSortKey = /character:\s*\{[\s\S]{0,4000}recordSortKey\(rec\)[\s\S]{0,300}parseChapterNo\(rec\.setup\)/.test(appText);
+  console.log(`  PAGES.character.recordSortKey 按 setup 章节号排序: ${charRecordSortKey ? "✓" : "✗"}`);
+  if (!charRecordSortKey) allPass = false;
+
+  // 38.7 renderCharacterEditor 删 ch2-save / ch2-delete 按钮
+  const noCh2SaveBtn = !/id="ch2-save"/.test(appText);
+  const noCh2DeleteBtn = !/id="ch2-delete"/.test(appText);
+  console.log(`  renderCharacterEditor 删 ch2-save 按钮: ${noCh2SaveBtn ? "✓" : "✗"}`);
+  console.log(`  renderCharacterEditor 删 ch2-delete 按钮: ${noCh2DeleteBtn ? "✓" : "✗"}`);
+  if (!noCh2SaveBtn || !noCh2DeleteBtn) allPass = false;
+
+  // 38.8 renderCharacterEditor 加 ch2-info textarea
+  const ch2InfoTextarea = /<textarea\s+id="ch2-info"\s+class="ch2-info"/.test(appText);
+  console.log(`  renderCharacterEditor 加 ch2-info textarea: ${ch2InfoTextarea ? "✓" : "✗"}`);
+  if (!ch2InfoTextarea) allPass = false;
+
+  // 38.9 renderCharacterEditor 加 ch2-records-section
+  const ch2RecordsSection = /<div class="ch2-records-section">[\s\S]{0,1000}id="ch2-records-list"/.test(appText);
+  console.log(`  renderCharacterEditor 加 ch2-records-section + ch2-records-list: ${ch2RecordsSection ? "✓" : "✗"}`);
+  if (!ch2RecordsSection) allPass = false;
+
+  // 38.10 renderCharacterRecordRows 函数存在
+  const renderCharRecRows = /function\s+renderCharacterRecordRows\(itemId\)[\s\S]{0,1000}ch2-record-row[\s\S]{0,500}ch2-rec-col-setup[\s\S]{0,500}ch2-rec-col-notes[\s\S]{0,500}ch2-rec-delete/.test(appText);
+  console.log(`  renderCharacterRecordRows 函数存在 + 三列结构: ${renderCharRecRows ? "✓" : "✗"}`);
+  if (!renderCharRecRows) allPass = false;
+
+  // 38.11 getCharacterRecordsByName 按 name 关联 + 按 setup 排序
+  const getCharRecByName = /function\s+getCharacterRecordsByName\(item\)[\s\S]{0,800}String\(item\.name[\s\S]{0,500}recordSortKey/.test(appText);
+  console.log(`  getCharacterRecordsByName 按 name 关联 + recordSortKey 排序: ${getCharRecByName ? "✓" : "✗"}`);
+  if (!getCharRecByName) allPass = false;
+
+  // 38.12 flushCharacterDetail 函数存在（切角色时写回 state）
+  const flushCharDetail = /function\s+flushCharacterDetail\(\)[\s\S]{0,500}#ch2-info[\s\S]{0,500}ch2-record-row[\s\S]{0,500}state\.pages\.character\.records/.test(appText);
+  console.log(`  flushCharacterDetail 函数存在（抓 ch2-info + ch2-records-list）: ${flushCharDetail ? "✓" : "✗"}`);
+  if (!flushCharDetail) allPass = false;
+
+  // 38.13 bindCharacterEditorEvents 加 btn-ch2-add-record / btn-ch2-record-sort 监听
+  const bindCh2AddRecord = /btn-ch2-add-record[\s\S]{0,500}makeRecord/.test(appText);
+  const bindCh2RecordSort = /btn-ch2-record-sort[\s\S]{0,500}ch2RecordSort/.test(appText);
+  console.log(`  bindCharacterEditorEvents: btn-ch2-add-record 监听: ${bindCh2AddRecord ? "✓" : "✗"}`);
+  console.log(`  bindCharacterEditorEvents: btn-ch2-record-sort 监听: ${bindCh2RecordSort ? "✓" : "✗"}`);
+  if (!bindCh2AddRecord || !bindCh2RecordSort) allPass = false;
+
+  // 38.14 saveCurrentItem / runAutosaveOnce 加 character 分支写 info
+  const saveCurCharBranch = /else\s+if\s+\(state\.currentPage\s*===\s*"character"\)[\s\S]{0,500}it\.info\s*=\s*String\(\s*\$\("#ch2-info"\)/.test(appText);
+  const runAutoCharBranch = /else\s+if\s+\(state\.currentPage\s*===\s*"character"\)[\s\S]{0,500}it\.info\s*=\s*String\(\s*\$\("#ch2-info"\)[\s\S]{0,500}character\.records/.test(appText);
+  // 注：runAutosaveOnce 的 character 分支比较短（只有 it.info 同步），因为 records 在 input 事件已经写
+  const runAutoCharSimple = /else\s+if\s+\(state\.currentPage\s*===\s*"character"\)[\s\S]{0,300}it\.info/.test(appText);
+  console.log(`  saveCurrentItem 加 character 分支: ${saveCurCharBranch ? "✓" : "✗"}`);
+  console.log(`  runAutosaveOnce 加 character 分支: ${runAutoCharSimple ? "✓" : "✗"}`);
+  if (!saveCurCharBranch || !runAutoCharSimple) allPass = false;
+
+  // 38.15 切角色时 onMainClick 调 flushCharacterDetail
+  const onMainFlushChar = /onMainClick[\s\S]{0,1500}state\.currentPage\s*===\s*"character"\)[\s\S]{0,200}flushCharacterDetail/.test(appText);
+  console.log(`  onMainClick 切角色时调 flushCharacterDetail: ${onMainFlushChar ? "✓" : "✗"}`);
+  if (!onMainFlushChar) allPass = false;
+
+  // 38.16 删 ls-save / ls-delete 按钮
+  const noLsSaveBtn = !/id="ls-save"/.test(appText);
+  const noLsDeleteBtn = !/id="ls-delete"/.test(appText);
+  console.log(`  灵石详情删 ls-save 按钮: ${noLsSaveBtn ? "✓" : "✗"}`);
+  console.log(`  灵石详情删 ls-delete 按钮: ${noLsDeleteBtn ? "✓" : "✗"}`);
+  if (!noLsSaveBtn || !noLsDeleteBtn) allPass = false;
+
+  // 38.17 删 it-save / it-delete 按钮
+  const noItSaveBtn = !/id="it-save"/.test(appText);
+  const noItDeleteBtn = !/id="it-delete"/.test(appText);
+  console.log(`  物品详情删 it-save 按钮: ${noItSaveBtn ? "✓" : "✗"}`);
+  console.log(`  物品详情删 it-delete 按钮: ${noItDeleteBtn ? "✓" : "✗"}`);
+  if (!noItSaveBtn || !noItDeleteBtn) allPass = false;
+
+  // 38.18 state.ui 加 ch2RecordSort
+  const uiCh2RecordSort = /state\.ui\s*=\s*\{[\s\S]{0,500}ch2RecordSort:\s*"asc"/.test(appText);
+  console.log(`  state.ui 加 ch2RecordSort 字段: ${uiCh2RecordSort ? "✓" : "✗"}`);
+  if (!uiCh2RecordSort) allPass = false;
+
+  // 38.19 load() 兜底 state.pages.character.records 为 []
+  const loadCharRecords = /if\s*\(pid\s*===\s*"character"\s*&&\s*!Array\.isArray\(state\.pages\[pid\]\.records\)\)/.test(appText);
+  console.log(`  load() 兜底 character.records = []: ${loadCharRecords ? "✓" : "✗"}`);
+  if (!loadCharRecords) allPass = false;
+
+  // 38.20 CSS .ch2-info textarea 样式
+  const cssCh2Info = /\.editor-body\s+textarea\.ch2-info\s*\{[^}]*min-height:\s*80px/.test(cssText);
+  console.log(`  CSS .editor-body textarea.ch2-info 样式 (min-height 80px): ${cssCh2Info ? "✓" : "✗"}`);
+  if (!cssCh2Info) allPass = false;
+
+  // 38.21 CSS .ch2-record-row + .ch2-rec-delete 样式
+  const cssCh2RecordRow = /\.ch2-record-row\s*\{[^}]*grid-template-columns:\s*minmax\(30px,\s*45px\)\s+1fr/.test(cssText);
+  const cssCh2RecDelete = /\.ch2-rec-delete\s*\{[^}]*position:\s*absolute[\s\S]{0,500}top:\s*4px[\s\S]{0,200}right:\s*4px/.test(cssText);
+  console.log(`  CSS .ch2-record-row 2 列布局 (30-45px + 1fr): ${cssCh2RecordRow ? "✓" : "✗"}`);
+  console.log(`  CSS .ch2-rec-delete absolute 右上角: ${cssCh2RecDelete ? "✓" : "✗"}`);
+  if (!cssCh2RecordRow || !cssCh2RecDelete) allPass = false;
+
+  // 38.22 index.html character 页面（无 id 改动，但确保 import 按钮已转移到 foreshadowing）
+  // v11 已经把 import 按钮转移到 foreshadowing 页，所以 character 页不该有 #btn-import
+  const noCharImport = !/data-page-view="character"[\s\S]{0,5000}id="btn-import"/.test(htmlText);
+  console.log(`  index.html: character 页无 import 按钮（已移走）: ${noCharImport ? "✓" : "✗"}`);
+  if (!noCharImport) allPass = false;
+
+  // 38.23 PAGES.character 加 v38 注释
+  const charV38Comment = /character:\s*\{[\s\S]{0,500}v38[\s\S]{0,500}角色信息[\s\S]{0,500}角色履历/.test(appText);
+  console.log(`  PAGES.character 顶部加 v38 注释: ${charV38Comment ? "✓" : "✗"}`);
+  if (!charV38Comment) allPass = false;
+
+  const t38All = charFieldsInfo && charRecordFields && charDefaultsInfo && charMakeItemInfo
+    && charMakeRecord && charRecordSortKey
+    && noCh2SaveBtn && noCh2DeleteBtn
+    && ch2InfoTextarea && ch2RecordsSection
+    && renderCharRecRows && getCharRecByName && flushCharDetail
+    && bindCh2AddRecord && bindCh2RecordSort
+    && saveCurCharBranch && runAutoCharSimple
+    && onMainFlushChar
+    && noLsSaveBtn && noLsDeleteBtn && noItSaveBtn && noItDeleteBtn
+    && uiCh2RecordSort && loadCharRecords
+    && cssCh2Info && cssCh2RecordRow && cssCh2RecDelete
+    && noCharImport && charV38Comment;
+  console.log("  v38 改动:", t38All ? "PASS" : "FAIL");
+  if (!t38All) allPass = false;
+
   allPass = true;
 
 
