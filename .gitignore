@@ -1,0 +1,3 @@
+# Verify scripts (puppeteer headless) — local only
+verify-*.js
+v*-verify.png

@@ -4550,6 +4550,81 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v38 改动:", t38All ? "PASS" : "FAIL");
   if (!t38All) allPass = false;
 
+  // ============================================================
+  // v38-UI 改动测试（伏笔管理 UI 调整）
+  //   需求 1：4 个筛选 tab 高度一致 = 最长 tab（"部分回收"4 字）+ padding
+  //   需求 2：名称字号增大一倍（13px → 26px），编号往右下挪 22px，简介往上挪 26px、左对齐
+  //   需求 3：伏笔列表左右加 padding
+  // ============================================================
+  console.log("\n--- v38-UI 改动测试（伏笔管理 UI）---");
+
+  // 38-UI.1 fs-filter-btn flex 改 0 0 + 显式 height 94px（最长 tab + padding）
+  const fsFilterBtnHeight = /\.fs-status-filter\s+\.fs-filter-btn\s*\{[\s\S]{0,400}flex:\s*0\s+0\s+94px[\s\S]{0,200}height:\s*94px/.test(cssText);
+  console.log(`  .fs-filter-btn flex 0 0 94px + height 94px: ${fsFilterBtnHeight ? "✓" : "✗"}`);
+  if (!fsFilterBtnHeight) allPass = false;
+
+  // 38-UI.2 .fs-col-name 字号 26px
+  const nameFontSize26 = /\.fs-item\s+\.fs-col-name\s*\{[\s\S]{0,500}font-size:\s*26px/.test(cssText);
+  console.log(`  .fs-col-name font-size 26px: ${nameFontSize26 ? "✓" : "✗"}`);
+  if (!nameFontSize26) allPass = false;
+
+  // 38-UI.3 .fs-col-name padding-left 22px（与编号、简介对齐）
+  const namePaddingLeft = /\.fs-item\s+\.fs-col-name\s*\{[\s\S]{0,500}padding-left:\s*22px/.test(cssText);
+  console.log(`  .fs-col-name padding-left 22px: ${namePaddingLeft ? "✓" : "✗"}`);
+  if (!namePaddingLeft) allPass = false;
+
+  // 38-UI.4 .fs-col-fsno margin-top 22px（往下挪动一个伏笔编号高度）
+  const fsnoMarginTop = /\.fs-item\s+\.fs-col-fsno\s*\{[\s\S]{0,600}margin-top:\s*22px/.test(cssText);
+  console.log(`  .fs-col-fsno margin-top 22px: ${fsnoMarginTop ? "✓" : "✗"}`);
+  if (!fsnoMarginTop) allPass = false;
+
+  // 38-UI.5 .fs-col-fsno margin-left 22px（往右挪动一个伏笔编号高度 = 右下方向）
+  const fsnoMarginLeft = /\.fs-item\s+\.fs-col-fsno\s*\{[\s\S]{0,600}margin-left:\s*22px/.test(cssText);
+  console.log(`  .fs-col-fsno margin-left 22px: ${fsnoMarginLeft ? "✓" : "✗"}`);
+  if (!fsnoMarginLeft) allPass = false;
+
+  // 38-UI.6 .fs-col-intro margin-top -26px（往上挪动当前控件高度 = 名称当前字号 26px）
+  const introMarginTop = /\.fs-item\s+\.fs-col-intro\s*\{[\s\S]{0,500}margin-top:\s*-26px/.test(cssText);
+  console.log(`  .fs-col-intro margin-top -26px: ${introMarginTop ? "✓" : "✗"}`);
+  if (!introMarginTop) allPass = false;
+
+  // 38-UI.7 .fs-col-intro padding-left 22px（左侧与名称对齐）
+  const introPaddingLeft = /\.fs-item\s+\.fs-col-intro\s*\{[\s\S]{0,500}padding-left:\s*22px/.test(cssText);
+  console.log(`  .fs-col-intro padding-left 22px: ${introPaddingLeft ? "✓" : "✗"}`);
+  if (!introPaddingLeft) allPass = false;
+
+  // 38-UI.8 .fs-grid padding 左右 14px（之前是 padding: 12px 0）
+  const gridPadding = /\.fs-grid\s*\{[\s\S]{0,500}padding:\s*12px\s+14px/.test(cssText);
+  console.log(`  .fs-grid padding 12px 14px: ${gridPadding ? "✓" : "✗"}`);
+  if (!gridPadding) allPass = false;
+
+  // 38-UI.9 .fs-page-body .fs-grid 不再覆盖 padding-right 为 0
+  // 先去掉 css 注释再匹配（避免注释里写"padding-right: 0"误判）
+  const cssNoComments = cssText.replace(/\/\*[\s\S]*?\*\//g, "");
+  const noOverrideMatch = cssNoComments.match(/\.fs-page-body\s+\.fs-grid\s*\{([^}]*)\}/);
+  const noOverride = noOverrideMatch ? !/padding-right:\s*0\b/.test(noOverrideMatch[1]) : true;
+  console.log(`  .fs-page-body .fs-grid 不再 padding-right: 0: ${noOverride ? "✓" : "✗"}`);
+  if (!noOverride) allPass = false;
+
+  // 38-UI.10 .fs-delete 改到右下角（编号往右上挪后错开）
+  const deleteBottom = /\.fs-item\s+\.fs-delete\s*\{[\s\S]{0,500}bottom:\s*4px[\s\S]{0,200}right:\s*4px/.test(cssText);
+  console.log(`  .fs-delete 改到右下角 (bottom:4px right:4px): ${deleteBottom ? "✓" : "✗"}`);
+  if (!deleteBottom) allPass = false;
+
+  // 38-UI.11 verify-v38.js puppeteer 验证脚本存在
+  const verifyV38Exists = fs.existsSync(path.join(__dirname, "verify-v38.js"));
+  console.log(`  verify-v38.js 验证脚本: ${verifyV38Exists ? "✓" : "✗"}`);
+  if (!verifyV38Exists) allPass = false;
+
+  const t38UIAll = fsFilterBtnHeight
+    && nameFontSize26 && namePaddingLeft
+    && fsnoMarginTop && fsnoMarginLeft
+    && introMarginTop && introPaddingLeft
+    && gridPadding && noOverride
+    && deleteBottom && verifyV38Exists;
+  console.log("  v38-UI 改动:", t38UIAll ? "PASS" : "FAIL");
+  if (!t38UIAll) allPass = false;
+
   allPass = true;
 
 

@@ -3473,10 +3473,11 @@ input[type="range"]::-moz-range-thumb {
 .fs-grid {
   display: grid;
   /* v34：一行最多 3 个（>=1280 宽屏）—— 多出的空间平均到 item 之间的 gap（10 → 18）
-   * v35：item 间距再增大一半（18 → 27）——用户要求"item 之间的间距增大一半" */
+   * v35：item 间距再增大一半（18 → 27）——用户要求"item 之间的间距增大一半"
+   * v38：左右加 14px padding——之前 padding: 12px 0 贴住两边，现在加 padding 让 item 不贴边 */
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 27px;
-  padding: 12px 0;
+  padding: 12px 14px;
   /* v32：高度由 .fs-page-body 撑开（grid 占 1fr 列），不再用 flex:1 */
   min-height: 0;
   overflow-y: auto;
@@ -3489,9 +3490,11 @@ input[type="range"]::-moz-range-thumb {
   scrollbar-color: var(--border, #e2d6c4) transparent;
   height: 100%;
 }
-/* v31：抽屉打开时给 grid 留出抽屉宽度的右侧空间（避免内容被挡） */
+/* v31：抽屉打开时给 grid 留出抽屉宽度的右侧空间（避免内容被挡）
+ * v38：左右都有 padding（之前是 padding: 12px 0，v38 改成 padding: 12px 14px）—— 不需要再把 padding-right 设为 0 */
 .fs-page-body .fs-grid {
-  padding-right: 0;
+  /* v38 注释：之前这里写 padding-right: 0 抵消 .fs-grid 自己的 padding-right 让 grid 贴边，
+   * 现在 .fs-grid 自身 padding-right: 14px 正是用户要的"左右 padding"——不再覆盖 */
 }
 .fs-grid::-webkit-scrollbar { width: 8px; }
 .fs-grid::-webkit-scrollbar-thumb { background: var(--border, #e2d6c4); border-radius: 4px; }
@@ -3610,8 +3613,13 @@ input[type="range"]::-moz-range-thumb {
    * 改 start 后 filter 用自然高度，grid/panel/resizer 仍 stretch 到 row 高度 = fs-page-body 高度 */
 }
 .fs-status-filter .fs-filter-btn {
-  flex: 1 1 auto;
-  min-height: 0;
+  /* v38：高度 = 最长 tab（"部分回收"4 字）的高度 + padding，4 个 tab 固定等高
+   * - 12px 字号 × 1.5 行高 × 4 字 = 72px 文字高度
+   * - padding 8px × 2 = 16px
+   * - 合计 88px，额外 +6px = 94px（让文字上下不贴边） */
+  flex: 0 0 94px;
+  height: 94px;
+  box-sizing: border-box;
   border: none;
   border-radius: 0;
   border-bottom: 1px solid var(--border, #e2d6c4);
@@ -3732,7 +3740,9 @@ input[type="range"]::-moz-range-thumb {
 .fs-item .fs-col-fsno {
   /* v33：column 布局——编号在顶部，宽度由内容决定（去掉固定 60px）
    * v36：父级 font-size 保持 11px，但内部 .fs-fsno-num 用 22px（数字部分放大 2 倍）
-   *      .fs-fsno-text 用 11px（文字部分保持 1 倍 = 不变） */
+   *      .fs-fsno-text 用 11px（文字部分保持 1 倍 = 不变）
+   * v38：往右下挪动「伏笔编号的高度」（22px）——给编号让出位置，配合名称放大后的视觉重心
+   *      用 margin-top + margin-left 各 22px = 一格伏笔编号高度 */
   flex-shrink: 0;
   font-size: 11px;
   color: var(--accent, #785a3c);
@@ -3743,6 +3753,8 @@ input[type="range"]::-moz-range-thumb {
   display: inline-flex;
   align-items: baseline;
   gap: 1px;
+  margin-top: 22px;
+  margin-left: 22px;
 }
 /* v36：数字部分放大 2 倍（11px → 22px） */
 .fs-item .fs-fsno-num {
@@ -3761,25 +3773,29 @@ input[type="range"]::-moz-range-thumb {
   font-weight: 500;
 }
 .fs-item .fs-col-name {
-  /* v33：column 布局——名称占满宽度，2 行截断 + 左对齐 */
+  /* v33：column 布局——名称占满宽度，2 行截断 + 左对齐
+   * v38：名称字号增大一倍（13px → 26px） */
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
-  font-size: 13px;
+  font-size: 26px;
   font-weight: 500;
   text-align: left;
-  line-height: 1.35;
+  line-height: 1.2;
   white-space: normal;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  padding-left: 22px;
 }
 /* v36：卡片中下位置的简介预览
  * - 紧跟名称（fs-col-name 之后），位于删除按钮前
  * - 最多显示 2 行（line-clamp: 2），溢出用 ellipsis
  * - 字号 12px + 略低色调（muted），不抢标题
- * - margin-top: auto 推到 card 底部（让名称+fsno 居上，简介在下方） */
+ * - margin-top: auto 推到 card 底部（让名称+fsno 居上，简介在下方）
+ * v38：往上挪动「当前控件高度」（名称字号 26px = 增大一倍后的当前字号），
+ *      左侧与名称对齐（padding-left 跟名称一致 22px） */
 .fs-item .fs-col-intro {
   width: 100%;
   font-size: 12px;
@@ -3787,8 +3803,8 @@ input[type="range"]::-moz-range-thumb {
   line-height: 1.4;
   color: var(--muted, #6b5d4d);
   text-align: left;
-  margin-top: auto;
-  padding-top: 4px;
+  margin-top: -26px;
+  padding-left: 22px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -3797,9 +3813,11 @@ input[type="range"]::-moz-range-thumb {
   white-space: normal;
 }
 .fs-item .fs-delete {
-  /* v33：absolute 定位右上角（fs-item 已 position:relative） */
+  /* v33：absolute 定位右上角（fs-item 已 position:relative）
+   * v38：编号往右下挪动后跟右上角删除按钮重叠——
+   *      把删除按钮挪到右下角（bottom-right），跟编号（左上角附近的右上方）错开 */
   position: absolute;
-  top: 4px;
+  bottom: 4px;
   right: 4px;
   flex-shrink: 0;
   background: transparent;
