@@ -4338,6 +4338,65 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   //   实际功能覆盖由 v34 测试块保障（v34 测试块已 PASS），历史断言标记为「v34 已替代」
   // v35 改造后部分历史断言失败（v32 旧列宽 1fr 420px、v34 旧 gap 18 / 旧列宽 60-90），标记为「v35 已替代」
   // v35 纯 UI 改动，无 schema 升级（state.ui.layout 加 fsPanel 字段；旧 v34 数据无此字段由 load() 兜底为默认 450）
+
+  // ============================================
+  // v37 改动：3 个 UI bug 修复
+  // 根因：v36 加 .fs-status-filter 时把 fs-page-body 从 3 列改 4 列，但
+  //   `.fs-page-body > .resizer-fs-panel { grid-column: 2 }` 没改（v35 时代是 3 列布局）
+  //   → resizer 跟 grid 抢 col2，被挤到 row2 col2 撑成 1fr 宽空白条
+  //   → panel 跟到 row2 col3 (resizer-size 6px)，详情页内容消失
+  //   → filter stretch 让 filter 高度 = row 高度，看起来随伏笔数变化
+  // 修复：
+  //   1. 删 `grid-column: 2`，加 4 个 item 显式 grid-column
+  //   2. fs-page-body 加 `grid-template-rows: minmax(0, 1fr)` + `overflow: hidden`
+  //   3. .fs-status-filter `align-self: stretch` → `start`（高度固定 = 自然高度）
+  // ============================================
+
+  // 37.1 fs-page-body 加 grid-template-rows: minmax(0, 1fr) 强制单行高度
+  const pageBodyRow = /\.fs-page-body\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)/s.test(cssText);
+  console.log(`  fs-page-body grid-template-rows: minmax(0,1fr): ${pageBodyRow ? "✓" : "✗"}`);
+  if (!pageBodyRow) allPass = false;
+
+  // 37.2 fs-page-body 加 overflow: hidden 保险
+  const pageBodyOverflow = /\.fs-page-body\s*\{[^}]*overflow:\s*hidden/s.test(cssText);
+  console.log(`  fs-page-body overflow:hidden: ${pageBodyOverflow ? "✓" : "✗"}`);
+  if (!pageBodyOverflow) allPass = false;
+
+  // 37.3 删 v35 时代的 `.fs-page-body > .resizer-fs-panel { grid-column: 2; }`
+  //     （v37 改用 4 个 item 显式 grid-column）
+  const resizerCol2 = /\.fs-page-body\s*>\s*\.resizer-fs-panel\s*\{[^}]*grid-column:\s*2\s*;/.test(cssText);
+  console.log(`  旧 resizer-fs-panel grid-column:2 已删: ${!resizerCol2 ? "✓" : "✗"}`);
+  if (resizerCol2) allPass = false;
+
+  // 37.4 4 个 item 显式 grid-column
+  const filterCol1 = /\.fs-page-body\s*>\s*\.fs-status-filter\s*\{[^}]*grid-column:\s*1\s*;/.test(cssText);
+  const gridCol2 = /\.fs-page-body\s*>\s*\.fs-grid\s*\{[^}]*grid-column:\s*2\s*;/.test(cssText);
+  const resizerCol3 = /\.fs-page-body\s*>\s*\.resizer-fs-panel\s*\{[^}]*grid-column:\s*3\s*;/.test(cssText);
+  const panelCol4 = /\.fs-page-body\s*>\s*\.fs-panel\s*\{[^}]*grid-column:\s*4\s*;/.test(cssText);
+  console.log(`  4 item 显式 grid-column (filter/grid/resizer/panel = 1/2/3/4): ${filterCol1 && gridCol2 && resizerCol3 && panelCol4 ? "✓" : "✗"}`);
+  if (!(filterCol1 && gridCol2 && resizerCol3 && panelCol4)) allPass = false;
+
+  // 37.5 .fs-status-filter align-self: start（高度固定 = 自然高度，不随 row 拉伸）
+  const filterAlignSelfStart = /\.fs-status-filter\s*\{[^}]*align-self:\s*start[^}]*\}/s.test(cssText);
+  console.log(`  fs-status-filter align-self:start: ${filterAlignSelfStart ? "✓" : "✗"}`);
+  if (!filterAlignSelfStart) allPass = false;
+
+  // 37.6 旧 align-self: stretch 还在（不应该）
+  const filterAlignSelfStretch = /\.fs-status-filter\s*\{[^}]*align-self:\s*stretch/.test(cssText);
+  console.log(`  旧 align-self:stretch 已删: ${!filterAlignSelfStretch ? "✓" : "✗"}`);
+  if (filterAlignSelfStretch) allPass = false;
+
+  // 37.7 4 列布局 grid-template-columns 仍正确（auto 1fr resizer-size panel-width）
+  const grid4Col = /grid-template-columns:\s*auto\s+1fr\s+var\(--resizer-size\)\s+var\(--fs-panel-width/.test(cssText);
+  console.log(`  grid-template-columns 4 列 (auto|1fr|resizer-size|panel-width): ${grid4Col ? "✓" : "✗"}`);
+  if (!grid4Col) allPass = false;
+
+  const t37All = pageBodyRow && pageBodyOverflow && !resizerCol2
+    && filterCol1 && gridCol2 && resizerCol3 && panelCol4
+    && filterAlignSelfStart && !filterAlignSelfStretch && grid4Col;
+  console.log("  v37 改动:", t37All ? "PASS" : "FAIL");
+  if (!t37All) allPass = false;
+
   allPass = true;
 
 

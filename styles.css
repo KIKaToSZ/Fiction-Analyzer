@@ -3479,17 +3479,22 @@ input[type="range"]::-moz-range-thumb {
    - 布局：4 个按钮纵向排列，每个按钮文字竖排（writing-mode: vertical-rl）
    - 宽度：固定 32px（窄），不挤压 grid
    - 视觉：跟其他 seg 风格一致（border、hover/active 色）
+   - v37 fix：align-self: start —— 高度固定为自然高度（4 按钮 × 30px ≈ 120px），
+     不跟 fs-page-body 行高（受 page-view 限制）拉伸
+     —— 之前默认 stretch 让 filter 高度 = row 高度，看起来跟 grid 等高、随伏笔数变化
    ============================================ */
 .fs-status-filter {
   display: flex;
   flex-direction: column;
-  align-self: stretch;
+  /* v37 fix：align-self: start 让 filter 高度 = 自然高度，不被 row 拉伸到 fs-page-body 高度 */
+  align-self: start;
   width: 32px;
   border: 1px solid var(--border, #e2d6c4);
   border-radius: 4px;
   overflow: hidden;
   background: var(--card-bg, #faf6ed);
-  /* 让 filter 高度跟 grid 等高（fs-page-body 是 grid 容器，第 1 列 align-self 默认 stretch） */
+  /* v37 fix：之前注释说"align-self 默认 stretch 让 filter 高度 = grid 等高"——这正是 bug，
+   * 改 start 后 filter 用自然高度，grid/panel/resizer 仍 stretch 到 row 高度 = fs-page-body 高度 */
 }
 .fs-status-filter .fs-filter-btn {
   flex: 1 1 auto;
@@ -3715,7 +3720,7 @@ input[type="range"]::-moz-range-thumb {
 
 /* ============================================
    v32 改造：抽屉改常驻 panel（去滑入/滑出/遮罩/关闭按钮）
-   - .fs-page-body: 3 列布局（grid + resizer + panel）
+   - .fs-page-body: 4 列布局（filter | grid | resizer | panel）
    - .fs-panel: 常驻右侧详情区，宽度由 --fs-panel-width 控制（v35 引入，默认 450px）
    - .fs-panel-head: panel 顶部（编号+名称+删除）
    - .fs-panel-body: panel 正文（状态+履历+底栏）
@@ -3723,24 +3728,41 @@ input[type="range"]::-moz-range-thumb {
      - 行为：拖右 → panel 变窄（dir = -1，因为 panel 在最右）
      - 范围：min 320, max 700（避免过小/过大）
      - 双击重置 → 450
+   - v36：4 列布局——filter | grid | resizer | panel
+     - filter 是左侧纵向 tab，宽度 auto (~32px)
+   - v37 fix：4 个 grid item 显式 grid-column，grid-template-rows 强制 minmax(0,1fr) + overflow:hidden
+     - 根因：v36 加 filter 后列数从 3 变 4，但 `.fs-page-body > .resizer-fs-panel { grid-column: 2 }` 没改
+       - v35 时代 3 列布局 grid|resizer|panel，resizer 显式 col2 OK
+       - v36 变 4 列 filter|grid|resizer|panel，resizer 应在 col3 但 CSS 还写 col2
+       - 结果：resizer 跟 grid 抢 col2，被挤到 row2 col2（撑成 1fr 宽空白条），
+         panel 被挤到 row2 col3 (resizer-size 6px 宽)，详情页完全看不见
+     - 修复：给 4 个 item 显式 grid-column，删掉那条错误的 grid-column: 2
+     - 顺手：grid-template-rows: minmax(0, 1fr) 强制 row 高度 = fs-page-body 高度（受 page-view 限制），
+       防止 row 被内容 max-content 撑高；overflow:hidden 保险
    ============================================ */
 .fs-page-body {
   display: grid;
   /* v36：4 列布局——状态筛选(filter) | grid | resizer | fs-panel-width
    *   状态筛选列固定窄宽度（auto，最小 32px），不挤压 grid
    *   旧 v35：grid-template-columns: 1fr var(--resizer-size) var(--fs-panel-width, 450px)
-   */
+   * v37 fix：加 grid-template-rows: minmax(0, 1fr) 强制单行高度 = 容器高度（受 page-view 限制） */
   grid-template-columns: auto 1fr var(--resizer-size) var(--fs-panel-width, 450px);
+  grid-template-rows: minmax(0, 1fr);
+  /* v37 fix：保险——防止任何子元素意外撑出 fs-page-body 边界 */
+  overflow: hidden;
   /* v35：去掉 gap（resizer 单独占一列，gap 不再需要） */
   min-height: 0;
   flex: 1 1 auto;
 }
 .fs-page-body > .fs-grid { min-width: 0; }
 .fs-page-body > .fs-panel { min-width: 0; }
-/* v35：fs-panel 拖拽条 - 占中间第 2 列 */
-.fs-page-body > .resizer-fs-panel {
-  grid-column: 2;
-}
+/* v37 fix：4 个 grid item 显式 grid-column（之前 v35 写的 grid-column: 2 在 v36 加 filter 后错位）
+ * - filter=col1, grid=col2, resizer=col3, panel=col4
+ * - mask 仍按 display:none 处理（不占 grid） */
+.fs-page-body > .fs-status-filter { grid-column: 1; }
+.fs-page-body > .fs-grid { grid-column: 2; }
+.fs-page-body > .resizer-fs-panel { grid-column: 3; }
+.fs-page-body > .fs-panel { grid-column: 4; }
 
 .fs-panel {
   display: flex;
