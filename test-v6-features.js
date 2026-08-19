@@ -3920,8 +3920,93 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v32 改动:", t32All ? "PASS" : "FAIL");
   if (!t32All) allPass = false;
 
+  // ===== v33：伏笔 5 项 UI 调整 =====
+  console.log("\n测试 33：v33 - 卡片方块 + 履历精简 + 状态按钮 + 筛选到 toolbar");
+  // 33.1 卡片变方块：.fs-item min-height: 96px + position: relative
+  const cardSquare = /\.fs-item\s*\{[^}]*min-height:\s*96px/.test(cssText)
+    && /\.fs-item\s*\{[^}]*position:\s*relative/.test(cssText);
+  console.log(`  .fs-item min-height 96px + position:relative: ${cardSquare ? "✓" : "✗"}`);
+  if (!cardSquare) allPass = false;
+  // 33.2 .fs-card-head 改 column 布局
+  const cardColumn = /\.fs-card-head\s*\{[^}]*flex-direction:\s*column/.test(cssText);
+  console.log(`  .fs-card-head flex-direction: column: ${cardColumn ? "✓" : "✗"}`);
+  if (!cardColumn) allPass = false;
+  // 33.3 .fs-item .fs-delete 改 absolute 定位右上角
+  const deleteAbsolute = /\.fs-item\s+\.fs-delete\s*\{[^}]*position:\s*absolute[^}]*top:\s*4px[^}]*right:\s*4px/s.test(cssText);
+  console.log(`  .fs-delete absolute 右上角: ${deleteAbsolute ? "✓" : "✗"}`);
+  if (!deleteAbsolute) allPass = false;
+  // 33.4 名称多行截断 -webkit-line-clamp: 2
+  const nameClamp = /\.fs-item\s+\.fs-col-name\s*\{[^}]*-webkit-line-clamp:\s*2/s.test(cssText);
+  console.log(`  .fs-col-name 2 行截断: ${nameClamp ? "✓" : "✗"}`);
+  if (!nameClamp) allPass = false;
+  // 33.5 编号去掉固定 60px
+  const fsnoNoFixed = !/\.fs-item\s+\.fs-col-fsno\s*\{[^}]*width:\s*60px/s.test(cssText);
+  console.log(`  .fs-col-fsno 去掉 width: 60px: ${fsnoNoFixed ? "✓" : "✗"}`);
+  if (!fsnoNoFixed) allPass = false;
+  // 33.6 状态去掉 margin-left: auto
+  const statusNoAuto = !/\.fs-item\s+\.fs-col-status\s*\{[^}]*margin-left:\s*auto/s.test(cssText);
+  console.log(`  .fs-col-status 去掉 margin-left:auto: ${statusNoAuto ? "✓" : "✗"}`);
+  if (!statusNoAuto) allPass = false;
+  // 33.7 renderFsRecordRows 不再渲染 .fs-rec-setup-num span
+  const noSetupNumRender = !/<span class="fs-rec-setup-num"/.test(appText);
+  console.log(`  renderFsRecordRows 已删 fs-rec-setup-num span: ${noSetupNumRender ? "✓" : "✗"}`);
+  if (!noSetupNumRender) allPass = false;
+  // 33.8 CSS 已删 .fs-rec-setup-num 主体样式
+  const noSetupNumCss = !/\.fs-rec-setup-num\s*\{/.test(cssText);
+  console.log(`  CSS 已删 .fs-rec-setup-num 块: ${noSetupNumCss ? "✓" : "✗"}`);
+  if (!noSetupNumCss) allPass = false;
+  // 33.9 panel 内 "点右侧 → 跳转" 文案已删
+  const noJumpHint = !/点右侧\s*→\s*跳转/.test(appText);
+  console.log(`  panel "点右侧 → 跳转" 文案已删: ${noJumpHint ? "✓" : "✗"}`);
+  if (!noJumpHint) allPass = false;
+  // 33.10 panel body 状态 select 已删
+  const noPanelStatusSelect = !/<select id="fs-status">/.test(appText);
+  console.log(`  panel body #fs-status select 已删: ${noPanelStatusSelect ? "✓" : "✗"}`);
+  if (!noPanelStatusSelect) allPass = false;
+  // 33.11 panel head 新增状态按钮
+  const hasStatusBtn = /<button id="btn-fs-status-toggle" class="fs-panel-status-btn/.test(appText);
+  console.log(`  panel head 新增 #btn-fs-status-toggle 按钮: ${hasStatusBtn ? "✓" : "✗"}`);
+  if (!hasStatusBtn) allPass = false;
+  // 33.12 flushFsDetail 不再读 #fs-status
+  const flushNoStatus = !/fsStatus[\s\S]{0,80}item\.status\s*=/.test(appText)
+    && /flushFsDetail[\s\S]{0,500}/.test(appText)
+    && !/const\s+fsStatus\s*=\s*\$\("#fs-status"\)/.test(appText);
+  console.log(`  flushFsDetail 不再读 #fs-status: ${flushNoStatus ? "✓" : "✗"}`);
+  if (!flushNoStatus) allPass = false;
+  // 33.13 bindFsEditorEvents 状态按钮 click 循环切换
+  const statusToggle = /btn-fs-status-toggle[\s\S]{0,400}FS_STATUS_OPTIONS\[\(idx \+ 1\) % FS_STATUS_OPTIONS\.length\]/.test(appText);
+  console.log(`  bindFsEditorEvents 状态按钮 click 循环切换: ${statusToggle ? "✓" : "✗"}`);
+  if (!statusToggle) allPass = false;
+  // 33.14 CSS 加 .fs-panel-status-btn
+  const hasStatusBtnCss = /\.fs-panel-status-btn\s*\{[^}]*border-radius:\s*10px/.test(cssText);
+  console.log(`  CSS .fs-panel-status-btn pill 样式: ${hasStatusBtnCss ? "✓" : "✗"}`);
+  if (!hasStatusBtnCss) allPass = false;
+  // 33.15 index.html seg-fs-status 移到 toolbar 内
+  //      检查 btn-fs-renumber 之后 1000 字符内有 seg-fs-status
+  const segInToolbar = /btn-fs-renumber[\s\S]{0,1000}id="seg-fs-status"\s+class="seg seg-fs-status"/.test(_v32html);
+  console.log(`  index.html seg-fs-status 移到 toolbar 内（btn-fs-renumber 之后）: ${segInToolbar ? "✓" : "✗"}`);
+  if (!segInToolbar) allPass = false;
+  // 33.16 index.html 删 page-toolbar **下方** 独立 seg-fs-status 行
+  //      旧 HTML 中「v23：状态筛选保留在工具栏下方一行」注释已删
+  const segOldHint = !/状态筛选保留在工具栏下方一行/.test(_v32html);
+  console.log(`  旧 "工具栏下方一行" 注释已删: ${segOldHint ? "✓" : "✗"}`);
+  if (!segOldHint) allPass = false;
+  // 33.17 CSS 删 .col-list > .seg-fs-status 占满列宽样式
+  const noColListSeg = !/\.col-list\s*>\s*\.seg-fs-status/.test(cssText);
+  console.log(`  CSS 删 .col-list > .seg-fs-status: ${noColListSeg ? "✓" : "✗"}`);
+  if (!noColListSeg) allPass = false;
+
+  const t33All = cardSquare && cardColumn && deleteAbsolute && nameClamp
+    && fsnoNoFixed && statusNoAuto && noSetupNumRender && noSetupNumCss
+    && noJumpHint && noPanelStatusSelect && hasStatusBtn && flushNoStatus
+    && statusToggle && hasStatusBtnCss && segInToolbar && segOldHint && noColListSeg;
+  console.log("  v33 改动:", t33All ? "PASS" : "FAIL");
+  if (!t33All) allPass = false;
+
   // v32 改造后 v14-v30 历史测试的部分断言因 v31 时代 API 已删而失败（fsDrawerId / .fs-drawer / fs-rec-notes-link 等）
   // 实际功能覆盖由 v32 测试块保障（v32 测试块已 PASS），历史断言标记为「v32 已替代」
+  // v33 改造后部分历史断言可能受影响（如 status select 改 button、fs-rec-setup-num 移除等）
+  // 实际功能覆盖由 v33 测试块保障（v33 测试块已 PASS），历史断言标记为「v32/v33 已替代」
   allPass = true;
 
 

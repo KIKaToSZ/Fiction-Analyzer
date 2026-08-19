@@ -1384,16 +1384,8 @@ body.is-resizing .resizer * {
   overflow: hidden;
   margin-left: 4px;
 }
-/* v19：筛选移到伏笔列表上方（.col-list 内），需要占满列宽 */
-.col-list > .seg-fs-status {
-  display: flex;
-  width: 100%;
-  margin: 0 0 8px 0;
-}
-.col-list > .seg-fs-status .seg-btn {
-  flex: 1 1 0;
-  text-align: center;
-}
+/* v33：seg-fs-status 移到 page-toolbar 内部（紧跟「重新编号」按钮后），
+   删 .col-list 占满列宽样式——toolbar 内只需 inline-flex 即可 */
 .seg-fs-status .seg-btn {
   flex: 0 0 auto;
   border: none;
@@ -2288,19 +2280,8 @@ input[type="range"]::-moz-range-thumb {
   word-break: break-word;
   align-items: stretch; /* 让 input/span 横向上填满列宽 */
 }
-/* v28：章节数字号 - 字号 1.5em（≈19.5px，比 v18 的 2em 小 2 个字号档）
-   粗体 + 强调色，仍跟右侧 textarea 视觉对齐 */
-.fs-rec-setup-num {
-  font-size: 1.5em;
-  font-weight: 700;
-  color: var(--accent, #785a3c);
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-  min-height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+/* v33：删除 .fs-rec-setup-num 样式（蓝色章节号已移除，对应元素不再渲染） */
+/* v33：.fs-rec-setup-num-static 保留作 alias（万一有旧数据用到） */
 .fs-rec-setup-num-static {
   /* v26：列宽减半后,数字容器也减半（24px）
      v28：再减 10（24px → 14px），跟新列宽 minmax(30,45) 对齐 */
@@ -3521,12 +3502,16 @@ input[type="range"]::-moz-range-thumb {
    - 整张卡是点击区 → 打开抽屉 */
 .fs-item {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   border: 1px solid var(--border, #e2d6c4);
   border-radius: 8px;
   background: var(--card-bg, rgba(255, 255, 255, 0.4));
   transition: box-shadow 0.12s ease, border-color 0.12s ease;
   min-width: 0;
+  /* v33：变方块——min-height 96px（保持现有宽度，竖排内容）
+   * 删除按钮 absolute 定位右上角，需要 position:relative 锚点 */
+  position: relative;
+  min-height: 96px;
   /* v26：整张卡片都是点击/hover 命中区 */
   cursor: pointer;
 }
@@ -3547,13 +3532,16 @@ input[type="range"]::-moz-range-thumb {
    v26：去掉自身 cursor/hover——hover 由外层 .fs-item 接管 */
 .fs-card-head {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 14px;
   user-select: none;
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
+  /* v33：column 布局后右侧留空（28px）给右上角 absolute 定位的删除按钮 */
+  padding-right: 32px;
 }
 
 .fs-item .fs-cell {
@@ -3565,23 +3553,29 @@ input[type="range"]::-moz-range-thumb {
   text-overflow: ellipsis;
 }
 .fs-item .fs-col-fsno {
-  /* v28：head 左侧的伏笔编号（如 FS-001）—— 距左固定值（head padding-left 12px），
-     等宽 + 粗体 + 主题强调色 */
+  /* v33：column 布局——编号在顶部，宽度由内容决定（去掉固定 60px） */
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--accent, #785a3c);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  width: 60px;
   text-align: left;
   letter-spacing: 0.02em;
 }
 .fs-item .fs-col-name {
+  /* v33：column 布局——名称占满宽度，2 行截断 + 左对齐 */
   flex: 1 1 auto;
   min-width: 0;
+  width: 100%;
   font-size: 13px;
   font-weight: 500;
-  text-align: center; /* v27：名称居中显示 */
+  text-align: left;
+  line-height: 1.35;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .fs-item .fs-col-status {
   flex-shrink: 0;
@@ -3590,10 +3584,15 @@ input[type="range"]::-moz-range-thumb {
   padding: 2px 8px;
   border-radius: 10px;
   text-align: center;
-  margin-left: auto; /* v27：状态推到右侧（距右固定值 = head padding-right 12px） */
+  /* v33：column 布局——状态贴左下（margin-left:0 避免老规则） */
+  align-self: flex-start;
 }
 
 .fs-item .fs-delete {
+  /* v33：absolute 定位右上角（fs-item 已 position:relative） */
+  position: absolute;
+  top: 4px;
+  right: 4px;
   flex-shrink: 0;
   background: transparent;
   border: 0;
@@ -3684,6 +3683,30 @@ input[type="range"]::-moz-range-thumb {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+/* v33：panel head 上的状态按钮（替代旧 select + meta 区里的 select）
+   - 视觉：pill 状（border-radius 10px）+ 跟 fs-col-status 一样的颜色
+   - 交互：hover 加深边框 + active 切换下一态（在 bindFsEditorEvents 里实现）
+   - 三色：未回收(蓝) / 部分回收(橙) / 已回收(绿) —— 复用 .fs-status-* 类 */
+.fs-panel-status-btn {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+  white-space: nowrap;
+  transition: filter 0.12s ease, border-color 0.12s ease;
+}
+.fs-panel-status-btn:hover {
+  filter: brightness(0.96);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+.fs-panel-status-btn:active {
+  filter: brightness(0.92);
 }
 .fs-panel-delete {
   flex-shrink: 0;

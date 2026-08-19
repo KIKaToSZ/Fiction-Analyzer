@@ -286,15 +286,15 @@
                 </svg>
                 <span>重新编号</span>
               </button>
+              <!-- v33：状态筛选 segment button 移到重新编号按钮后面（与 toolbar 同行） -->
+              <div id="seg-fs-status" class="seg seg-fs-status" role="group" aria-label="按状态筛选">
+                <button class="seg-btn active" data-fs-status="all" title="显示全部">全部</button>
+                <button class="seg-btn" data-fs-status="未回收" title="只显示未回收的伏笔">未回收</button>
+                <button class="seg-btn" data-fs-status="部分回收" title="只显示部分回收的伏笔">部分回收</button>
+                <button class="seg-btn" data-fs-status="已回收" title="只显示已回收的伏笔">已回收</button>
+              </div>
               <span class="page-toolbar-spacer"></span>
               <span id="fs-count" class="muted page-toolbar-meta">0 条</span>
-            </div>
-            <!-- v23：状态筛选保留在工具栏下方一行（筛选 + 网格） -->
-            <div id="seg-fs-status" class="seg seg-fs-status" role="group" aria-label="按状态筛选">
-              <button class="seg-btn active" data-fs-status="all" title="显示全部">全部</button>
-              <button class="seg-btn" data-fs-status="未回收" title="只显示未回收的伏笔">未回收</button>
-              <button class="seg-btn" data-fs-status="部分回收" title="只显示部分回收的伏笔">部分回收</button>
-              <button class="seg-btn" data-fs-status="已回收" title="只显示已回收的伏笔">已回收</button>
             </div>
             <!-- v32：grid + 常驻 panel 两列布局（替代 v31 抽屉）
                  - 左侧：fs-grid 卡片网格

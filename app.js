@@ -2173,10 +2173,13 @@
       renderFsPanel();
       return;
     }
-    const opts = FS_STATUS_OPTIONS.map(
-      (s) =>
-        `<option value="${escapeHtml(s)}" ${item.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`
-    ).join("");
+    const status = item.status || FS_STATUS_DEFAULT;
+    const cls =
+      status === "已回收"
+        ? "fs-status-resolved"
+        : status === "部分回收"
+          ? "fs-status-partial"
+          : "fs-status-unresolved";
     const recordsHtml = renderFsRecordRows(item.id);
     const recCount = getFsRecordsByFsNo(item).length;
     // v32：panel 布局 = head (编号+名称+删除) + meta (状态) + section (履历+底栏)
@@ -2186,6 +2189,7 @@
           <span class="fs-panel-fsno" title="伏笔编号">${escapeHtml(item.fsNo || "（无编号）")}</span>
           <span class="fs-panel-name" title="${escapeHtml(item.name || "")}">${escapeHtml(item.name || "（无名）")}</span>
         </div>
+        <button id="btn-fs-status-toggle" class="fs-panel-status-btn ${cls}" title="点击切换状态" type="button">${escapeHtml(status)}</button>
         <button id="btn-fs-panel-delete" class="fs-panel-delete" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
       </div>
       <div class="fs-panel-body">
@@ -2200,17 +2204,11 @@
               <input id="fs-name" type="text" value="${escapeHtml(item.name || "")}" placeholder="给伏笔起个名字" />
             </div>
           </div>
-          <div class="fs-panel-meta-row">
-            <div class="meta-field" style="grid-column: 1 / -1;">
-              <label>状态</label>
-              <select id="fs-status">${opts}</select>
-            </div>
-          </div>
         </div>
         <div class="fs-panel-section">
           <div class="fs-records-header">
             <span class="fs-records-title">📋 伏笔履历</span>
-            <span class="fs-records-meta muted">${recCount} 条 · 点右侧 → 跳转</span>
+            <span class="fs-records-meta muted">${recCount} 条</span>
             <button id="btn-fs-record-sort" class="link-btn" title="切换正/倒序（按提及章节）">${state.ui.fsRecordSort === "asc" ? "正序" : "倒序"}</button>
             <button id="btn-fs-add-record" class="link-btn">+ 新增履历</button>
           </div>
@@ -2267,13 +2265,11 @@
     if (!itemId) return;
     const item = state.pages.foreshadowing.items.find((x) => x.id === itemId);
     if (!item) return;
-    // 从 DOM 抓 fs-fsno/fs-name/fs-status 当前值
+    // 从 DOM 抓 fs-fsno/fs-name 当前值（状态按钮已实时写 state）
     const fsFsno = $("#fs-fsno");
     const fsName = $("#fs-name");
-    const fsStatus = $("#fs-status");
     if (fsFsno) item.fsNo = String(fsFsno.value ?? "").trim();
     if (fsName) item.name = fsName.value ?? "";
-    if (fsStatus) item.status = fsStatus.value || item.status || FS_STATUS_DEFAULT;
     // 履历也 flush
     const rows = document.querySelectorAll("#fs-records-list .fs-record-row");
     rows.forEach((row) => {
@@ -2353,14 +2349,14 @@
     }
     empty.hidden = true;
     editor.hidden = false;
-    const opts = FS_STATUS_OPTIONS.map(
-      (s) =>
-        `<option value="${escapeHtml(s)}" ${it.status === s ? "selected" : ""}>${escapeHtml(s)}</option>`
-    ).join("");
     // v32：grid 模式下没有 #fs-editor 容器，此函数 grid 分支已 return；这里只服务理论上的非 grid 模式
     //      永远可编辑——没有 readonly/disabled（v32 去掉编辑态）
+    //      状态改用 panel head 按钮（renderFsPanel），此处不再渲染 select
     const readonlyAttr = "";
-    const disabledAttr = "";
+    const statusCls = (s) =>
+      s === "已回收" ? "fs-status-resolved" :
+      s === "部分回收" ? "fs-status-partial" : "fs-status-unresolved";
+    const curStatus = it.status || FS_STATUS_DEFAULT;
     const mainClass = "";
     // 渲染当前伏笔的履历（按提及章节排序）
     const recordsHtml = renderFsRecordRows(it.id);
@@ -2378,7 +2374,7 @@
         </div>
         <div class="meta-field">
           <label>状态</label>
-          <select id="fs-status" ${disabledAttr}>${opts}</select>
+          <span class="fs-panel-status-btn ${statusCls(curStatus)}" title="仅展示，状态在 panel head 切换">${escapeHtml(curStatus)}</span>
         </div>
         <div class="meta-actions meta-actions-last">
           <!-- v32：移除"保存"按钮 + "完成编辑"按钮（常驻编辑无需切换态）
@@ -3156,7 +3152,6 @@
           <div class="fs-record-row" data-record-id="${escapeHtml(r.id)}">
             <div class="fs-rec-col-setup">
               <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="如：第3章" class="fs-rec-setup-big" />
-              <span class="fs-rec-setup-num" title="解析后的章节号">${escapeHtml(setupNum)}</span>
             </div>
             <div class="fs-rec-col-notes">
               <span class="muted small-label">原文描述</span>
@@ -3201,24 +3196,33 @@
     //   - always editable：删 readonly/disabled + 删 fsEditing 切换按钮
     const fsFsno = $("#fs-fsno");
     const fsName = $("#fs-name");
-    const fsStatus = $("#fs-status");
+    // 状态按钮 class 映射：未回收/部分回收/已回收 → 不同颜色
+    const statusCls = (s) =>
+      s === "已回收" ? "fs-status-resolved" :
+      s === "部分回收" ? "fs-status-partial" : "fs-status-unresolved";
+    // 同步状态按钮 + 卡片 head 状态 cell 显示
+    const syncStatusCell = (s) => {
+      const text = s || FS_STATUS_DEFAULT;
+      const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
+      const cardStatus = li?.querySelector(".fs-col-status");
+      if (cardStatus) {
+        cardStatus.textContent = text;
+        cardStatus.className = "fs-cell fs-col-status " + statusCls(text);
+      }
+      const panelBtn = $("#btn-fs-status-toggle");
+      if (panelBtn) {
+        panelBtn.textContent = text;
+        panelBtn.className = "fs-panel-status-btn " + statusCls(text);
+      }
+    };
     const syncMeta = () => {
       it.fsNo = String(fsFsno?.value ?? it.fsNo ?? "").trim();
       it.name = fsName?.value ?? it.name;
-      it.status = fsStatus?.value ?? it.status;
-      // 同步左侧卡片的 head 显示（编号/名称/状态）
+      // 同步左侧卡片的 head 显示（编号/名称）
       const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
       if (li) {
         const nameCell = li.querySelector(".fs-col-name");
-        const statusCell = li.querySelector(".fs-col-status");
         if (nameCell) nameCell.textContent = it.name || "（无名）";
-        if (statusCell) {
-          statusCell.textContent = it.status || FS_STATUS_DEFAULT;
-          statusCell.className = "fs-cell fs-col-status " + (
-            it.status === "已回收" ? "fs-status-resolved" :
-            it.status === "部分回收" ? "fs-status-partial" : "fs-status-unresolved"
-          );
-        }
       }
       // panel head 上的编号/名称也要同步
       const panelFsNo = $(".fs-panel-fsno");
@@ -3227,9 +3231,20 @@
       if (panelName) panelName.textContent = it.name || "（无名）";
       debouncedPushHistory();
     };
-    [fsFsno, fsName, fsStatus].forEach((el) => {
+    [fsFsno, fsName].forEach((el) => {
       el?.addEventListener("input", syncMeta);
       el?.addEventListener("change", syncMeta);
+    });
+    // 状态按钮：点一下循环切换（未回收→部分回收→已回收→未回收）
+    const statusBtn = $("#btn-fs-status-toggle");
+    statusBtn?.addEventListener("click", () => {
+      const cur = it.status || FS_STATUS_DEFAULT;
+      const idx = FS_STATUS_OPTIONS.indexOf(cur);
+      const next = FS_STATUS_OPTIONS[(idx + 1) % FS_STATUS_OPTIONS.length];
+      it.status = next;
+      syncStatusCell(next);
+      save();
+      debouncedPushHistory();
     });
     // v32：常驻编辑、无 btn-fs-toggle
     // v18：履历排序（按提及章节正/倒序）
