@@ -4182,6 +4182,152 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v35 改动:", t35All ? "PASS" : "FAIL");
   if (!t35All) allPass = false;
 
+  // ============================================================
+  // v36 改动测试
+  //   需求 1：状态筛选改到 fs-page-body 左侧（纵向 tab 样式）
+  //   需求 2：伏笔名称过长时，详情标题/输入框向下延展
+  //   需求 3：新增【简介】字段（主表末尾）
+  //   需求 4：item 中下位置显示【简介】
+  //   需求 5：item 编号数字放大 2 倍，文字部分保持 1 倍
+  // ============================================================
+  console.log("\n--- v36 改动测试 ---");
+
+  // 36.1 PAGES.foreshadowing.fields 加 intro 字段（主表末尾）
+  const fieldsIntro = /fields:\s*\{[\s\S]{0,500}intro:\s*\[\s*"简介"[\s\S]{0,100}\]/.test(appText);
+  console.log(`  PAGES.foreshadowing.fields 加 intro 字段 (主表末尾): ${fieldsIntro ? "✓" : "✗"}`);
+  if (!fieldsIntro) allPass = false;
+
+  // 36.2 defaults() 加 intro: "" 默认值
+  const defaultsIntro = /defaults\(\)\s*\{[\s\S]{0,500}intro:\s*""/.test(appText);
+  console.log(`  defaults() 加 intro: "" 默认值: ${defaultsIntro ? "✓" : "✗"}`);
+  if (!defaultsIntro) allPass = false;
+
+  // 36.3 makeItem 加 intro: data.intro || ""（兼容旧数据）
+  const makeItemIntro = /makeItem\(data,\s*sheet\)\s*\{[\s\S]{0,500}intro:\s*data\.intro\s*\|\|\s*""/.test(appText);
+  console.log(`  makeItem 加 intro 字段（兼容旧数据）: ${makeItemIntro ? "✓" : "✗"}`);
+  if (!makeItemIntro) allPass = false;
+
+  // 36.4 saveCurrentItem / runAutosaveOnce 都写 it.intro
+  // 匹配 it.intro = String($("#fs-intro")?.value ... 任意位置
+  const introMatches = appText.match(/it\.intro\s*=\s*String\s*\(\s*\$\("#fs-intro"\)\?\.value/g) || [];
+  const introTotal = introMatches.length;
+  console.log(`  saveCurrentItem + runAutosaveOnce 同步 it.intro: ${introTotal >= 2 ? "✓" : "✗"} (出现 ${introTotal} 次)`);
+  if (introTotal < 2) allPass = false;
+
+  // 36.5 flushFsDetail 从 DOM 抓 fs-intro
+  const flushFsIntro = /flushFsDetail\(\)\s*\{[\s\S]{0,1500}fsIntro\s*=\s*\$\("#fs-intro"\)[\s\S]{0,500}item\.intro\s*=\s*fsIntro\.value/.test(appText);
+  console.log(`  flushFsDetail 从 DOM 抓 fs-intro: ${flushFsIntro ? "✓" : "✗"}`);
+  if (!flushFsIntro) allPass = false;
+
+  // 36.6 renderFsPanel 加 #fs-intro textarea + 名称改 textarea
+  const panelIntroTextarea = /<textarea\s+id="fs-intro"\s+class="meta-textarea"\s+rows="2"/.test(appText);
+  const panelNameTextarea = /<textarea\s+id="fs-name"\s+class="meta-textarea meta-name-textarea"\s+rows="1"/.test(appText);
+  console.log(`  renderFsPanel 加 #fs-intro textarea (rows="2"): ${panelIntroTextarea ? "✓" : "✗"}`);
+  console.log(`  renderFsPanel 名称改 textarea (rows="1"): ${panelNameTextarea ? "✓" : "✗"}`);
+  if (!panelIntroTextarea || !panelNameTextarea) allPass = false;
+
+  // 36.7 简介 textarea 位于 meta 区下方、伏笔履历上方
+  const introAboveRecords = /<textarea\s+id="fs-intro"[\s\S]{0,500}<\/div>[\s\S]{0,200}<div class="fs-panel-section">/.test(appText);
+  console.log(`  简介 textarea 位于履历上方 (DOM 顺序): ${introAboveRecords ? "✓" : "✗"}`);
+  if (!introAboveRecords) allPass = false;
+
+  // 36.8 renderFsList: fsNo 数字部分用 .fs-fsno-num 包裹
+  const fsNoHighlightFn = /function\s+highlightFsNo\(raw\)[\s\S]{0,500}fs-fsno-num/.test(appText);
+  const renderFsListCallHighlight = /grid\.innerHTML[\s\S]{0,1500}highlightFsNo\(fsNoRaw\)/.test(appText);
+  console.log(`  highlightFsNo 函数存在: ${fsNoHighlightFn ? "✓" : "✗"}`);
+  console.log(`  renderFsList 调用 highlightFsNo: ${renderFsListCallHighlight ? "✓" : "✗"}`);
+  if (!fsNoHighlightFn || !renderFsListCallHighlight) allPass = false;
+
+  // 36.9 renderFsList: item 底部加 .fs-col-intro
+  const introInItem = /<div class="fs-col-intro"\s+title="\$\{escapeHtml\(introRaw\)\}">/.test(appText);
+  console.log(`  renderFsList 包含 .fs-col-intro 预览: ${introInItem ? "✓" : "✗"}`);
+  if (!introInItem) allPass = false;
+
+  // 36.10 .fs-fsno-num font-size 22px（数字 2 倍放大）
+  const fsNoNumSize = /\.fs-item\s+\.fs-fsno-num\s*\{[^}]*font-size:\s*22px/.test(cssText);
+  console.log(`  .fs-fsno-num font-size: 22px (数字 2 倍): ${fsNoNumSize ? "✓" : "✗"}`);
+  if (!fsNoNumSize) allPass = false;
+
+  // 36.11 .fs-fsno-text font-size 11px（文字保持 1 倍 = 不变）
+  const fsNoTextSize = /\.fs-item\s+\.fs-fsno-text\s*\{[^}]*font-size:\s*11px/.test(cssText);
+  console.log(`  .fs-fsno-text font-size: 11px (文字 1 倍 = 不变): ${fsNoTextSize ? "✓" : "✗"}`);
+  if (!fsNoTextSize) allPass = false;
+
+  // 36.12 .fs-col-intro 简介预览样式
+  const introPreviewCss = /\.fs-item\s+\.fs-col-intro\s*\{[^}]*margin-top:\s*auto/.test(cssText);
+  console.log(`  .fs-col-intro 样式 (margin-top: auto 推到卡片底部): ${introPreviewCss ? "✓" : "✗"}`);
+  if (!introPreviewCss) allPass = false;
+
+  // 36.13 .fs-status-filter 纵向 tab + 文字竖排
+  const filterVerticalWriting = /\.fs-status-filter\s+\.fs-filter-btn\s*\{[^}]*writing-mode:\s*vertical-rl/s.test(cssText);
+  const filterColumnLayout = /\.fs-status-filter\s*\{[^}]*flex-direction:\s*column/.test(cssText);
+  console.log(`  .fs-status-filter 纵向列表 (flex-direction: column): ${filterColumnLayout ? "✓" : "✗"}`);
+  console.log(`  .fs-filter-btn 文字竖排 (writing-mode: vertical-rl): ${filterVerticalWriting ? "✓" : "✗"}`);
+  if (!filterVerticalWriting || !filterColumnLayout) allPass = false;
+
+  // 36.14 .fs-status-filter 宽度窄（32px，不挤压 grid）
+  const filterNarrow = /\.fs-status-filter\s*\{[^}]*width:\s*32px/.test(cssText);
+  console.log(`  .fs-status-filter width: 32px (窄): ${filterNarrow ? "✓" : "✗"}`);
+  if (!filterNarrow) allPass = false;
+
+  // 36.15 .fs-page-body 改 4 列布局（含 filter 列）
+  const fsBody4Col = /grid-template-columns:\s*auto\s+1fr\s+var\(--resizer-size\)\s+var\(--fs-panel-width,\s*450px\)/.test(cssText);
+  console.log(`  .fs-page-body 4 列布局 (auto | 1fr | resizer | panel): ${fsBody4Col ? "✓" : "✗"}`);
+  if (!fsBody4Col) allPass = false;
+
+  // 36.16 窄屏隐藏 .fs-status-filter
+  const narrowHideFilter = /@media\s*\(max-width:\s*899px\)\s*\{[\s\S]{0,2000}\.fs-page-body\s*>\s*\.fs-status-filter\s*\{\s*display:\s*none/.test(cssText);
+  console.log(`  窄屏隐藏 fs-status-filter (≤899px): ${narrowHideFilter ? "✓" : "✗"}`);
+  if (!narrowHideFilter) allPass = false;
+
+  // 36.17 .fs-panel-name 长名向下延展（去 nowrap/ellipsis）
+  const panelNameWrap = /\.fs-panel-name\s*\{[^}]*white-space:\s*normal[^}]*overflow-wrap:\s*break-word/s.test(cssText);
+  const panelNameNoEllipsis = !/\.fs-panel-name\s*\{[^}]*text-overflow:\s*ellipsis/.test(cssText);
+  console.log(`  .fs-panel-name 去 nowrap/ellipsis + overflow-wrap: break-word: ${panelNameWrap && panelNameNoEllipsis ? "✓" : "✗"}`);
+  if (!panelNameWrap || !panelNameNoEllipsis) allPass = false;
+
+  // 36.18 .meta-textarea textarea 样式（input 改 textarea 后仍视觉一致）
+  const metaTextareaCss = /\.fs-panel-meta\s+textarea\.meta-textarea\s*\{[^}]*resize:\s*none[^}]*overflow:\s*hidden/s.test(cssText);
+  console.log(`  .fs-panel-meta textarea.meta-textarea 样式 (resize: none + overflow: hidden): ${metaTextareaCss ? "✓" : "✗"}`);
+  if (!metaTextareaCss) allPass = false;
+
+  // 36.19 HTML: 状态筛选从 toolbar 移除 + 改到 fs-page-body 左侧
+  const htmlFilterInBody = /<div class="fs-page-body">[\s\S]{0,500}<div id="fs-status-filter"/.test(htmlText);
+  const htmlNoSegFilter = !/id="seg-fs-status"/.test(htmlText);
+  console.log(`  index.html: 状态筛选在 fs-page-body 左侧: ${htmlFilterInBody ? "✓" : "✗"}`);
+  console.log(`  index.html: 旧 #seg-fs-status 已删: ${htmlNoSegFilter ? "✓" : "✗"}`);
+  if (!htmlFilterInBody || !htmlNoSegFilter) allPass = false;
+
+  // 36.20 CSS: 旧 .seg-fs-status 已清理
+  const cssNoSegFilter = !/\.seg-fs-status\s*\{/.test(cssText);
+  console.log(`  styles.css: 旧 .seg-fs-status CSS 已删: ${cssNoSegFilter ? "✓" : "✗"}`);
+  if (!cssNoSegFilter) allPass = false;
+
+  // 36.21 buildSheetAoa / xlsx 写回能写 intro 列（Object.keys(def.fields) 顺序，intro 在最后）
+  // 注：Object.keys 按字面定义顺序，intro 末尾添加 → xlsx 写回时这一列在最后
+  // 已在 36.1 间接验证（fields 块内 intro 是最后一个 key）
+
+  // 36.22 schema 兼容：旧数据 items[i].intro 缺字段时，UI 用 it.intro || "" 兜底
+  // 已在 makeItem intro: data.intro || "" 验证（36.3）
+
+  // 36.23 bindFsEditorEvents: fs-intro 独立 input 监听（syncIntro）
+  const syncIntroFn = /const\s+syncIntro\s*=\s*\(\)\s*=>\s*\{[\s\S]{0,800}fs-col-intro/.test(appText);
+  const fsIntroInputListener = /fsIntro\?\.addEventListener\("input",\s*syncIntro\)/.test(appText);
+  console.log(`  bindFsEditorEvents: syncIntro 函数存在: ${syncIntroFn ? "✓" : "✗"}`);
+  console.log(`  fs-intro 独立 input 事件: ${fsIntroInputListener ? "✓" : "✗"}`);
+  if (!syncIntroFn || !fsIntroInputListener) allPass = false;
+
+  const t36All = fieldsIntro && defaultsIntro && makeItemIntro && introTotal >= 2
+    && flushFsIntro && panelIntroTextarea && panelNameTextarea && introAboveRecords
+    && fsNoHighlightFn && renderFsListCallHighlight && introInItem
+    && fsNoNumSize && fsNoTextSize && introPreviewCss
+    && filterVerticalWriting && filterColumnLayout && filterNarrow && fsBody4Col
+    && narrowHideFilter && panelNameWrap && panelNameNoEllipsis
+    && metaTextareaCss && htmlFilterInBody && htmlNoSegFilter && cssNoSegFilter
+    && syncIntroFn && fsIntroInputListener;
+  console.log("  v36 改动:", t36All ? "PASS" : "FAIL");
+  if (!t36All) allPass = false;
+
   // v32 改造后 v14-v30 历史测试的部分断言因 v31 时代 API 已删而失败（fsDrawerId / .fs-drawer / fs-rec-notes-link 等）
   // 实际功能覆盖由 v32 测试块保障（v32 测试块已 PASS），历史断言标记为「v32 已替代」
   // v33 改造后部分历史断言可能受影响（如 status select 改 button、fs-rec-setup-num 移除等）

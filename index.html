@@ -286,13 +286,7 @@
                 </svg>
                 <span>重新编号</span>
               </button>
-              <!-- v33：状态筛选 segment button 移到重新编号按钮后面（与 toolbar 同行） -->
-              <div id="seg-fs-status" class="seg seg-fs-status" role="group" aria-label="按状态筛选">
-                <button class="seg-btn active" data-fs-status="all" title="显示全部">全部</button>
-                <button class="seg-btn" data-fs-status="未回收" title="只显示未回收的伏笔">未回收</button>
-                <button class="seg-btn" data-fs-status="部分回收" title="只显示部分回收的伏笔">部分回收</button>
-                <button class="seg-btn" data-fs-status="已回收" title="只显示已回收的伏笔">已回收</button>
-              </div>
+              <!-- v36：状态筛选改到 fs-page-body 左侧作为纵向 tab（不在 toolbar） -->
               <span class="page-toolbar-spacer"></span>
               <span id="fs-count" class="muted page-toolbar-meta">0 条</span>
             </div>
@@ -302,6 +296,13 @@
                  - 右侧：fs-panel 详情 panel（始终可见，默认 450px，双击重置）
                  - v32.1：窄屏（≤899）切回 modal 模式——grid 满宽 + panel 滑入 + mask 遮罩 -->
             <div class="fs-page-body">
+              <!-- v36：状态筛选纵向 tab——左侧第 1 列，文字竖排，宽度窄 -->
+              <div id="fs-status-filter" class="fs-status-filter" role="group" aria-label="按状态筛选">
+                <button class="fs-filter-btn active" data-fs-status="all" title="显示全部">全部</button>
+                <button class="fs-filter-btn" data-fs-status="未回收" title="只显示未回收的伏笔">未回收</button>
+                <button class="fs-filter-btn" data-fs-status="部分回收" title="只显示部分回收的伏笔">部分回收</button>
+                <button class="fs-filter-btn" data-fs-status="已回收" title="只显示已回收的伏笔">已回收</button>
+              </div>
               <div class="fs-grid" id="fs-grid"></div>
               <div class="resizer resizer-fs-panel" data-resizer="fs-panel" title="拖动调整伏笔详情宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
                 <span class="resizer-reset-hint">双击重置</span>

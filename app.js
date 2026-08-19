@@ -151,10 +151,13 @@
       // 履历表识别优先级比主表高（如果 sheet 同时含"原文描述"列就归为履历表 sheet），
       // 通过 recordFieldsSheetMatch 单独判定。
       // v15 调整：主表去掉"序号"字段（序号由列表渲染层按 fsNo 排序后 1-based 派生）
+      // v36：主表末尾新增【简介】字段——xlsx 写回时自动追加为最后一列
+      //   卡片中下位置展示简介预览；详情 panel 顶部 meta 区下方、履历上方加可编辑 textarea
       fields: {
         fsNo: ["伏笔编号"],
         name: ["伏笔名称"],
         status: ["状态", "伏笔状态", "回收状态"],
+        intro: ["简介", "介绍", "概要", "summary", "intro"],
       },
       recordFields: {
         no: ["序号"],
@@ -167,6 +170,8 @@
           fsNo: "",
           name: "",
           status: FS_STATUS_DEFAULT,
+          // v36：简介默认空
+          intro: "",
         };
       },
       recordDefaults() {
@@ -184,6 +189,8 @@
           name: data.name || "",
           // v17：旧状态值（活跃/已废弃/已回收）→ 新值（未回收/部分回收/已回收）
           status: FS_STATUS_MIGRATION[data.status] || data.status || FS_STATUS_DEFAULT,
+          // v36：简介字段——兼容旧数据（缺字段时默认空）
+          intro: data.intro || "",
           sheet,
         };
       },
@@ -943,6 +950,8 @@
           it.fsNo = String($("#fs-fsno")?.value ?? it.fsNo ?? "").trim();
           it.name = String($("#fs-name")?.value ?? it.name ?? "").trim();
           it.status = $("#fs-status")?.value || it.status || FS_STATUS_DEFAULT;
+          // v36：简介字段
+          it.intro = String($("#fs-intro")?.value ?? it.intro ?? "").trim();
           // 履历从编辑器 DOM 抓 (records[] 由 record-row 渲染)
           try {
             const rows = document.querySelectorAll("#fs-records-list .fs-record-row");
@@ -2060,6 +2069,24 @@
   //   - 卡片只有 head（编号/名称/状态/删除）
   //   - 右侧常驻 panel 显示 state.ui.fsDetailId 指向的伏笔详情（null = panel 显示空态）
   //   - 点卡片 → 切到该卡（panel 同步切换）
+  // v36：把 fsNo 字符串里的数字部分用 span.fs-fsno-num 包裹，文字部分保持原样
+  //   例："FS-001" → "FS-"(.fs-fsno-text) + "001"(.fs-fsno-num) + ""
+  //       "12"    → "" + "12" + ""
+  //   数字部分在卡片里用 22px（2 倍）显示，文字部分保持 11px（1 倍 = 不变）
+  function highlightFsNo(raw) {
+    if (!raw) return "";
+    const safe = String(raw);
+    // 拆分：prefix(文字) + num(数字) + suffix(文字)
+    const m = safe.match(/^(\D*)(\d+)(.*)$/);
+    if (!m) return `<span class="fs-fsno-text">${escapeHtml(safe)}</span>`;
+    const [, pre, num, suf] = m;
+    return (
+      (pre ? `<span class="fs-fsno-text">${escapeHtml(pre)}</span>` : "") +
+      `<span class="fs-fsno-num">${escapeHtml(num)}</span>` +
+      (suf ? `<span class="fs-fsno-text">${escapeHtml(suf)}</span>` : "")
+    );
+  }
+
   function renderFsList() {
     const grid = $("#fs-grid");
     if (!grid) return;
@@ -2069,10 +2096,10 @@
     // v18：同步排序按钮文字
     const sortLabel = $("#fs-sort-label");
     if (sortLabel) sortLabel.textContent = state.ui.fsSort === "asc" ? "正序" : "倒序";
-    // v18：同步状态筛选按钮 active 态
-    const seg = $("#seg-fs-status");
+    // v36：同步状态筛选按钮 active 态（左侧纵向 tab）
+    const seg = $("#fs-status-filter");
     if (seg) {
-      seg.querySelectorAll(".seg-btn").forEach((b) => {
+      seg.querySelectorAll(".fs-filter-btn").forEach((b) => {
         b.classList.toggle("active", b.dataset.fsStatus === state.ui.fsStatusFilter);
       });
     }
@@ -2105,12 +2132,25 @@
               : "fs-status-unresolved";
         // v32：选中态 = panel 里正在显示的那张卡（active + 描边工具类）
         const isInPanel = it.id === state.ui.fsDetailId;
+        // v36：伏笔编号解析——数字部分放大 2 倍，前缀/后缀文字保持原样
+        // 例："FS-001" → "FS-"(文字 11px) + "001"(数字 22px) + ""
+        //     "12"    → "" + "12"(22px) + ""
+        const fsNoRaw = it.fsNo || "";
+        const fsNoDisplay = fsNoRaw
+          ? highlightFsNo(fsNoRaw)
+          : '<span class="fs-fsno-empty">（无编号）</span>';
+        // v36：简介预览——空简介不渲染整块
+        const introRaw = it.intro || "";
+        const introDisplay = introRaw
+          ? `<div class="fs-col-intro" title="${escapeHtml(introRaw)}">${escapeHtml(introRaw)}</div>`
+          : "";
         // v34：item 整张用状态色作背景，删掉内部状态文字 span（颜色已足够表达状态）
         return `
           <article class="fs-item ${cls} ${isInPanel ? "active border-selected" : ""}" data-id="${escapeHtml(it.id)}" data-action="open-panel">
             <header class="fs-card-head" data-id="${escapeHtml(it.id)}">
-              <span class="fs-cell fs-col-fsno" title="伏笔编号 ${escapeHtml(it.fsNo || "")}">${escapeHtml(it.fsNo || "（无编号）")}</span>
+              <span class="fs-cell fs-col-fsno" title="伏笔编号 ${escapeHtml(fsNoRaw)}">${fsNoDisplay}</span>
               <span class="fs-cell fs-col-name" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "（无名）")}</span>
+              ${introDisplay}
               <button class="fs-delete" data-id="${escapeHtml(it.id)}" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
             </header>
           </article>`;
@@ -2182,11 +2222,13 @@
           : "fs-status-unresolved";
     const recordsHtml = renderFsRecordRows(item.id);
     const recCount = getFsRecordsByFsNo(item).length;
+    // v36：panel head 名称长名向下延展（去掉 nowrap/ellipsis）
+    // v36：meta 区下方、履历上方加【简介】textarea
     // v32：panel 布局 = head (编号+名称+删除) + meta (状态) + section (履历+底栏)
     panel.innerHTML = `
       <div class="fs-panel-head">
         <div class="fs-panel-head-left">
-          <span class="fs-panel-fsno" title="伏笔编号">${escapeHtml(item.fsNo || "（无编号）")}</span>
+          <span class="fs-panel-fsno" title="伏笔编号">${highlightFsNo(item.fsNo || "（无编号）")}</span>
           <span class="fs-panel-name" title="${escapeHtml(item.name || "")}">${escapeHtml(item.name || "（无名）")}</span>
         </div>
         <button id="btn-fs-status-toggle" class="fs-panel-status-btn ${cls}" title="点击切换状态" type="button">${escapeHtml(status)}</button>
@@ -2201,8 +2243,14 @@
             </div>
             <div class="meta-field meta-title">
               <label>伏笔名称</label>
-              <input id="fs-name" type="text" value="${escapeHtml(item.name || "")}" placeholder="给伏笔起个名字" />
+              <!-- v36：长名向下延展——textarea 替代 input -->
+              <textarea id="fs-name" class="meta-textarea meta-name-textarea" rows="1" placeholder="给伏笔起个名字">${escapeHtml(item.name || "")}</textarea>
             </div>
+          </div>
+          <!-- v36：简介 textarea——位于伏笔履历上方，可输入，默认空 -->
+          <div class="meta-field meta-intro">
+            <label>简介</label>
+            <textarea id="fs-intro" class="meta-textarea" rows="2" placeholder="一句话或一段话描述这个伏笔的概要">${escapeHtml(item.intro || "")}</textarea>
           </div>
         </div>
         <div class="fs-panel-section">
@@ -2268,11 +2316,14 @@
     if (!itemId) return;
     const item = state.pages.foreshadowing.items.find((x) => x.id === itemId);
     if (!item) return;
-    // 从 DOM 抓 fs-fsno/fs-name 当前值（状态按钮已实时写 state）
+    // 从 DOM 抓 fs-fsno/fs-name/fs-intro 当前值（状态按钮已实时写 state）
     const fsFsno = $("#fs-fsno");
     const fsName = $("#fs-name");
+    const fsIntro = $("#fs-intro");
     if (fsFsno) item.fsNo = String(fsFsno.value ?? "").trim();
     if (fsName) item.name = fsName.value ?? "";
+    // v36：简介字段
+    if (fsIntro) item.intro = fsIntro.value ?? "";
     // 履历也 flush
     const rows = document.querySelectorAll("#fs-records-list .fs-record-row");
     rows.forEach((row) => {
@@ -2363,6 +2414,7 @@
     const mainClass = "";
     // 渲染当前伏笔的履历（按提及章节排序）
     const recordsHtml = renderFsRecordRows(it.id);
+    // v36：非 grid 模式（理论不再触发，但保留兼容）——加 fs-intro + 名称改 textarea
     editor.innerHTML = `
       <div class="editor-meta editor-meta-fs ${mainClass}">
         <!-- v32：删 btn-fs-toggle（编辑/查看态切换不再需要，常驻可编辑） -->
@@ -2373,11 +2425,16 @@
         </div>
         <div class="meta-field meta-title">
           <label>伏笔名称</label>
-          <input id="fs-name" type="text" ${readonlyAttr} value="${escapeHtml(it.name || "")}" placeholder="给伏笔起个名字" />
+          <textarea id="fs-name" class="meta-textarea meta-name-textarea" rows="1" placeholder="给伏笔起个名字">${escapeHtml(it.name || "")}</textarea>
         </div>
         <div class="meta-field">
           <label>状态</label>
           <span class="fs-panel-status-btn ${statusCls(curStatus)}" title="仅展示，状态在 panel head 切换">${escapeHtml(curStatus)}</span>
+        </div>
+        <!-- v36：简介 textarea——位于伏笔履历上方，可输入，默认空 -->
+        <div class="meta-field meta-intro">
+          <label>简介</label>
+          <textarea id="fs-intro" class="meta-textarea" rows="2" placeholder="一句话或一段话描述这个伏笔的概要">${escapeHtml(it.intro || "")}</textarea>
         </div>
         <div class="meta-actions meta-actions-last">
           <!-- v32：移除"保存"按钮 + "完成编辑"按钮（常驻编辑无需切换态）
@@ -2411,6 +2468,11 @@
     updateFilePathDisplay();
     // v35：履历 textarea 渲染后调一次 autoResize（非 grid 模式兼容）
     autoResizeAllNotesTextareas();
+    // v36：fs-name/fs-intro 渲染后 autoResize（非 grid 模式兼容）
+    const fsName2 = $("#fs-name");
+    const fsIntro2 = $("#fs-intro");
+    if (fsName2) autoResizeTextarea(fsName2);
+    if (fsIntro2) autoResizeTextarea(fsIntro2);
   }
 
   /* ============================================================
@@ -3140,8 +3202,11 @@
   //  - el 高度先 reset 成 auto（让 scrollHeight 重新计算）
   //  - 然后设成 scrollHeight（精确匹配内容，不出现滚动条）
   //  - 仅作于 .fs-rec-notes-autogrow，限定范围防误伤
+  // v35：textarea 自动拓展——根据 scrollHeight 实时调高度
+  //   v36：去掉 "fs-rec-notes-autogrow" class 限制——任何有 auto-resize 行为的 textarea 都可调
+  //   （fs-name、fs-intro 也走这个函数）
   function autoResizeTextarea(el) {
-    if (!el || !el.classList.contains("fs-rec-notes-autogrow")) return;
+    if (!el) return;
     el.style.height = "auto";
     el.style.height = el.scrollHeight + "px";
   }
@@ -3220,6 +3285,8 @@
     //   - always editable：删 readonly/disabled + 删 fsEditing 切换按钮
     const fsFsno = $("#fs-fsno");
     const fsName = $("#fs-name");
+    // v36：fs-intro 简介输入框
+    const fsIntro = $("#fs-intro");
     // 状态按钮 class 映射：未回收/部分回收/已回收 → 不同颜色
     const statusCls = (s) =>
       s === "已回收" ? "fs-status-resolved" :
@@ -3244,6 +3311,8 @@
     const syncMeta = () => {
       it.fsNo = String(fsFsno?.value ?? it.fsNo ?? "").trim();
       it.name = fsName?.value ?? it.name;
+      // v36：fs-name 改 textarea 后，输入时高度要随内容自动拓展
+      if (fsName) autoResizeTextarea(fsName);
       // 同步左侧卡片的 head 显示（编号/名称）
       const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
       if (li) {
@@ -3261,6 +3330,33 @@
       el?.addEventListener("input", syncMeta);
       el?.addEventListener("change", syncMeta);
     });
+    // v36：简介同步——根据 it.intro 是否为空，增/删/改卡片底部的 .fs-col-intro
+    const syncIntro = () => {
+      it.intro = String(fsIntro?.value ?? it.intro ?? "");
+      // 同步卡片预览：找到当前 item 卡片，删旧 intro 节点（如果存在），按 it.intro 重建
+      const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
+      if (li) {
+        const oldIntro = li.querySelector(".fs-col-intro");
+        if (oldIntro) oldIntro.remove();
+        if (it.intro) {
+          const nameCell = li.querySelector(".fs-col-name");
+          const delBtn = li.querySelector(".fs-delete");
+          const introNode = document.createElement("div");
+          introNode.className = "fs-col-intro";
+          introNode.title = it.intro;
+          introNode.textContent = it.intro;
+          if (delBtn && delBtn.parentNode) {
+            delBtn.parentNode.insertBefore(introNode, delBtn);
+          } else if (nameCell && nameCell.parentNode) {
+            nameCell.parentNode.appendChild(introNode);
+          }
+        }
+      }
+      debouncedPushHistory();
+    };
+    // v36：fs-intro 独立监听——避免每次输入都触发 syncMeta 的重逻辑
+    fsIntro?.addEventListener("input", syncIntro);
+    fsIntro?.addEventListener("change", syncIntro);
     // 状态按钮：点一下循环切换（未回收→部分回收→已回收→未回收）
     const statusBtn = $("#btn-fs-status-toggle");
     statusBtn?.addEventListener("click", () => {
@@ -4454,6 +4550,8 @@
       it.fsNo = String($("#fs-fsno")?.value ?? it.fsNo ?? "").trim();
       it.name = String($("#fs-name")?.value ?? it.name ?? "").trim();
       it.status = $("#fs-status")?.value || it.status || FS_STATUS_DEFAULT;
+      // v36：简介字段
+      it.intro = String($("#fs-intro")?.value ?? it.intro ?? "").trim();
       // 履历编辑在 input 事件里已经实时写回 records，这里不再处理
     }
     save();
@@ -6217,11 +6315,11 @@
     $("#btn-fs-renumber")?.addEventListener("click", () => {
       renumberForeshadowing();
     });
-    // v18：伏笔页状态筛选（全部 / 未回收 / 部分回收 / 已回收）
-    const segFsStatus = $("#seg-fs-status");
+    // v36：状态筛选改到 fs-page-body 左侧（纵向 tab）
+    const segFsStatus = $("#fs-status-filter");
     if (segFsStatus) {
       segFsStatus.addEventListener("click", (e) => {
-        const btn = e.target.closest(".seg-btn[data-fs-status]");
+        const btn = e.target.closest(".fs-filter-btn[data-fs-status]");
         if (!btn) return;
         const v = btn.dataset.fsStatus || "all";
         if (state.ui.fsStatusFilter === v) return;
