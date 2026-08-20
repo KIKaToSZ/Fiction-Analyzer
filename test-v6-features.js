@@ -4667,11 +4667,10 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log(`  .fs-panel-name line-clamp 3: ${panelNameLineClamp3 ? "✓" : "✗"}`);
   if (!panelNameLineClamp3) allPass = false;
 
-  // 39.7 fs-name / fs-intro textarea 去掉 rows 属性（rows="1" / rows="2"）
-  const fsNameNoRows = /<textarea\s+id="fs-name"[^>]*placeholder="给伏笔起个名字"/.test(appText) && !/id="fs-name"[^>]*rows=/.test(appText);
+  // 39.7 fs-name / fs-intro textarea：v39 各自去掉 rows（v41 调整后 fs-name 改回 rows="1"——单独由 v41 测试检查）
+  //   v41 之前：#fs-name 去掉 rows="1"、#fs-intro 去掉 rows="2"
+  //   v41 之后：#fs-name 加回 rows="1"（用户要求初始 1 行，超出再展开）；#fs-intro 保持无 rows（不限制行数）
   const fsIntroNoRows = /<textarea\s+id="fs-intro"[^>]*placeholder="一句话或一段话/.test(appText) && !/id="fs-intro"[^>]*rows=/.test(appText);
-  console.log(`  #fs-name textarea 去掉 rows 属性: ${fsNameNoRows ? "✓" : "✗"}`);
-  if (!fsNameNoRows) allPass = false;
   console.log(`  #fs-intro textarea 去掉 rows 属性: ${fsIntroNoRows ? "✓" : "✗"}`);
   if (!fsIntroNoRows) allPass = false;
 
@@ -4704,7 +4703,7 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     && nameLineClamp3
     && introLineClamp3
     && panelNameLineClamp3
-    && fsNameNoRows && fsIntroNoRows
+    && fsIntroNoRows  // v41 调整：#fs-name 不再校验"无 rows"（已加回 rows="1"，由 v41 单独检查）
     && autoResizeOnRender
     && autoResizeInSyncIntro
     && btnTitleCollapse && btnClickCollapse
@@ -4785,6 +4784,40 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     && fsGridAutoScroll && renumberAbsCheck && oldCheckGone;
   console.log("  v40 改动:", t40All ? "PASS" : "FAIL");
   if (!t40All) allPass = false;
+
+  // ============================================================
+  // v41 改动（2 个需求）
+  //   需求 1：伏笔卡片里的名字需要最多显示 3 行（v39 已加 line-clamp: 3，v41 显式确认/校验）
+  //   需求 2：伏笔详情里，名称输入框初始 1 行，超过 1 行后再向下扩展（rows="1" 加回 + autoResize 仍然有效）
+  // ============================================================
+  console.log("\n--- v41 改动（卡片名 3 行 + 名称输入框初始 1 行）---");
+
+  // 41.1 卡片名称 .fs-col-name line-clamp 3（v39 已实现，v41 显式校验）
+  const cardNameLineClamp3 = /\.fs-item\s+\.fs-col-name\s*\{[\s\S]{0,500}-webkit-line-clamp:\s*3/.test(cssText);
+  console.log(`  卡片 .fs-col-name line-clamp 3: ${cardNameLineClamp3 ? "✓" : "✗"}`);
+  if (!cardNameLineClamp3) allPass = false;
+
+  // 41.2 #fs-name 面板模式下 textarea 加回 rows="1"（v41 加回）
+  const fsNameRows1Panel = /<textarea\s+id="fs-name"[^>]*rows="1"[^>]*placeholder="给伏笔起个名字"/.test(appText)
+    || /<textarea\s+id="fs-name"[^>]*placeholder="给伏笔起个名字"[^>]*rows="1"/.test(appText);
+  console.log(`  面板模式 #fs-name 加回 rows="1": ${fsNameRows1Panel ? "✓" : "✗"}`);
+  if (!fsNameRows1Panel) allPass = false;
+
+  // 41.3 #fs-name 非 grid 模式（备用模板）也加回 rows="1"
+  //      检查出现 2 次 fs-name textarea（panel 模式 + 非 grid 模式）都带 rows="1"
+  const fsNameRows1Count = (appText.match(/<textarea\s+id="fs-name"[^>]*rows="1"[^>]*placeholder="给伏笔起个名字"/g) || []).length
+    + (appText.match(/<textarea\s+id="fs-name"[^>]*placeholder="给伏笔起个名字"[^>]*rows="1"/g) || []).length;
+  console.log(`  #fs-name rows="1" 出现 ${fsNameRows1Count} 次（期望 2）: ${fsNameRows1Count >= 2 ? "✓" : "✗"}`);
+  if (fsNameRows1Count < 2) allPass = false;
+
+  // 41.4 autoResizeTextarea 仍然在 renderFsPanel 末尾调用 fs-name——rows="1" 不影响自动拓展逻辑
+  const autoResizeFsNameStillCalled = /autoResizeTextarea\(\$\("#fs-name"\)\)/.test(appText);
+  console.log(`  renderFsPanel 仍调 autoResizeTextarea($("#fs-name")): ${autoResizeFsNameStillCalled ? "✓" : "✗"}`);
+  if (!autoResizeFsNameStillCalled) allPass = false;
+
+  const t41All = cardNameLineClamp3 && fsNameRows1Panel && fsNameRows1Count >= 2 && autoResizeFsNameStillCalled;
+  console.log("  v41 改动:", t41All ? "PASS" : "FAIL");
+  if (!t41All) allPass = false;
 
   allPass = true;
 

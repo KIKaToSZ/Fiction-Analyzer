@@ -2300,8 +2300,9 @@
             <div class="meta-field meta-title">
               <label>伏笔名称</label>
               <!-- v36：长名向下延展——textarea 替代 input
-               * v39：去掉 rows="1" 限制（rows 实际不影响，但 attr 在；autoResize 时 height 由 scrollHeight 决定） -->
-              <textarea id="fs-name" class="meta-textarea meta-name-textarea" placeholder="给伏笔起个名字">${escapeHtml(item.name || "")}</textarea>
+               * v39：去掉 rows="1" 限制（autoResize 时 height 由 scrollHeight 决定）
+               * v41 调整：用户改主意——rows="1" 加回来，初始 1 行，超过 1 行后再向下扩展（autoResize 仍然有效） -->
+              <textarea id="fs-name" class="meta-textarea meta-name-textarea" rows="1" placeholder="给伏笔起个名字">${escapeHtml(item.name || "")}</textarea>
             </div>
           </div>
           <!-- v36：简介 textarea——位于伏笔履历上方，可输入，默认空
@@ -2487,8 +2488,9 @@
         </div>
         <div class="meta-field meta-title">
           <label>伏笔名称</label>
-          <!-- v39：去掉 rows="1" 限制——autoResize 配合输入动态展开 -->
-          <textarea id="fs-name" class="meta-textarea meta-name-textarea" placeholder="给伏笔起个名字">${escapeHtml(it.name || "")}</textarea>
+          <!-- v39：去掉 rows="1" 限制——autoResize 配合输入动态展开
+           * v41 调整：用户改主意——rows="1" 加回来，初始 1 行，超过 1 行后再向下扩展（autoResize 仍然有效） -->
+          <textarea id="fs-name" class="meta-textarea meta-name-textarea" rows="1" placeholder="给伏笔起个名字">${escapeHtml(it.name || "")}</textarea>
         </div>
         <div class="meta-field">
           <label>状态</label>
