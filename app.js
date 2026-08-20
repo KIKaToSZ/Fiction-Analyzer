@@ -2217,8 +2217,16 @@
   function renderFsPanel() {
     const panel = $("#fs-panel");
     if (!panel) return;
+    const pageBody = panel.parentElement; // v39：fs-page-body，需要切换 fs-panel-collapsed 类
     const mask = $("#fs-panel-mask");
     const detailId = state.ui.fsDetailId;
+    // v39：默认收起 panel——没有选中伏笔时隐藏右侧详情区（resizer + panel 都不显示）
+    //      选中有 fs 时移除 collapsed 类，panel 展开显示详情
+    if (!detailId) {
+      pageBody?.classList.add("fs-panel-collapsed");
+    } else {
+      pageBody?.classList.remove("fs-panel-collapsed");
+    }
     // v32.1：同步 panel + mask 的 modal 状态（窄屏 modal 模式才会用到）
     if (detailId) {
       panel.classList.add("has-detail");
@@ -2240,15 +2248,9 @@
           if (mask && !state.ui.fsDetailId) mask.hidden = true;
         }, 300);
       }
-      // 空态
-      panel.innerHTML = `
-        <div class="fs-panel-empty">
-          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
-            <path d="M3 7h18M3 12h18M3 17h12" />
-          </svg>
-          <p>选中左侧伏笔查看详情</p>
-          <p class="hint">点卡片即可在右侧编辑字段、查看履历、跳转到原文</p>
-        </div>`;
+      // v39：收起态不再显示空态提示（panel 已 display: none，空态自然不显示）
+      //      保留 innerHTML 清理，避免下次展开时短暂闪烁
+      panel.innerHTML = "";
       return;
     }
     const item = state.pages.foreshadowing.items.find((x) => x.id === detailId);
@@ -2278,7 +2280,7 @@
           <span class="fs-panel-name" title="${escapeHtml(item.name || "")}">${escapeHtml(item.name || "（无名）")}</span>
         </div>
         <button id="btn-fs-status-toggle" class="fs-panel-status-btn ${cls}" title="点击切换状态" type="button">${escapeHtml(status)}</button>
-        <button id="btn-fs-panel-delete" class="fs-panel-delete" title="删除该伏笔" aria-label="删除该伏笔" type="button">×</button>
+        <button id="btn-fs-panel-delete" class="fs-panel-delete" title="收起详情面板" aria-label="收起详情面板" type="button">×</button>
       </div>
       <div class="fs-panel-body">
         <div class="fs-panel-meta">
@@ -2289,14 +2291,16 @@
             </div>
             <div class="meta-field meta-title">
               <label>伏笔名称</label>
-              <!-- v36：长名向下延展——textarea 替代 input -->
-              <textarea id="fs-name" class="meta-textarea meta-name-textarea" rows="1" placeholder="给伏笔起个名字">${escapeHtml(item.name || "")}</textarea>
+              <!-- v36：长名向下延展——textarea 替代 input
+               * v39：去掉 rows="1" 限制（rows 实际不影响，但 attr 在；autoResize 时 height 由 scrollHeight 决定） -->
+              <textarea id="fs-name" class="meta-textarea meta-name-textarea" placeholder="给伏笔起个名字">${escapeHtml(item.name || "")}</textarea>
             </div>
           </div>
-          <!-- v36：简介 textarea——位于伏笔履历上方，可输入，默认空 -->
+          <!-- v36：简介 textarea——位于伏笔履历上方，可输入，默认空
+           * v39：去掉 rows="2" 限制——autoResize 实时拓展高度（输入越多越高，无上限） -->
           <div class="meta-field meta-intro">
             <label>简介</label>
-            <textarea id="fs-intro" class="meta-textarea" rows="2" placeholder="一句话或一段话描述这个伏笔的概要">${escapeHtml(item.intro || "")}</textarea>
+            <textarea id="fs-intro" class="meta-textarea" placeholder="一句话或一段话描述这个伏笔的概要">${escapeHtml(item.intro || "")}</textarea>
           </div>
         </div>
         <div class="fs-panel-section">
@@ -2324,6 +2328,10 @@
     // v35：履历 textarea 渲染后调一次 autoResize，让高度匹配内容
     // （rows="1" 是初始默认值，但 r.notes 已有内容时，textarea 高度应自动展开显示全部）
     autoResizeAllNotesTextareas();
+    // v39：fs-name / fs-intro 渲染后立刻调一次 autoResize——
+    //      让现有内容填满的高度跟 scrollHeight 一致（item.name/item.intro 有内容时）
+    autoResizeTextarea($("#fs-name"));
+    autoResizeTextarea($("#fs-intro"));
   }
 
   // v32：设置 panel 显示的伏笔（点卡片 / 新增伏笔时调用）
@@ -2471,16 +2479,18 @@
         </div>
         <div class="meta-field meta-title">
           <label>伏笔名称</label>
-          <textarea id="fs-name" class="meta-textarea meta-name-textarea" rows="1" placeholder="给伏笔起个名字">${escapeHtml(it.name || "")}</textarea>
+          <!-- v39：去掉 rows="1" 限制——autoResize 配合输入动态展开 -->
+          <textarea id="fs-name" class="meta-textarea meta-name-textarea" placeholder="给伏笔起个名字">${escapeHtml(it.name || "")}</textarea>
         </div>
         <div class="meta-field">
           <label>状态</label>
           <span class="fs-panel-status-btn ${statusCls(curStatus)}" title="仅展示，状态在 panel head 切换">${escapeHtml(curStatus)}</span>
         </div>
-        <!-- v36：简介 textarea——位于伏笔履历上方，可输入，默认空 -->
+        <!-- v36：简介 textarea——位于伏笔履历上方，可输入，默认空
+         * v39：去掉 rows="2" 限制——autoResize 实时拓展高度（输入越多越高，无上限） -->
         <div class="meta-field meta-intro">
           <label>简介</label>
-          <textarea id="fs-intro" class="meta-textarea" rows="2" placeholder="一句话或一段话描述这个伏笔的概要">${escapeHtml(it.intro || "")}</textarea>
+          <textarea id="fs-intro" class="meta-textarea" placeholder="一句话或一段话描述这个伏笔的概要">${escapeHtml(it.intro || "")}</textarea>
         </div>
         <div class="meta-actions meta-actions-last">
           <!-- v32：移除"保存"按钮 + "完成编辑"按钮（常驻编辑无需切换态）
@@ -3477,8 +3487,12 @@
       el?.addEventListener("change", syncMeta);
     });
     // v36：简介同步——根据 it.intro 是否为空，增/删/改卡片底部的 .fs-col-intro
+    // v39 调整：用户要求「简介输入框逐渐向下扩张，不限制行数」——
+    //      syncIntro 内调 autoResizeTextarea(fsIntro) 让高度跟随内容自动延展
     const syncIntro = () => {
       it.intro = String(fsIntro?.value ?? it.intro ?? "");
+      // v39：简介输入框 auto-resize——输入越多越高，无行数限制
+      if (fsIntro) autoResizeTextarea(fsIntro);
       // 同步卡片预览：找到当前 item 卡片，删旧 intro 节点（如果存在），按 it.intro 重建
       const li = document.querySelector(`.fs-item[data-id="${CSS.escape(it.id)}"]`);
       if (li) {
@@ -3601,9 +3615,9 @@
       jumpToChapterForRecord(rec);
     });
     // v32：panel head 上的删除按钮 → 删当前 panel 显示的伏笔
+    // v39 调整：用户改主意——×按钮改成「收起详情面板」（点 item 自动展开，点 × 收起）
     $("#btn-fs-panel-delete")?.addEventListener("click", () => {
-      if (!it) return;
-      deleteCurrentItem();
+      setFsDetail(null);
     });
   }
 

@@ -4625,6 +4625,119 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v38-UI 改动:", t38UIAll ? "PASS" : "FAIL");
   if (!t38UIAll) allPass = false;
 
+  // ============================================================
+  // v39 改动测试（伏笔 UI 进一步调整 + 详情面板交互）
+  //   需求 1：删除叉号回到右上角（top: 4px right: 4px）
+  //   需求 2：伏笔编号 marginTop/left = 0（编号回左上角）
+  //   需求 3：名称字号 16px（之前 26px）
+  //   需求 4：卡片简介 3 行 + 标题 3 行（line-clamp 3）
+  //   需求 5：详情简介输入框 auto-resize（不限制行数）
+  //   需求 6：详情顶部标题最多 3 行 + 省略号（line-clamp 3）+ 输入框 textarea 不限
+  //   需求 7：右上角 × 改成「收起详情面板」（点击 item 自动展开）
+  // ============================================================
+  console.log("\n--- v39 改动测试（伏笔 UI 进一步调整）---");
+
+  // 39.1 fs-delete 回到右上角
+  const deleteTopRight = /\.fs-item\s+\.fs-delete\s*\{[\s\S]{0,500}top:\s*4px[\s\S]{0,200}right:\s*4px/.test(cssText);
+  console.log(`  .fs-delete 改回右上角 (top:4px right:4px): ${deleteTopRight ? "✓" : "✗"}`);
+  if (!deleteTopRight) allPass = false;
+
+  // 39.2 fs-col-fsno marginTop: 0 + margin-left: 0
+  const fsnoNoMargin = /\.fs-item\s+\.fs-col-fsno\s*\{[\s\S]{0,600}margin-top:\s*0[\s\S]{0,100}margin-left:\s*0/.test(cssText);
+  console.log(`  .fs-col-fsno margin-top/left 改 0: ${fsnoNoMargin ? "✓" : "✗"}`);
+  if (!fsnoNoMargin) allPass = false;
+
+  // 39.3 fs-col-name 字号 16px
+  const nameFontSize16 = /\.fs-item\s+\.fs-col-name\s*\{[\s\S]{0,500}font-size:\s*16px/.test(cssText);
+  console.log(`  .fs-col-name font-size 16px: ${nameFontSize16 ? "✓" : "✗"}`);
+  if (!nameFontSize16) allPass = false;
+
+  // 39.4 fs-col-name line-clamp 3
+  const nameLineClamp3 = /\.fs-item\s+\.fs-col-name\s*\{[\s\S]{0,500}-webkit-line-clamp:\s*3/.test(cssText);
+  console.log(`  .fs-col-name line-clamp 3: ${nameLineClamp3 ? "✓" : "✗"}`);
+  if (!nameLineClamp3) allPass = false;
+
+  // 39.5 fs-col-intro line-clamp 3
+  const introLineClamp3 = /\.fs-item\s+\.fs-col-intro\s*\{[\s\S]{0,500}-webkit-line-clamp:\s*3/.test(cssText);
+  console.log(`  .fs-col-intro line-clamp 3: ${introLineClamp3 ? "✓" : "✗"}`);
+  if (!introLineClamp3) allPass = false;
+
+  // 39.6 fs-panel-name line-clamp 3（标题最多 3 行 + 省略号）
+  const panelNameLineClamp3 = /\.fs-panel-name\s*\{[\s\S]{0,500}-webkit-line-clamp:\s*3/.test(cssText);
+  console.log(`  .fs-panel-name line-clamp 3: ${panelNameLineClamp3 ? "✓" : "✗"}`);
+  if (!panelNameLineClamp3) allPass = false;
+
+  // 39.7 fs-name / fs-intro textarea 去掉 rows 属性（rows="1" / rows="2"）
+  const fsNameNoRows = /<textarea\s+id="fs-name"[^>]*placeholder="给伏笔起个名字"/.test(appText) && !/id="fs-name"[^>]*rows=/.test(appText);
+  const fsIntroNoRows = /<textarea\s+id="fs-intro"[^>]*placeholder="一句话或一段话/.test(appText) && !/id="fs-intro"[^>]*rows=/.test(appText);
+  console.log(`  #fs-name textarea 去掉 rows 属性: ${fsNameNoRows ? "✓" : "✗"}`);
+  if (!fsNameNoRows) allPass = false;
+  console.log(`  #fs-intro textarea 去掉 rows 属性: ${fsIntroNoRows ? "✓" : "✗"}`);
+  if (!fsIntroNoRows) allPass = false;
+
+  // 39.8 fs-intro / fs-name 的 autoResize 调用（renderFsPanel 末尾）
+  const autoResizeOnRender = /autoResizeTextarea\(\$\("#fs-name"\)\)[\s\S]{0,100}autoResizeTextarea\(\$\("#fs-intro"\)\)/.test(appText);
+  console.log(`  renderFsPanel 末尾调 fs-name/fs-intro autoResize: ${autoResizeOnRender ? "✓" : "✗"}`);
+  if (!autoResizeOnRender) allPass = false;
+
+  // 39.9 syncIntro 内调 autoResizeTextarea(fsIntro)（输入时自动拓展）
+  const autoResizeInSyncIntro = /const\s+syncIntro\s*=\s*\(\)\s*=>\s*\{[\s\S]{0,500}autoResizeTextarea\(fsIntro\)/.test(appText);
+  console.log(`  syncIntro 调 autoResizeTextarea(fsIntro): ${autoResizeInSyncIntro ? "✓" : "✗"}`);
+  if (!autoResizeInSyncIntro) allPass = false;
+
+  // 39.10 btn-fs-panel-delete 改成收起详情面板（title 改 + 行为改 setFsDetail(null)）
+  const btnTitleCollapse = /id="btn-fs-panel-delete"[^>]*title="收起详情面板"/.test(appText);
+  console.log(`  btn-fs-panel-delete title 改"收起详情面板": ${btnTitleCollapse ? "✓" : "✗"}`);
+  if (!btnTitleCollapse) allPass = false;
+  const btnClickCollapse = /btn-fs-panel-delete"\)[\s\S]{0,200}\.addEventListener\("click",\s*\(\)\s*=>\s*\{\s*setFsDetail\(null\);?\s*\}\)/.test(appText);
+  console.log(`  btn-fs-panel-delete 点击改 setFsDetail(null): ${btnClickCollapse ? "✓" : "✗"}`);
+  if (!btnClickCollapse) allPass = false;
+
+  // 39.11 .meta-intro textarea min-height 28px（v36 之前是 50px，取消"2 行"高度）
+  const introMinHeight28 = /\.fs-panel-meta\s+\.meta-intro\s+textarea\s*\{[\s\S]{0,300}min-height:\s*28px/.test(cssText);
+  console.log(`  .meta-intro textarea min-height 改 28px: ${introMinHeight28 ? "✓" : "✗"}`);
+  if (!introMinHeight28) allPass = false;
+
+  const t39All = deleteTopRight
+    && fsnoNoMargin
+    && nameFontSize16
+    && nameLineClamp3
+    && introLineClamp3
+    && panelNameLineClamp3
+    && fsNameNoRows && fsIntroNoRows
+    && autoResizeOnRender
+    && autoResizeInSyncIntro
+    && btnTitleCollapse && btnClickCollapse
+    && introMinHeight28;
+  console.log("  v39 改动:", t39All ? "PASS" : "FAIL");
+  if (!t39All) allPass = false;
+
+  // ============================================================
+  // v39 追加：详情面板收起/展开（默认收起、click 展开、× 收起）
+  //   需求 7 补充：默认收起 panel，click item 自动展开，× 收起
+  // ============================================================
+  console.log("\n--- v39 追加：详情面板收起/展开 ---");
+
+  // 39.12 CSS: .fs-page-body.fs-panel-collapsed 隐藏 panel + resizer
+  const collapsedCSS = /\.fs-page-body\.fs-panel-collapsed\s*\{[\s\S]{0,200}grid-template-columns:\s*auto\s+1fr[\s\S]{0,200}\.fs-page-body\.fs-panel-collapsed\s*>\s*\.resizer-fs-panel[\s\S]{0,200}\.fs-page-body\.fs-panel-collapsed\s*>\s*\.fs-panel\s*\{[\s\S]{0,200}display:\s*none/.test(cssText);
+  console.log(`  CSS: .fs-page-body.fs-panel-collapsed 隐藏 panel+resizer: ${collapsedCSS ? "✓" : "✗"}`);
+  if (!collapsedCSS) allPass = false;
+
+  // 39.13 index.html: fs-page-body 默认加 fs-panel-collapsed 类
+  const indexHtmlText = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
+  const defaultCollapsedHTML = /class="fs-page-body fs-panel-collapsed"/.test(indexHtmlText);
+  console.log(`  index.html: .fs-page-body 默认有 fs-panel-collapsed 类: ${defaultCollapsedHTML ? "✓" : "✗"}`);
+  if (!defaultCollapsedHTML) allPass = false;
+
+  // 39.14 app.js: renderFsPanel 切换 fs-panel-collapsed 类（detailId === null 时加，否则去）
+  const toggleCollapsed = /pageBody\?\.classList\.add\("fs-panel-collapsed"\)[\s\S]{0,200}pageBody\?\.classList\.remove\("fs-panel-collapsed"\)/.test(appText);
+  console.log(`  renderFsPanel 切换 fs-panel-collapsed 类: ${toggleCollapsed ? "✓" : "✗"}`);
+  if (!toggleCollapsed) allPass = false;
+
+  const t39bAll = collapsedCSS && defaultCollapsedHTML && toggleCollapsed;
+  console.log("  v39 追加:", t39bAll ? "PASS" : "FAIL");
+  if (!t39bAll) allPass = false;
+
   allPass = true;
 
 

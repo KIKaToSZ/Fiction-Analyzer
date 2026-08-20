@@ -3741,8 +3741,8 @@ input[type="range"]::-moz-range-thumb {
   /* v33：column 布局——编号在顶部，宽度由内容决定（去掉固定 60px）
    * v36：父级 font-size 保持 11px，但内部 .fs-fsno-num 用 22px（数字部分放大 2 倍）
    *      .fs-fsno-text 用 11px（文字部分保持 1 倍 = 不变）
-   * v38：往右下挪动「伏笔编号的高度」（22px）——给编号让出位置，配合名称放大后的视觉重心
-   *      用 margin-top + margin-left 各 22px = 一格伏笔编号高度 */
+   * v38-UI：往右下挪动「伏笔编号的高度」（22px）——给编号让出位置，配合名称放大后的视觉重心
+   * v39 调整：用户改主意——编号回到左上角，margin-top / margin-left 都改 0 */
   flex-shrink: 0;
   font-size: 11px;
   color: var(--accent, #785a3c);
@@ -3753,8 +3753,8 @@ input[type="range"]::-moz-range-thumb {
   display: inline-flex;
   align-items: baseline;
   gap: 1px;
-  margin-top: 22px;
-  margin-left: 22px;
+  margin-top: 0;
+  margin-left: 0;
 }
 /* v36：数字部分放大 2 倍（11px → 22px） */
 .fs-item .fs-fsno-num {
@@ -3774,28 +3774,33 @@ input[type="range"]::-moz-range-thumb {
 }
 .fs-item .fs-col-name {
   /* v33：column 布局——名称占满宽度，2 行截断 + 左对齐
-   * v38：名称字号增大一倍（13px → 26px） */
+   * v38-UI：名称字号增大一倍（13px → 26px）
+   * v39 调整：用户改主意——字号改 16px，行数 3 行（line-clamp 2 → 3） */
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
-  font-size: 26px;
+  font-size: 16px;
   font-weight: 500;
   text-align: left;
-  line-height: 1.2;
+  line-height: 1.4;
   white-space: normal;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  padding-left: 22px;
+  padding-left: 0;
 }
 /* v36：卡片中下位置的简介预览
  * - 紧跟名称（fs-col-name 之后），位于删除按钮前
  * - 最多显示 2 行（line-clamp: 2），溢出用 ellipsis
  * - 字号 12px + 略低色调（muted），不抢标题
  * - margin-top: auto 推到 card 底部（让名称+fsno 居上，简介在下方）
- * v38：往上挪动「当前控件高度」（名称字号 26px = 增大一倍后的当前字号），
- *      左侧与名称对齐（padding-left 跟名称一致 22px） */
+ * v38-UI：往上挪动「当前控件高度」（名称字号 26px = 增大一倍后的当前字号），
+ *      左侧与名称对齐（padding-left 跟名称一致 22px）
+ * v39 调整：用户改主意——
+ *   - 行数 2 → 3（line-clamp: 3）
+ *   - 取消 margin-top: -26px（不强制上挪，让自然 column gap 决定位置）
+ *   - 取消 padding-left: 22px（不强行对齐，跟 card padding 自然对齐） */
 .fs-item .fs-col-intro {
   width: 100%;
   font-size: 12px;
@@ -3803,10 +3808,10 @@ input[type="range"]::-moz-range-thumb {
   line-height: 1.4;
   color: var(--muted, #6b5d4d);
   text-align: left;
-  margin-top: -26px;
-  padding-left: 22px;
+  margin-top: auto;
+  padding-top: 4px;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-word;
@@ -3814,10 +3819,10 @@ input[type="range"]::-moz-range-thumb {
 }
 .fs-item .fs-delete {
   /* v33：absolute 定位右上角（fs-item 已 position:relative）
-   * v38：编号往右下挪动后跟右上角删除按钮重叠——
-   *      把删除按钮挪到右下角（bottom-right），跟编号（左上角附近的右上方）错开 */
+   * v38：编号往右下挪动后跟右上角删除按钮重叠——把删除按钮挪到右下角
+   * v39 调整：用户改主意——编号回到左上角，删除按钮回到右上角（top: 4px right: 4px） */
   position: absolute;
-  bottom: 4px;
+  top: 4px;
   right: 4px;
   flex-shrink: 0;
   background: transparent;
@@ -3895,6 +3900,18 @@ input[type="range"]::-moz-range-thumb {
 .fs-page-body > .resizer-fs-panel { grid-column: 3; }
 .fs-page-body > .fs-panel { grid-column: 4; }
 
+/* v39：右侧 panel 默认收起，click 伏笔自动展开
+ * - 收起态：只显示 filter | grid 2 列，resizer + panel 隐藏（腾出空间给 grid）
+ * - 展开态：正常 4 列布局（filter | grid | resizer | panel）
+ * - 窄屏走 .fs-page-body { display: block } 那条规则下的 translateX 动画，本类不需管 */
+.fs-page-body.fs-panel-collapsed {
+  grid-template-columns: auto 1fr;
+}
+.fs-page-body.fs-panel-collapsed > .resizer-fs-panel,
+.fs-page-body.fs-panel-collapsed > .fs-panel {
+  display: none;
+}
+
 .fs-panel {
   display: flex;
   flex-direction: column;
@@ -3934,11 +3951,17 @@ input[type="range"]::-moz-range-thumb {
   font-size: 14px;
   font-weight: 600;
   color: var(--text, #2c2418);
-  /* v36：长名向下延展——去掉 nowrap/ellipsis */
+  /* v36：长名向下延展——去掉 nowrap/ellipsis
+   * v39 调整：用户要求——panel head 里的标题最多 3 行 + 省略号（line-clamp: 3）
+   *      但 .fs-name textarea 输入框不受此限制（输入时正常延展） */
   white-space: normal;
   overflow-wrap: break-word;
   word-break: break-word;
   min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 /* v33：panel head 上的状态按钮（替代旧 select + meta 区里的 select）
    - 视觉：pill 状（border-radius 10px）+ 跟 fs-col-status 一样的颜色
@@ -4060,18 +4083,23 @@ input[type="range"]::-moz-range-thumb {
   outline: none;
   border-color: var(--accent, #785a3c);
 }
-/* v36：名称 textarea 跟原来 input 等高，row=1 时不显得突兀 */
+/* v36：名称 textarea 跟原来 input 等高，row=1 时不显得突兀
+ * v39 调整：用户要求简介输入框「逐渐向下扩张，不限制行数」——
+ *      meta-name-textarea 同样用 autoResize 配合输入动态展开（输入越多越高）
+ *      CSS 端：保留 min-height 兜底（空时还有初始高度），配合 autoResizeTextarea 实时调整 scrollHeight */
 .fs-panel-meta .meta-name-textarea {
   min-height: 28px;
 }
-/* v36：简介 textarea 初始 2 行高度（rows="2"），跟标签对齐 */
+/* v36：简介 textarea 初始 2 行高度（rows="2"），跟标签对齐
+ * v39 调整：用户要求简介输入框「逐渐向下扩张，不限制行数」——
+ *      取消 min-height 限制（行数随输入自然延展），只留 28px 兜底防止 0 高度 */
 .fs-panel-meta .meta-intro {
   /* meta 区里"简介"独占一行——不和编号/名称挤在 grid 里 */
   margin-top: 4px;
 }
 .fs-panel-meta .meta-intro textarea {
-  /* 简介 textarea 至少 2 行高度，看起来有"输入区"的感觉 */
-  min-height: 50px;
+  /* 简介 textarea 兜底 28px 高度（极端空状态下不至于塌掉），实际高度由 autoResize 动态决定 */
+  min-height: 28px;
 }
 
 /* panel 内的"履历"段 */

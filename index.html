@@ -295,7 +295,10 @@
                  - 中间：resizer-fs-panel 可拖拽宽度
                  - 右侧：fs-panel 详情 panel（始终可见，默认 450px，双击重置）
                  - v32.1：窄屏（≤899）切回 modal 模式——grid 满宽 + panel 滑入 + mask 遮罩 -->
-            <div class="fs-page-body">
+            <!-- v39：默认加 fs-panel-collapsed 类——页面加载时 panel 收起（不显示空态）
+                 - click 伏笔自动展开（renderFsPanel 移除该类）
+                 - 点 panel head 的 × 收起（setFsDetail(null) 重新加上该类） -->
+            <div class="fs-page-body fs-panel-collapsed">
               <!-- v36：状态筛选纵向 tab——左侧第 1 列，文字竖排，宽度窄 -->
               <div id="fs-status-filter" class="fs-status-filter" role="group" aria-label="按状态筛选">
                 <button class="fs-filter-btn active" data-fs-status="all" title="显示全部">全部</button>
