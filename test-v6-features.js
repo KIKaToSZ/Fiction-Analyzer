@@ -4738,6 +4738,54 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v39 追加:", t39bAll ? "PASS" : "FAIL");
   if (!t39bAll) allPass = false;
 
+  // ============================================================
+  // v40 改动（3 个需求）
+  //   需求 1：移除 灵石台账「收支类型」select，type 从 quantity 正负自动判断
+  //   需求 2：伏笔新增后，正序时 fs-grid 自动滚到最底端
+  //   需求 3：重新编号连续性检查修复（用 Math.abs，兼容正/倒序）
+  // ============================================================
+  console.log("\n--- v40 改动（lingshi type + fs 自动滚动 + 重新编号 bug）---");
+
+  // 40.1 lingshi 列表渲染用 quantity 派生 type（不再读 it.type）
+  const lsTypeFromQty = /const type = qty < 0 \? "支出" : "收入";/.test(appText);
+  console.log(`  lingshi 列表 type 从 qty 派生: ${lsTypeFromQty ? "✓" : "✗"}`);
+  if (!lsTypeFromQty) allPass = false;
+
+  // 40.2 lingshi 编辑器里没有 #ls-type select（v40 移除）
+  const noLsTypeSelect = !/id="ls-type"/.test(appText);
+  console.log(`  lingshi 编辑器无 #ls-type select: ${noLsTypeSelect ? "✓" : "✗"}`);
+  if (!noLsTypeSelect) allPass = false;
+
+  // 40.3 lingshi quantity wire 同步写 it.type
+  const qtyWireSyncType = /wire\("ls-quantity",\s*"quantity",\s*\(v\)\s*=>\s*\{[\s\S]{0,200}it\.type\s*=\s*num\s*<\s*0\s*\?\s*"支出"\s*:\s*"收入"/.test(appText);
+  console.log(`  lingshi quantity wire 同步写 it.type: ${qtyWireSyncType ? "✓" : "✗"}`);
+  if (!qtyWireSyncType) allPass = false;
+
+  // 40.4 load() 迁移 lingshi items.type ↔ quantity
+  const lsLoadMigration = /v40：迁移 lingshi items\.type[\s\S]{0,800}it\.type\s*=\s*q\s*<\s*0\s*\?\s*"支出"\s*:\s*"收入"/.test(appText);
+  console.log(`  load() 迁移 lingshi items.type ↔ quantity: ${lsLoadMigration ? "✓" : "✗"}`);
+  if (!lsLoadMigration) allPass = false;
+
+  // 40.5 addNewItemInPage 内 fs-grid 滚到底部（正序时）
+  const fsGridAutoScroll = /pid === "foreshadowing" && state\.ui\.fsSort === "asc"[\s\S]{0,200}grid\.scrollTop\s*=\s*grid\.scrollHeight/.test(appText);
+  console.log(`  fs-grid 正序时自动滚到底部: ${fsGridAutoScroll ? "✓" : "✗"}`);
+  if (!fsGridAutoScroll) allPass = false;
+
+  // 40.6 重新编号连续性检查改用 Math.abs（修复倒序报不连续 bug）
+  const renumberAbsCheck = /Math\.abs\(b\.num\s*-\s*a\.num\)\s*!==\s*1/.test(appText);
+  console.log(`  重新编号用 Math.abs 兼容正/倒序: ${renumberAbsCheck ? "✓" : "✗"}`);
+  if (!renumberAbsCheck) allPass = false;
+
+  // 40.7 旧代码 b.num - a.num !== 1 已不存在（确保修复覆盖到）
+  const oldCheckGone = !/if \(b\.num\s*-\s*a\.num\s*!==\s*1\)/.test(appText);
+  console.log(`  旧版 b.num - a.num !== 1 已移除: ${oldCheckGone ? "✓" : "✗"}`);
+  if (!oldCheckGone) allPass = false;
+
+  const t40All = lsTypeFromQty && noLsTypeSelect && qtyWireSyncType && lsLoadMigration
+    && fsGridAutoScroll && renumberAbsCheck && oldCheckGone;
+  console.log("  v40 改动:", t40All ? "PASS" : "FAIL");
+  if (!t40All) allPass = false;
+
   allPass = true;
 
 

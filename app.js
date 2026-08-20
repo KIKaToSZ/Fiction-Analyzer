@@ -1371,6 +1371,14 @@
       for (const s of state.sheetsRaw) {
         if (!s.page) s.page = "chapter";
       }
+      // v40：迁移 lingshi items.type ↔ quantity 同步——旧数据可能 type 与 quantity 不一致
+      //   （v40 移除 收支类型 select 后，type 完全由 quantity 派生，确保旧数据也一致）
+      if (state.pages.lingshi && Array.isArray(state.pages.lingshi.items)) {
+        for (const it of state.pages.lingshi.items) {
+          const q = Number(it.quantity) || 0;
+          it.type = q < 0 ? "支出" : "收入";
+        }
+      }
       // v11：恢复配置后刷新「写盘目录」按钮文字
       updateAutosaveButton();
     } catch (e) {
@@ -2628,7 +2636,8 @@
             const active = it.id === p.currentItemId ? "active" : "";
             const qty = Number(it.quantity) || 0;
             const qtyClass = qty > 0 ? "ls-qty-pos" : qty < 0 ? "ls-qty-neg" : "";
-            const type = it.type === "支出" ? "支出" : "收入";
+            // v40：type 改成从 quantity 派生——正数=收入、负数=支出（不再有用户可编辑的 select）
+            const type = qty < 0 ? "支出" : "收入";
             const typeClass = type === "支出" ? "ls-type-out" : "ls-type-in";
             return `
             <li class="ls-item ${active}" data-id="${escapeHtml(it.id)}">
@@ -2692,15 +2701,9 @@
           <label>章节号</label>
           <input id="ls-chapter" type="text" value="${escapeHtml(it.chapter || "")}" placeholder="如：第3章" />
         </div>
+        <!-- v40：移除 收支类型 select——收支类型由「数量」正负自动判断（正=收入、负=支出、0=收入） -->
         <div class="meta-field">
-          <label>收支类型</label>
-          <select id="ls-type">
-            <option value="收入" ${it.type !== "支出" ? "selected" : ""}>收入</option>
-            <option value="支出" ${it.type === "支出" ? "selected" : ""}>支出</option>
-          </select>
-        </div>
-        <div class="meta-field">
-          <label>数量 <span class="muted hint">（正负数表示收支）</span></label>
+          <label>数量 <span class="muted hint">（正=收入 / 负=支出，自动判断）</span></label>
           <input id="ls-quantity" type="number" step="any" value="${qty}" />
         </div>
         <div class="meta-field">
@@ -2751,20 +2754,16 @@
         save();
       });
     };
+    // v40：移除 收支类型 select 监听——收支类型由「数量」正负自动判断
+    //   quantity wire 的 transform 里同步写 it.type，确保列表渲染时 type 与 quantity 一致
     wire("ls-chapter", "chapter");
     wire("ls-category", "category");
-    wire("ls-quantity", "quantity", (v) => parseFloat(v) || 0);
+    wire("ls-quantity", "quantity", (v) => {
+      const num = parseFloat(v) || 0;
+      it.type = num < 0 ? "支出" : "收入"; // 同步 type（负数=支出，否则=收入）
+      return num;
+    });
     wire("ls-description", "description");
-
-    // 收支类型 select
-    const typeSel = $("#ls-type");
-    if (typeSel) {
-      typeSel.addEventListener("change", () => {
-        it.type = typeSel.value === "支出" ? "支出" : "收入";
-        renderLingshiList();
-        save();
-      });
-    }
 
     // 初始字数
     const wc = $("#ls-word-count");
@@ -4805,6 +4804,14 @@
     save();
     pushHistory();
     renderAll();
+    // v40：新增伏笔时，如果当前是正序，fs-grid 自动滚到最底端（让用户看到新加的那张卡）
+    //      倒序时新加的卡在列表顶部，本来就可见，不用滚
+    if (pid === "foreshadowing" && state.ui.fsSort === "asc") {
+      setTimeout(() => {
+        const grid = $("#fs-grid");
+        if (grid) grid.scrollTop = grid.scrollHeight;
+      }, 60); // 略等 renderAll 后 grid 高度稳定
+    }
     setTimeout(() => {
       // focus 第一个可输入字段
       const focusSel =
@@ -4885,7 +4892,9 @@
     for (let i = 1; i < numericItems.length; i++) {
       const a = numericItems[i - 1];
       const b = numericItems[i];
-      if (b.num - a.num !== 1) {
+      // v40 修复：原代码 b.num - a.num !== 1 只对正序有效——倒序时 b.num - a.num = -1
+      //   全报不连续。改为 Math.abs 兼容正/倒序（"连续"=绝对差 1，跟方向无关）
+      if (Math.abs(b.num - a.num) !== 1) {
         gaps.push({ prev: a.display, next: b.display });
       }
     }
