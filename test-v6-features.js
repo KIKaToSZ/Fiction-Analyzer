@@ -5029,6 +5029,42 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
 
   console.log("  v44 改动:", allPass ? "PASS" : "FAIL");
 
+  // ============ v45：createNewFile root cause ============
+  // 用户发现 root cause：先点左上角"新建空白文件"，再点其他页面新增按钮不响应。
+  // 根因：createNewFile 重置 state.pages 只硬写 chapter + foreshadowing 2 个 page，
+  // 漏了 v21 的 lingshi/items 和 v43 的 storyline/character → p=state.pages[pid] undefined。
+  // 修复：遍历 PAGES 注册表，跳过 compound 类型（如 goods）。
+
+  // v45.1 createNewFile 中遍历 PAGES 注册表 + 跳过 compound
+  const t45_1_loop = /async function createNewFile\(\)\s*\{[\s\S]*?for \(const \[pid, def\] of Object\.entries\(PAGES\)\)\s*\{[\s\S]*?if \(def && def\.kind !== "compound"\)\s*\{[\s\S]*?newPages\[pid\] = makePageState\(\);/.test(SRC);
+  console.log("  v45.1 createNewFile 遍历 PAGES 注册表 + 跳过 compound:",
+    t45_1_loop ? "PASS" : "FAIL");
+  if (!t45_1_loop) allPass = false;
+
+  // v45.2 旧硬写 chapter + foreshadowing 已被替换
+  const t45_2_oldReplaced = !/state\.pages = \{\s*chapter: makePageState\(\),\s*foreshadowing: makePageState\(\),\s*\};/.test(SRC);
+  console.log("  v45.2 旧硬写 chapter+foreshadowing 已被替换:",
+    t45_2_oldReplaced ? "PASS" : "FAIL");
+  if (!t45_2_oldReplaced) allPass = false;
+
+  // v45.3 PAGES 实际注册的 page 数量
+  //   简单点：chapter 是 PAGES 第一个注册，且 PAGES 块结束有 goods + lingshi + items + storyline + character 等
+  //   验证 PAGES 注册表里有所有 7 个 page id（用更精确的上下文：每个 page 块开头都是 "      id: \"<name>\""）
+  const t45_3_ids = ["chapter","foreshadowing","goods","lingshi","items","storyline","character"];
+  const t45_3_allPresent = t45_3_ids.every(pid => {
+    // 在 PAGES 块内（开始于 "const PAGES = {"）检查 "      id: \"<pid>\"" 存在
+    const pagesStart = SRC.indexOf("const PAGES = {");
+    const pagesEnd = SRC.indexOf("\n  };", pagesStart);
+    if (pagesStart < 0 || pagesEnd < 0) return false;
+    const block = SRC.slice(pagesStart, pagesEnd);
+    return new RegExp(`id: "${pid}"`).test(block);
+  });
+  console.log(`  v45.3 PAGES 块内含 7 个 page id (chapter/foreshadowing/goods/lingshi/items/storyline/character):`,
+    t45_3_allPresent ? "PASS" : "FAIL");
+  if (!t45_3_allPresent) allPass = false;
+
+  console.log("  v45 改动:", allPass ? "PASS" : "FAIL");
+
   // 兜底：v43 之前的测试版本（v11/v32/v33/v34/v36/v38/v38-UI）有遗留 FAIL，
   // 不影响 v43 本身的断言——9 个子断言全 PASS，最终 reset 让"全部测试通过"生效
   allPass = true;

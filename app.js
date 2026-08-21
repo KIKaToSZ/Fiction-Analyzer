@@ -6362,11 +6362,20 @@
         console.warn("新建前备份失败：", e);
       }
     }
-    // 重置 state
-    state.pages = {
-      chapter: makePageState(),
-      foreshadowing: makePageState(),
-    };
+    // v45：遍历 PAGES 注册表重置所有 page（之前只硬写 chapter + foreshadowing 2 个，
+    //   漏了 v21 的 lingshi/items 和 v43 的 storyline/character → 新建空白后切到这些 page
+    //   点新增会因 p=state.pages[pid] 是 undefined → addNewItemInPage 直接 return，
+    //   表现为「点击新增不刷新、按钮无响应」）。
+    //   跳过 kind === "compound" 的 page（如 goods——用 lingshi+items 组合渲染，无独立 state）。
+    {
+      const newPages = {};
+      for (const [pid, def] of Object.entries(PAGES)) {
+        if (def && def.kind !== "compound") {
+          newPages[pid] = makePageState();
+        }
+      }
+      state.pages = newPages;
+    }
     state.sheetsRaw = [];
     state.currentFileName = null;
     state.xlsxFileName = null;
