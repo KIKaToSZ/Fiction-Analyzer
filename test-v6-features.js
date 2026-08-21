@@ -5065,6 +5065,43 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
 
   console.log("  v45 改动:", allPass ? "PASS" : "FAIL");
 
+  // ============ v46：3 个 UX 修复 ============
+  // 1) 故事脉络 list 点上去没用：bindListEvents 没绑 #storyline-list（v43 漏绑）
+  // 2) 故事脉络 / 角色详情 列表项没删除按钮：.sl-delete 已有 CSS 但 .ch2-delete 没有 → 加 CSS
+  // 3) 财物详情 tab 移除计数：renderNavTabs 给 goods 跳过 count
+
+  // v46.1 bindListEvents 拿到 storylineList + 绑 onMainClick
+  const t46_1_get = /const storylineList = \$\("#storyline-list"\);/.test(SRC);
+  const t46_1_bind = /if \(storylineList\) storylineList\.addEventListener\("click", onMainClick\);/.test(SRC);
+  console.log("  v46.1 bindListEvents 拿 + 绑 storylineList:",
+    t46_1_get && t46_1_bind ? "PASS" : "FAIL");
+  if (!(t46_1_get && t46_1_bind)) allPass = false;
+
+  // v46.2 onMainClick 处理 .sl-item 切换 + .sl-delete 删除
+  const t46_2_slItem = /e\.target\.closest\("\.ch-item, \.fs-item, \.ch2-item, \.sl-item"\)/.test(SRC);
+  const t46_2_slDelete = /e\.target\.closest\("\.sl-delete"\)/.test(SRC);
+  // storyline 路径在 else if 里——放宽正则
+  const t46_2_save = /state\.currentPage === "storyline"\)[\s\S]{0,150}saveCurrentItem\(\)/.test(SRC);
+  console.log("  v46.2 onMainClick 处理 .sl-item + .sl-delete + storyline 落盘:",
+    t46_2_slItem && t46_2_slDelete && t46_2_save ? "PASS" : "FAIL");
+  if (!(t46_2_slItem && t46_2_slDelete && t46_2_save)) allPass = false;
+
+  // v46.3 styles.css 加 .ch2-delete 样式（与 .sl-delete 风格一致）
+  const t46_3_css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf-8");
+  const t46_3_ch2Delete = /\.ch2-delete\s*\{[\s\S]{0,400}opacity: 0\.5/.test(t46_3_css);
+  const t46_3_hover = /\.ch2-item:hover \.ch2-delete,[\s\S]{0,80}\.ch2-delete:focus-visible \{ opacity: 1; \}/.test(t46_3_css);
+  console.log("  v46.3 styles.css 加 .ch2-delete 样式 + hover/active/focus 显隐:",
+    t46_3_ch2Delete && t46_3_hover ? "PASS" : "FAIL");
+  if (!(t46_3_ch2Delete && t46_3_hover)) allPass = false;
+
+  // v46.4 renderNavTabs 给 goods tab 跳过 count
+  const t46_4_goods = /pid === "goods" \? "" : `<span class="nav-tab-count">\$\{count\}<\/span>`/.test(SRC);
+  console.log("  v46.4 renderNavTabs goods tab 跳过 count:",
+    t46_4_goods ? "PASS" : "FAIL");
+  if (!t46_4_goods) allPass = false;
+
+  console.log("  v46 改动:", allPass ? "PASS" : "FAIL");
+
   // 兜底：v43 之前的测试版本（v11/v32/v33/v34/v36/v38/v38-UI）有遗留 FAIL，
   // 不影响 v43 本身的断言——9 个子断言全 PASS，最终 reset 让"全部测试通过"生效
   allPass = true;

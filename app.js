@@ -2127,7 +2127,9 @@
       const p = state.pages[pid] || { items: [] };
       const count = p.items ? p.items.length : 0;
       const active = pid === state.currentPage ? "active" : "";
-      return `<button class="nav-tab ${active}" data-page="${pid}" role="tab" aria-selected="${pid === state.currentPage}"><span class="nav-tab-icon">${def.icon}</span><span class="nav-tab-label">${escapeHtml(def.label)}</span><span class="nav-tab-count">${count}</span></button>`;
+      // v46：goods tab（财物详情）不显示计数——子页（灵石+物品）多，count 无意义
+      const countHtml = pid === "goods" ? "" : `<span class="nav-tab-count">${count}</span>`;
+      return `<button class="nav-tab ${active}" data-page="${pid}" role="tab" aria-selected="${pid === state.currentPage}"><span class="nav-tab-icon">${def.icon}</span><span class="nav-tab-label">${escapeHtml(def.label)}</span>${countHtml}</button>`;
     }).join("");
     $$(".nav-tab", wrap).forEach((b) =>
       b.addEventListener("click", () => {
@@ -6550,10 +6552,13 @@
     const lingshiList = $("#lingshi-list");
     const itemsList = $("#items-list");
     const characterList = $("#character-list");
+    // v46：故事脉络 list（v43 引入但当时忘记绑 click——点击无响应）
+    const storylineList = $("#storyline-list");
 
-    // 章节 / 伏笔 / 角色 的「统一切换」处理（依赖 state.currentPage）
+    // 章节 / 伏笔 / 角色 / 故事脉络 的「统一切换」处理（依赖 state.currentPage）
     //   - 切前 saveCurrentItem 落盘
     //   - 设 curPage().currentItemId
+    //   v46：加 .sl-item / .sl-delete 支持（之前 v43 引入 storyline list 但 bindListEvents 没绑）
     const onMainClick = (e) => {
       // 章节列表的"删除"叉号优先处理，阻止冒泡（避免触发选中）
       if (e.target.closest(".ch-delete")) {
@@ -6580,7 +6585,16 @@
         deleteCurrentItem();
         return;
       }
-      const item = e.target.closest(".ch-item, .fs-item, .ch2-item");
+      // v46：故事脉络删除叉号
+      if (e.target.closest(".sl-delete")) {
+        e.stopPropagation();
+        const id = e.target.closest(".sl-delete").dataset.id;
+        if (!id) return;
+        curPage().currentItemId = id;
+        deleteCurrentItem();
+        return;
+      }
+      const item = e.target.closest(".ch-item, .fs-item, .ch2-item, .sl-item");
       if (!item) return;
       if (curPage().currentItemId === item.dataset.id) return;
       if (state.currentPage === "chapter" || state.currentPage === "character") {
@@ -6595,6 +6609,9 @@
       } else if (state.currentPage === "foreshadowing") {
         // v32：常驻 panel 总是可编辑——切伏笔时直接 flushFsDetail 把当前 panel 的内容写回 state
         try { flushFsDetail(); } catch (_) {}
+      } else if (state.currentPage === "storyline") {
+        // v46：切故事脉络条目时 flushStorylineDetail 写回（与 chapter 走 saveCurrentItem 同理）
+        try { saveCurrentItem(); } catch (_) {}
       }
       curPage().currentItemId = item.dataset.id;
       save();
@@ -6674,6 +6691,8 @@
     if (chapterList) chapterList.addEventListener("click", onMainClick);
     if (fsList) fsList.addEventListener("click", onFsClick);
     if (characterList) characterList.addEventListener("click", onMainClick);
+    // v46：故事脉络 list 绑到 onMainClick（处理 .sl-item 切换 + .sl-delete 删除）
+    if (storylineList) storylineList.addEventListener("click", onMainClick);
     if (lingshiList) lingshiList.addEventListener("click", onSubListClick("lingshi", () => {
       renderLingshiList();
       renderLingshiEditor();

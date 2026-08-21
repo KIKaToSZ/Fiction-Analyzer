@@ -3255,6 +3255,27 @@ input[type="range"]::-moz-range-thumb {
 /* ============================================
    v19：角色详情 (character)
    ============================================ */
+/* v46：角色列表删除按钮——与 .ch-delete / .fs-delete / .sl-delete 风格保持一致
+   （默认 opacity 0.5，hover / active / focus-visible 1.0） */
+.ch2-delete {
+  margin-left: auto;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity var(--transition), color var(--transition);
+  padding: 0;
+}
+.ch2-item:hover .ch2-delete,
+.ch2-item.active .ch2-delete,
+.ch2-delete:focus-visible { opacity: 1; }
+.ch2-delete:hover { color: #c0392b; }
 .ch2-list {
   list-style: none;
   margin: 0;
