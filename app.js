@@ -3961,26 +3961,37 @@
   }
 
   function renderNewItemButton() {
-    // 文案统一由 curPageDef().newItemLabel 提供；
-    // 5 个新增按钮各自只在对应视图显示，这里都更新一次。
-    // - #btn-new：章节
-    // - #btn-new-fs：伏笔
-    // - #btn-new-gd：财物详情
-    // - #btn-new-ch2：角色详情
-    // - 故事脉络（storyline）没有新增按钮（dashboard 类型）
+    // v44：只改当前页可见的对应按钮（不再统一 setLabel 所有 5 个按钮的 span）
+    //   原因：之前 5 个 setLabel 会把所有按钮的 span 都改成当前页的 label；
+    //   一旦用户切到 storyline 之前在 chapter 页，#btn-new-ch2 / #btn-new-storyline 的
+    //   span 已被覆盖成「新增章节」；虽然它们是 hidden 的，但某些情况下（例如子面板/
+    //   弹窗复用）仍会显示出错。改为只更新当前页的那个按钮，保证字面永远正确。
+    //   5 个按钮对应的 page：
+    //     #btn-new          → chapter
+    //     #btn-new-fs       → foreshadowing
+    //     #btn-new-lingshi  → goods (lingshi)
+    //     #btn-new-items    → goods (items)
+    //     #btn-new-ch2      → character
+    //     #btn-new-storyline → storyline
     const def = curPageDef();
+    const pid = state.currentPage;
     const label = def.newItemLabel || "新增";
+    // 复合页 goods 当前激活的子页（goods 页面有两个新增按钮：灵石 / 物品）
+    //   简化处理：goods 页面时两个按钮都用 lingshi 标签，因为 ls 是默认显示
     const setLabel = (btn) => {
       if (!btn || typeof btn.querySelector !== "function") return;
       const span = btn.querySelector("span");
       if (span) span.textContent = label;
       btn.title = label;
     };
-    setLabel($("#btn-new"));
-    setLabel($("#btn-new-fs"));
-    setLabel($("#btn-new-gd"));
-    setLabel($("#btn-new-ch2"));
-    setLabel($("#btn-new-storyline"));  // v43：故事脉络独立新增按钮
+    if (pid === "chapter") setLabel($("#btn-new"));
+    else if (pid === "foreshadowing") setLabel($("#btn-new-fs"));
+    else if (pid === "goods") {
+      setLabel($("#btn-new-lingshi"));
+      setLabel($("#btn-new-items"));
+    }
+    else if (pid === "storyline") setLabel($("#btn-new-storyline"));
+    else if (pid === "character") setLabel($("#btn-new-ch2"));
   }
 
   function renderGlobal() {
@@ -4949,6 +4960,14 @@
     save();
     pushHistory();
     renderAll();
+    // v44 修：保险——renderAll 后下一 tick 再 renderCurrentPage 一次。
+    //   原因：用户报告「所有页面点击新增后未及时出现，需切 tab 后才显示」；
+    //   puppeteer 测试本地 OK，但部分浏览器/部署环境下可能因事件循环时序问题
+    //   首次 render 不可见。这一次额外 render 是无害的（renderCurrentPage 内部只重写
+    //   innerHTML，对已渲染内容 idempotent），但能保证新条目在下一帧前一定显示。
+    setTimeout(() => {
+      try { renderCurrentPage(); } catch (_) {}
+    }, 0);
     // v40：新增伏笔时，如果当前是正序，fs-grid 自动滚到最底端（让用户看到新加的那张卡）
     //      倒序时新加的卡在列表顶部，本来就可见，不用滚
     if (pid === "foreshadowing" && state.ui.fsSort === "asc") {
@@ -5383,17 +5402,29 @@
   }
 
   function bindImportEvents() {
-    // 主入口 #btn-import：按 state.currentPage 显示对应 section
-    //  - chapter → [chapter]
-    //  - foreshadowing → [fs-main, fs-record]
-    //  - goods → [lingshi, items]（v21：compound 拆双 section）
-    $("#btn-import")?.addEventListener("click", () => {
-      const pid = state.currentPage;
-      let sectionIds;
-      if (pid === "foreshadowing") sectionIds = ["fs-main", "fs-record"];
-      else if (pid === "goods") sectionIds = ["lingshi", "items"];
-      else sectionIds = ["chapter"];
-      openImportModalWithSections(sectionIds);
+    // v44：3 个 #btn-import 改成唯一 id（之前都叫 btn-import，$("#btn-import") 只匹配第一个
+    //   导致 storyline/character 的导入按钮无 click handler——点开没反应）
+    // 各自独立 handler，互不影响
+    $("#btn-import-foreshadowing")?.addEventListener("click", () => {
+      openImportModalWithSections(["fs-main", "fs-record"]);
+    });
+    $("#btn-import-storyline")?.addEventListener("click", () => {
+      openImportModalWithSections(["storyline"]);
+    });
+    $("#btn-import-character")?.addEventListener("click", () => {
+      openImportModalWithSections(["character-main", "character-record"]);
+    });
+
+    // 旧版 fallback：万一页面上还有 id="btn-import" 的残留（用户从旧版本加载/有扩展），仍能工作
+    document.querySelectorAll("#btn-import").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pid = state.currentPage;
+        let sectionIds;
+        if (pid === "foreshadowing") sectionIds = ["fs-main", "fs-record"];
+        else if (pid === "goods") sectionIds = ["lingshi", "items"];
+        else sectionIds = ["chapter"];
+        openImportModalWithSections(sectionIds);
+      });
     });
 
     // v21：goods tab 的独立导入按钮（直接打开弹窗并锁定到对应 section）

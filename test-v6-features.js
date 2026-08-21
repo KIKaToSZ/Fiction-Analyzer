@@ -4957,12 +4957,15 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
     && t43_10_btnNewSl && t43_10_btnStorylineSort && t43_10_noDashboard)) allPass = false;
 
   // 11. 角色详情 HTML 工具栏含 import + sort 按钮（v43 加的）
+  // v44 更新：3 个 btn-import 已改唯一 id（btn-import-foreshadowing / btn-import-storyline / btn-import-character）
+  //   旧期望「>=2 个 id="btn-import"」在 v44 后应改为「<button id="btn-import 不应再出现」+ character 有 btn-import-character
   const t43_11_chSortLabel = /id="character-sort-label"/.test(t43_htmlSrc);
-  const t43_11_btnImport = (t43_htmlSrc.match(/id="btn-import"/g) || []).length >= 2; // foreshadowing + character 都有
+  const t43_11_btnImportCh = /id="btn-import-character"/.test(t43_htmlSrc);
   const t43_11_btnChSort = /id="btn-character-sort"/.test(t43_htmlSrc);
-  console.log("  v43.11 角色详情工具栏含 import + sort + sort-label:",
-    t43_11_chSortLabel && t43_11_btnImport && t43_11_btnChSort ? "PASS" : "FAIL");
-  if (!(t43_11_chSortLabel && t43_11_btnImport && t43_11_btnChSort)) allPass = false;
+  const t43_11_noPlainImport = !/<button id="btn-import"/.test(t43_htmlSrc);
+  console.log("  v43.11 角色详情工具栏含 import + sort + sort-label（v44 后改唯一 id）:",
+    t43_11_chSortLabel && t43_11_btnImportCh && t43_11_btnChSort && t43_11_noPlainImport ? "PASS" : "FAIL");
+  if (!(t43_11_chSortLabel && t43_11_btnImportCh && t43_11_btnChSort && t43_11_noPlainImport)) allPass = false;
 
   // 12. app.js bindEditorButtons 已绑 btn-new-storyline + 2 个 sort 按钮
   //     实际代码：$("#btn-new-storyline")?.addEventListener(...)，所以 substring 包含 ")"
@@ -4981,6 +4984,50 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   if (!(t43_13_newHint && t43_13_oldHintGone)) allPass = false;
 
   console.log("  v43 改动:", allPass ? "PASS" : "FAIL");
+
+  // ============ v44：3 个 bug 修复 ============
+  // 1) 3 个 #btn-import 改唯一 id（foreshadowing/storyline/character）
+  // 2) bindImportEvents 分别绑 3 个 id
+  // 3) renderNewItemButton 只改当前页按钮（不再 setLabel 所有 5 个）
+  // 4) addNewItemInPage 后 setTimeout(0) 再 renderCurrentPage（防首次 render 不可见）
+
+  // v44.1 index.html 3 个 btn-import 唯一 id
+  const t44_htmlSrc = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
+  const t44_1_importFs = /id="btn-import-foreshadowing"/.test(t44_htmlSrc);
+  const t44_1_importSl = /id="btn-import-storyline"/.test(t44_htmlSrc);
+  const t44_1_importCh = /id="btn-import-character"/.test(t44_htmlSrc);
+  // 旧 id "btn-import" 不应再出现在 page-toolbar 按钮上（只允许 confirm 后缀的衍生）
+  const t44_1_noPlain = !/<button id="btn-import"/.test(t44_htmlSrc);
+  console.log("  v44.1 3 个 btn-import 唯一 id（fs/sl/ch），无重名:",
+    t44_1_importFs && t44_1_importSl && t44_1_importCh && t44_1_noPlain ? "PASS" : "FAIL");
+  if (!(t44_1_importFs && t44_1_importSl && t44_1_importCh && t44_1_noPlain)) allPass = false;
+
+  // v44.2 bindImportEvents 3 个 id 各自有 click handler
+  const t44_2_bindFs = /\$\("#btn-import-foreshadowing"\)\?\.addEventListener\("click", \(\) => \{[\s\S]{0,80}openImportModalWithSections\(\["fs-main",\s*"fs-record"\]\)/.test(SRC);
+  const t44_2_bindSl = /\$\("#btn-import-storyline"\)\?\.addEventListener\("click", \(\) => \{[\s\S]{0,80}openImportModalWithSections\(\["storyline"\]\)/.test(SRC);
+  const t44_2_bindCh = /\$\("#btn-import-character"\)\?\.addEventListener\("click", \(\) => \{[\s\S]{0,80}openImportModalWithSections\(\["character-main",\s*"character-record"\]\)/.test(SRC);
+  console.log("  v44.2 bindImportEvents 3 个 id 各自有 click handler:",
+    t44_2_bindFs && t44_2_bindSl && t44_2_bindCh ? "PASS" : "FAIL");
+  if (!(t44_2_bindFs && t44_2_bindSl && t44_2_bindCh)) allPass = false;
+
+  // v44.3 renderNewItemButton 按 pid 路由（不再 5 个 setLabel 全调）
+  //   验证：5 个 if/else if 分支各自 setLabel 对应按钮
+  const t44_3a_chapter = /if \(pid === "chapter"\) setLabel\(\$\("#btn-new"\)\)/.test(SRC);
+  const t44_3b_fs = /else if \(pid === "foreshadowing"\) setLabel\(\$\("#btn-new-fs"\)\)/.test(SRC);
+  const t44_3c_goods = /pid === "goods"\)[\s\S]{0,80}setLabel\(\$\("#btn-new-lingshi"\)\)[\s\S]{0,80}setLabel\(\$\("#btn-new-items"\)\)/.test(SRC);
+  const t44_3d_sl = /else if \(pid === "storyline"\) setLabel\(\$\("#btn-new-storyline"\)\)/.test(SRC);
+  const t44_3e_ch = /else if \(pid === "character"\) setLabel\(\$\("#btn-new-ch2"\)\)/.test(SRC);
+  console.log("  v44.3 renderNewItemButton 按 pid 路由（5 分支）:",
+    t44_3a_chapter && t44_3b_fs && t44_3c_goods && t44_3d_sl && t44_3e_ch ? "PASS" : "FAIL");
+  if (!(t44_3a_chapter && t44_3b_fs && t44_3c_goods && t44_3d_sl && t44_3e_ch)) allPass = false;
+
+  // v44.4 addNewItemInPage 末尾有 setTimeout(0) 保险
+  const t44_4_safety = /p\.items\.push\(it\);[\s\S]*?p\.currentItemId = it\.id;[\s\S]*?save\(\);[\s\S]*?pushHistory\(\);[\s\S]*?renderAll\(\);[\s\S]*?setTimeout\(\(\) => \{[\s\S]*?try \{ renderCurrentPage\(\); \} catch/.test(SRC);
+  console.log("  v44.4 addNewItemInPage 末尾有 setTimeout(0) render 保险:",
+    t44_4_safety ? "PASS" : "FAIL");
+  if (!t44_4_safety) allPass = false;
+
+  console.log("  v44 改动:", allPass ? "PASS" : "FAIL");
 
   // 兜底：v43 之前的测试版本（v11/v32/v33/v34/v36/v38/v38-UI）有遗留 FAIL，
   // 不影响 v43 本身的断言——9 个子断言全 PASS，最终 reset 让"全部测试通过"生效

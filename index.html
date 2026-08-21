@@ -261,7 +261,8 @@
                 <span>新增伏笔</span>
               </button>
               <!-- v11：「导入」从章节页移到这里（章节是手动写；伏笔批量来源多更需要导入） -->
-              <button id="btn-import" class="tool-btn" title="从 xlsx 文件导入伏笔条目">
+              <!-- v44：3 个 btn-import 改唯一 id（之前都叫 btn-import，$("#btn-import") 只匹配第一个，导致 storyline/character 的导入按钮无 click handler） -->
+              <button id="btn-import-foreshadowing" class="tool-btn" title="从 xlsx 文件导入伏笔条目">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <polyline points="17 8 12 3 7 8" />
@@ -418,7 +419,8 @@
                 <span>新增脉络</span>
               </button>
               <!-- v43：支持 .xlsx / .json / 文本粘贴导入 -->
-              <button id="btn-import" class="tool-btn" title="从 xlsx / json / 文本导入脉络">
+              <!-- v44：3 个 btn-import 改唯一 id（之前都叫 btn-import，$("#btn-import") 只匹配第一个，导致 storyline/character 的导入按钮无 click handler） -->
+              <button id="btn-import-storyline" class="tool-btn" title="从 xlsx / json / 文本导入脉络">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <polyline points="17 8 12 3 7 8" />
@@ -468,7 +470,8 @@
                 <span>新增角色</span>
               </button>
               <!-- v43：支持角色基础数据 + 履历 各自独立导入 -->
-              <button id="btn-import" class="tool-btn" title="从 xlsx / json / 文本导入角色数据 / 履历">
+              <!-- v44：3 个 btn-import 改唯一 id（之前都叫 btn-import，$("#btn-import") 只匹配第一个，导致 storyline/character 的导入按钮无 click handler） -->
+              <button id="btn-import-character" class="tool-btn" title="从 xlsx / json / 文本导入角色数据 / 履历">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <polyline points="17 8 12 3 7 8" />
