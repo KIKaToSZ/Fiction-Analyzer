@@ -5102,6 +5102,42 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
 
   console.log("  v46 改动:", allPass ? "PASS" : "FAIL");
 
+  // ============ v47：chNo / chTitle input 实时写回 state ============
+  // 用户报告"新建空白文件后，章节界面，写入章节名称后不保存"
+  // 根因：bindChapterEditorEvents 中 chNo / chTitle 的 input 事件只调 debouncedPushHistory
+  //   → snapshot 时拿到的是旧 state（it.no / it.title 没更新）
+  //   → 用户输入期间，state 仍是旧的、list 卡片显示"（无标题）"
+  //   → 直到切 tab 触发 saveCurrentItem 兜底，state 才更新
+  // 修：input 事件立即 it.no/it.title = input.value + 同步左侧列表 .ch-no / .ch-title 单元格
+
+  // v47.1 chNo input 实时写 state（it.no = chNo.value）
+  const t47_1_chNoWrite = /chNo\?\.addEventListener\("input", \(\) => \{[\s\S]{0,80}it\.no = chNo\.value;/.test(SRC);
+  console.log("  v47.1 chNo input 实时写 it.no = chNo.value:",
+    t47_1_chNoWrite ? "PASS" : "FAIL");
+  if (!t47_1_chNoWrite) allPass = false;
+
+  // v47.2 chTitle input 实时写 state（it.title = chTitle.value）
+  const t47_2_chTitleWrite = /chTitle\?\.addEventListener\("input", \(\) => \{[\s\S]{0,80}it\.title = chTitle\.value;/.test(SRC);
+  console.log("  v47.2 chTitle input 实时写 it.title = chTitle.value:",
+    t47_2_chTitleWrite ? "PASS" : "FAIL");
+  if (!t47_2_chTitleWrite) allPass = false;
+
+  // v47.3 同步左侧列表 .ch-no / .ch-title 单元格
+  const t47_3_sync = /querySelector\("\.ch-item\.active \.ch-no"\)/.test(SRC)
+    && /querySelector\("\.ch-item\.active \.ch-title"\)/.test(SRC);
+  console.log("  v47.3 同步 .ch-no / .ch-title 单元格:",
+    t47_3_sync ? "PASS" : "FAIL");
+  if (!t47_3_sync) allPass = false;
+
+  // v47.4 旧代码 chNo?.addEventListener("input", debouncedPushHistory) 已替换
+  const t47_4_oldRemoved = !/chNo\?\.addEventListener\("input", debouncedPushHistory\);/.test(SRC)
+    && !/chTitle\?\.addEventListener\("input", debouncedPushHistory\);/.test(SRC);
+  console.log("  v47.4 旧 chNo/chTitle 单纯 pushHistory 已被替换:",
+    t47_4_oldRemoved ? "PASS" : "FAIL");
+  if (!t47_4_oldRemoved) allPass = false;
+
+  console.log("  v47 改动:", allPass ? "PASS" : "FAIL");
+
   // 兜底：v43 之前的测试版本（v11/v32/v33/v34/v36/v38/v38-UI）有遗留 FAIL，
   // 不影响 v43 本身的断言——9 个子断言全 PASS，最终 reset 让"全部测试通过"生效
   allPass = true;

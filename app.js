@@ -3572,8 +3572,23 @@
       // 覆盖：回车后自动向上滚（需求 4）+ 输入时下方填充空白保持视野中央（需求 5）
       ensureCaretInView(chContent);
     });
-    chNo?.addEventListener("input", debouncedPushHistory);
-    chTitle?.addEventListener("input", debouncedPushHistory);
+    // v47 修：chNo / chTitle input 事件实时写回 state + 同步左侧列表卡片
+    //   之前只调 debouncedPushHistory（snapshot 时仍拿到旧 state）
+    //   → 用户输入章节号 / 章节名后，state 仍是旧的、左侧列表卡片显示"（无标题）"
+    //   → 表现"章节名称不保存"（实际是用户输入期间未实时落盘，依赖切 tab 时 saveCurrentItem 兜底）
+    //   修：input 事件立即 it.no/it.title = input.value + 同步 .ch-no/.ch-title 单元格
+    chNo?.addEventListener("input", () => {
+      it.no = chNo.value;
+      const noCell = document.querySelector(".ch-item.active .ch-no");
+      if (noCell) noCell.textContent = it.no || "—";
+      debouncedPushHistory();
+    });
+    chTitle?.addEventListener("input", () => {
+      it.title = chTitle.value;
+      const titleCell = document.querySelector(".ch-item.active .ch-title");
+      if (titleCell) titleCell.textContent = it.title || "（无标题）";
+      debouncedPushHistory();
+    });
   }
   function bindFsEditorEvents() {
     const it = curItem();
