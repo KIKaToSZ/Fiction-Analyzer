@@ -673,6 +673,125 @@
             <div id="import-items-preview" class="import-preview"></div>
           </div>
 
+          <!-- ========== 故事脉络导入 section（v43，单文件） ========== -->
+          <div id="import-section-storyline" class="import-section" data-section-key="storyline" hidden>
+            <p class="muted hint">
+              从本地 <code>.xlsx</code> / <code>.json</code> 文件导入<strong>故事脉络</strong>。xlsx 需含 <code>章节号 / 章节梗概 / 剧情时间 / 地点 / 人物 / 物品</code> 等列，json 是数组格式。也可以直接粘贴 tab / 逗号 / 多空格 / JSON 数组格式文本。
+            </p>
+            <textarea id="import-storyline-text" rows="5" class="import-text-wide" placeholder="章节号	章节梗概	剧情时间	地点	人物	物品&#10;1	寒江初雪	景和三年秋	北荒·玄冰原	林渊、萧婉儿	寒霜剑"></textarea>
+            <div id="import-storyline-drop" class="import-drop" tabindex="0" role="button" aria-label="拖入或选择故事脉络文件">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <div class="import-drop-title">拖入或选择 .xlsx / .json 文件</div>
+              <div class="import-drop-hint">单文件，含 章节号 / 章节梗概 / 剧情时间 / 地点 / 人物 / 物品 列</div>
+              <input id="file-storyline" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
+            </div>
+            <div id="import-storyline-file-info" class="import-file-info" hidden>
+              <span class="import-file-name"></span>
+              <button class="link-btn" data-clear-section="storyline" type="button">清除</button>
+            </div>
+            <div id="import-storyline-sheet-wrap" class="form-row form-row-sheets" hidden>
+              <label class="check">
+                <span>来源 sheet：</span>
+                <select id="import-storyline-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
+              </label>
+            </div>
+            <div class="form-row">
+              <label class="check">
+                <input id="import-storyline-skip-header" type="checkbox" checked />
+                <span>跳过首行表头</span>
+              </label>
+              <span id="import-storyline-stats" class="muted" aria-live="polite"></span>
+            </div>
+            <div id="import-storyline-preview" class="import-preview"></div>
+          </div>
+
+          <!-- ========== 角色双 section 容器（v43） ========== -->
+          <div id="import-section-character" data-section-key="character" hidden>
+            <p class="muted hint">
+              <strong>「角色基础数据」</strong>和<strong>「角色履历」</strong>分别独立导入：每个区域接受各自的 .xlsx / .json / 粘贴文本，互不影响，可以只填一个、也可以都填。
+              <br />· 角色基础数据表（5 字段）：<code>编号 / 名称 / 势力 / 最后出现章节 / 信息</code>
+              <br />· 角色履历表（4 字段）：<code>编号 / 出现章节 / 原文描述 / 备注</code>
+            </p>
+
+            <!-- 角色基础数据表 -->
+            <section class="import-section-card" data-section-key="character-main">
+              <header class="import-section-card-header">
+                <span class="import-section-card-title">👤 角色基础数据表</span>
+                <span class="muted hint">编号 / 名称 / 势力 / 最后出现章节 / 信息</span>
+              </header>
+              <textarea id="import-character-main-text" rows="4" class="import-text-wide" placeholder="编号	名称	势力	最后出现章节	信息&#10;1	林渊	青云宗	第88章	主角，玄霜剑主&#10;2	萧婉儿	玄霜阁	第90章	女主，青云宗大师姐"></textarea>
+              <div id="import-character-main-drop" class="import-drop" tabindex="0" role="button" aria-label="拖入或选择角色基础数据表文件">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <div class="import-drop-title">拖入或选择 .xlsx / .json 文件</div>
+                <div class="import-drop-hint">单文件，含 编号 / 名称 / 势力 / 最后出现章节 / 信息 列</div>
+                <input id="file-character-main" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
+              </div>
+              <div id="import-character-main-file-info" class="import-file-info" hidden>
+                <span class="import-file-name"></span>
+                <button class="link-btn" data-clear-section="character-main" type="button">清除</button>
+              </div>
+              <div id="import-character-main-sheet-wrap" class="form-row form-row-sheets" hidden>
+                <label class="check">
+                  <span>来源 sheet：</span>
+                  <select id="import-character-main-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="check">
+                  <input id="import-character-main-skip-header" type="checkbox" checked />
+                  <span>跳过首行表头</span>
+                </label>
+                <span id="import-character-main-stats" class="muted" aria-live="polite"></span>
+              </div>
+              <div id="import-character-main-preview" class="import-preview"></div>
+            </section>
+
+            <!-- 角色履历表 -->
+            <section class="import-section-card" data-section-key="character-record">
+              <header class="import-section-card-header">
+                <span class="import-section-card-title">📜 角色履历表</span>
+                <span class="muted hint">编号 / 出现章节 / 原文描述 / 备注</span>
+              </header>
+              <textarea id="import-character-record-text" rows="4" class="import-text-wide" placeholder="编号	出现章节	原文描述	备注&#10;1	第3章	林渊破庙遇萧婉儿	伏笔起点&#10;1	第7章	林渊觉醒玄霜剑意	关键转折"></textarea>
+              <div id="import-character-record-drop" class="import-drop" tabindex="0" role="button" aria-label="拖入或选择角色履历表文件">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <div class="import-drop-title">拖入或选择 .xlsx / .json 文件</div>
+                <div class="import-drop-hint">单文件，含 编号 / 出现章节 / 原文描述 / 备注 列</div>
+                <input id="file-character-record" type="file" accept=".xlsx,.xlsm,.json,application/json" hidden />
+              </div>
+              <div id="import-character-record-file-info" class="import-file-info" hidden>
+                <span class="import-file-name"></span>
+                <button class="link-btn" data-clear-section="character-record" type="button">清除</button>
+              </div>
+              <div id="import-character-record-sheet-wrap" class="form-row form-row-sheets" hidden>
+                <label class="check">
+                  <span>来源 sheet：</span>
+                  <select id="import-character-record-sheet-select" class="mini-select" aria-label="选择要导入的 sheet"></select>
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="check">
+                  <input id="import-character-record-skip-header" type="checkbox" checked />
+                  <span>跳过首行表头</span>
+                </label>
+                <span id="import-character-record-stats" class="muted" aria-live="polite"></span>
+              </div>
+              <div id="import-character-record-preview" class="import-preview"></div>
+            </section>
+          </div>
+
           <!-- v25：弹窗底部按钮移出 .modal-body，避免被滚动区吞掉 -->
           <!--   每个 section 仍走自己的 confirm 按钮（章节/伏笔/灵石/物品），由 bindImportEvents 按当前打开的 section 启用对应那个 -->
         </div>
@@ -684,6 +803,10 @@
           <button id="btn-import-fs-confirm" class="primary-btn" data-section-key="fs-combined" hidden disabled>导入</button>
           <button id="btn-import-lingshi-confirm" class="primary-btn" data-section-key="lingshi" hidden disabled>确认导入「灵石」</button>
           <button id="btn-import-items-confirm" class="primary-btn" data-section-key="items" hidden disabled>确认导入「物品」</button>
+          <!-- v43：故事脉络 + 角色基础数据 + 角色履历 各自独立按钮 -->
+          <button id="btn-import-storyline-confirm" class="primary-btn" data-section-key="storyline" hidden disabled>确认导入「故事脉络」</button>
+          <button id="btn-import-character-main-confirm" class="primary-btn" data-section-key="character-main" hidden disabled>确认导入「角色数据」</button>
+          <button id="btn-import-character-record-confirm" class="primary-btn" data-section-key="character-record" hidden disabled>确认导入「角色履历」</button>
         </div>
       </div>
     </div>

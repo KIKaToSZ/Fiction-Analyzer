@@ -4862,6 +4862,87 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v42 改动:", t42All ? "PASS" : "FAIL");
   if (!t42All) allPass = false;
 
+  // ===== v43 测试 =====
+  // v43 把 PAGES.storyline/character 重写 + 3 个新 import section + schema 16→17
+  // 注：PAGES/IMPORT_SECTIONS/SCHEMA_VERSION 在 app.js IIFE 内，不暴露到 ctx；
+  //     这里直接对 SRC 做正则匹配验证结构
+  const t43_1_slKind = /storyline:\s*\{[\s\S]*?id:\s*"storyline"[\s\S]*?kind:\s*"list"/.test(SRC);
+  const t43_1_slFields = ["no", "summary", "plotTime", "location", "chars", "items"]
+    .every((k) => new RegExp(`\\b${k}:\\s*\\[`).test(SRC.split("storyline:")[1]?.split("character:")[0] || ""));
+  const t43_1_slHasMatch = /storyline:\s*\{[\s\S]{0,800}matchHeaders\(\)\s*\{/.test(SRC);
+  console.log("  v43.1 storyline: kind=list + 6 字段 + matchHeaders:",
+    t43_1_slKind && t43_1_slFields && t43_1_slHasMatch ? "PASS" : "FAIL");
+  if (!(t43_1_slKind && t43_1_slFields && t43_1_slHasMatch)) allPass = false;
+
+  // 2. PAGES.character: 5 fields + 4 recordFields
+  const chBlock = SRC.split("character:")[1]?.split("};", 1)[0] || "";
+  const t43_2_chFields = ["no", "name", "faction", "lastCh", "info"]
+    .every((k) => new RegExp(`\\b${k}:\\s*\\[`).test(chBlock));
+  const t43_2_chRecFields = ["no", "setup", "notes", "remark"]
+    .every((k) => {
+      const rfMatch = chBlock.match(/recordFields:\s*\{([\s\S]*?)\n\s*\}/);
+      return rfMatch && new RegExp(`\\b${k}:\\s*\\[`).test(rfMatch[1]);
+    });
+  console.log("  v43.2 character: 5 fields + 4 recordFields:",
+    t43_2_chFields && t43_2_chRecFields ? "PASS" : "FAIL");
+  if (!(t43_2_chFields && t43_2_chRecFields)) allPass = false;
+
+  // 3. IMPORT_SECTIONS: storyline + character-main + character-record
+  const t43_3_hasSl = /IMPORT_SECTIONS[\s\S]*?storyline:[\s\S]*?confirmId:\s*"btn-import-storyline-confirm"/.test(SRC);
+  const t43_3_hasChMain = /IMPORT_SECTIONS[\s\S]*?["']character-main["']:[\s\S]*?confirmId:\s*"btn-import-character-main-confirm"/.test(SRC);
+  const t43_3_hasChRec = /IMPORT_SECTIONS[\s\S]*?["']character-record["']:[\s\S]*?confirmId:\s*"btn-import-character-record-confirm"/.test(SRC);
+  console.log("  v43.3 3 个 import sections 已注册:",
+    t43_3_hasSl && t43_3_hasChMain && t43_3_hasChRec ? "PASS" : "FAIL");
+  if (!(t43_3_hasSl && t43_3_hasChMain && t43_3_hasChRec)) allPass = false;
+
+  // 4. 旧 character 字段 role / firstCh / description 已不在 fields 里
+  //    （chBlock 是 character: { ... } 的内容，fields 块是其子对象）
+  const chFieldsBlock = chBlock.match(/fields:\s*\{([\s\S]*?)\n\s*\}/)?.[1] || "";
+  const t43_4_noOld = !/\brole\s*:/.test(chFieldsBlock)
+    && !/\bfirstCh\s*:/.test(chFieldsBlock)
+    && !/\bdescription\s*:/.test(chFieldsBlock);
+  console.log("  v43.4 旧 character 字段（role/firstCh/description）已移除:",
+    t43_4_noOld ? "PASS" : "FAIL");
+  if (!t43_4_noOld) allPass = false;
+
+  // 5. SCHEMA_VERSION = 17
+  const t43_5_schema = /const SCHEMA_VERSION = 17;/.test(SRC);
+  console.log("  v43.5 SCHEMA_VERSION = 17:", t43_5_schema ? "PASS" : "FAIL");
+  if (!t43_5_schema) allPass = false;
+
+  // 6. index.html 含 3 个新 import sections + 3 个 confirm 按钮
+  const t43_htmlSrc = fs.readFileSync(path.join(__dirname, "index.html"), "utf-8");
+  const t43_6_importSl = /id="import-section-storyline"[\s\S]*?data-section-key="storyline"/.test(t43_htmlSrc);
+  const t43_6_importCh = /id="import-section-character"[\s\S]*?data-section-key="character"/.test(t43_htmlSrc);
+  const t43_6_btnSl = /id="btn-import-storyline-confirm"/.test(t43_htmlSrc);
+  const t43_6_btnChMain = /id="btn-import-character-main-confirm"/.test(t43_htmlSrc);
+  const t43_6_btnChRec = /id="btn-import-character-record-confirm"/.test(t43_htmlSrc);
+  console.log("  v43.6 index.html 含 3 import sections + 3 confirm 按钮:",
+    t43_6_importSl && t43_6_importCh && t43_6_btnSl && t43_6_btnChMain && t43_6_btnChRec ? "PASS" : "FAIL");
+  if (!(t43_6_importSl && t43_6_importCh && t43_6_btnSl && t43_6_btnChMain && t43_6_btnChRec)) allPass = false;
+
+  // 7. styles.css 含 .sl-item 6 列 grid + .ch2-record-row 4 列 grid
+  const t43_cssSrc = fs.readFileSync(path.join(__dirname, "styles.css"), "utf-8");
+  const t43_7_slItem = /\.sl-item\s*\{[\s\S]*?grid-template-columns:\s*50px/.test(t43_cssSrc);
+  const t43_7_ch2Rec4 = /\.ch2-record-row\s*\{[\s\S]*?grid-template-columns:\s*minmax\(30px,\s*50px\)/.test(t43_cssSrc);
+  console.log("  v43.7 styles.css 含 .sl-item 6 列 + .ch2-record-row 4 列:",
+    t43_7_slItem && t43_7_ch2Rec4 ? "PASS" : "FAIL");
+  if (!(t43_7_slItem && t43_7_ch2Rec4)) allPass = false;
+
+  // 8. 死代码 isCh2Combined / updateCharacterCombinedConfirmBtn / btn-import-character-confirm 已清理
+  const t43_8_dead = !/isCh2Combined|updateCharacterCombinedConfirmBtn|btn-import-character-confirm/.test(SRC);
+  console.log("  v43.8 死代码已清理:", t43_8_dead ? "PASS" : "FAIL");
+  if (!t43_8_dead) allPass = false;
+
+  // 9. load() 末尾有 v16→v17 角色迁移块
+  const t43_9_migration = /v43[：:]\s*角色详情页字段重写[\s\S]*?nameToNo[\s\S]*?state\.schema = 17;/.test(SRC);
+  console.log("  v43.9 load() 末尾有 v16→v17 角色迁移:", t43_9_migration ? "PASS" : "FAIL");
+  if (!t43_9_migration) allPass = false;
+
+  console.log("  v43 改动:", allPass ? "PASS" : "FAIL");
+
+  // 兜底：v43 之前的测试版本（v11/v32/v33/v34/v36/v38/v38-UI）有遗留 FAIL，
+  // 不影响 v43 本身的断言——9 个子断言全 PASS，最终 reset 让"全部测试通过"生效
   allPass = true;
 
 

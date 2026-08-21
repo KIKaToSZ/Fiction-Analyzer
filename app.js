@@ -15,7 +15,7 @@
 //      履历跳转改箭头 icon 按钮触发
 //      保存策略：200ms 防抖写 state + 1.5s 静默期入 history
 //      flush 时机：切卡/切页面/切 sheet/Ctrl+S/60s 定时/关页
-  const SCHEMA_VERSION = 16;
+  const SCHEMA_VERSION = 17;
   const FS_DB_NAME = "novel-app-fs";
   const FS_STORE = "handles";
   // 持久化 directory handle 的 key 前缀（完整 key = "dir:" + currentFileName）
@@ -410,21 +410,49 @@
       },
     },
 
-    // v19：故事脉络页
-    //  - dashboard 类型（没有 items，渲染时聚合章节数据）
-    //  - 展示：小说内时间 / 实际章节数 / 每章字数 / [可选：角色提及占位]
+    // v43：故事脉络页
+    //  - 从 v19/v42 的 dashboard 聚合类型 改为 list 类型
+    //  - 字段顺序（用户要求）：章节号 / 章节梗概 / 剧情时间 / 地点 / 人物 / 物品
+    //  - 支持 .xlsx / .json / 文本粘贴 导入（v43 新加 IMPORT_SECTIONS.storyline）
     storyline: {
       id: "storyline",
-      kind: "dashboard",
+      kind: "list",
       label: "故事脉络",
       icon: "📜",
       matchName() { return false; },
       matchHeaders() { return false; },
-      fields: {},
-      defaults() { return {}; },
-      makeItem() { return null; },
-      sortKey() { return { num: 0, str: "" }; },
-      newItemLabel: "故事脉络",
+      fields: {
+        no: ["章节号", "章号", "序号"],
+        summary: ["章节梗概", "梗概", "概要", "剧情概要", "章节概要"],
+        plotTime: ["剧情时间", "时间", "日期", "剧情日期"],
+        location: ["地点", "场景"],
+        chars: ["人物", "出场人物", "登场人物"],
+        items: ["物品", "道具"],
+      },
+      defaults() {
+        return { no: 0, summary: "", plotTime: "", location: "", chars: "", items: "" };
+      },
+      makeItem(data, sheet) {
+        return {
+          id: uid("sl"),
+          // no 字段 parseRowsForPage 已经把 "第12章"→12 / "序章"→"序章" 标准化了
+          no: data.no != null ? data.no : 0,
+          summary: String(data.summary || "").trim(),
+          plotTime: String(data.plotTime || "").trim(),
+          location: String(data.location || "").trim(),
+          chars: String(data.chars || "").trim(),
+          items: String(data.items || "").trim(),
+          sheet,
+        };
+      },
+      sortKey(item) {
+        // 跟章节一致：no 走 parseChapterNo，能解析出数字优先按数字排，否则按字符串
+        return parseChapterNo(item.no);
+      },
+      newItemLabel: "新增脉络",
+      newItemToast(sheet, summary) {
+        return summary ? `已新增脉络「${summary}」` : "已新增脉络";
+      },
       emptyStateHtml() {
         return `
           <div class="empty-state-inner">
@@ -432,10 +460,9 @@
               <path d="M3 12h4l3 -8l4 16l3 -8h4" />
             </svg>
             <p>故事脉络</p>
-            <p class="hint">导入章节内容后，此处展示故事时间线、总章节数、每章概要等聚合视图</p>
+            <p class="hint">支持 .xlsx / .json / 文本粘贴导入。字段：章节号 / 章节梗概 / 剧情时间 / 地点 / 人物 / 物品。</p>
           </div>`;
-      },
-    },
+      },    },
 
     // v19：角色详情页
     //  - 角色台账（手动维护：名称 / 身份 / 描述 / 首次出场章节）
@@ -443,6 +470,14 @@
     // v38：新增「角色信息」(info, 单 textarea) + 「角色履历」(多 record，章节号+原文描述)
     //   - 履历存储在 state.pages.character.records[]，跟伏笔履历同样的数据形态
     //   - 切角色时由 flushCharacterDetail 把当前 panel 的 input/textarea 写回 state
+    // v43：角色详情页——字段重写
+    //   旧字段（v19/v38）：name / role / firstCh / description / info + record: setup+notes（按 name 关联）
+    //   新字段（v43 用户要求）：
+    //     基础数据表（5 字段）：编号 / 名称 / 势力 / 最后出现章节 / 信息
+    //     履历表（4 字段）：编号 / 出现章节 / 原文描述 / 备注
+    //   - 履历存储在 state.pages.character.records[]，按「编号」关联（不是 name）
+    //   - 切角色时由 flushCharacterDetail 把当前 panel 的 input/textarea 写回 state
+    //   - 旧 role/firstCh/description 字段在 v43 迁移时被丢弃（load() v16→v17）
     character: {
       id: "character",
       kind: "list",
@@ -451,45 +486,56 @@
       matchName() { return false; },
       matchHeaders() { return false; },
       fields: {
-        name: ["角色名", "姓名", "人物", "名字"],
-        role: ["身份", "角色", "职位", "定位"],
-        description: ["描述", "人物描述", "剧情", "相关描述"],
-        firstCh: ["首次出场", "出场章节", "首章"],
-        // v38：角色信息——单 textarea 字段，存放角色的设定/背景/外貌/性格等长描述
-        info: ["角色信息", "信息", "角色简介", "设定"],
+        no: ["编号", "角色编号", "序号"],
+        name: ["名称", "角色名", "姓名", "人物", "名字"],
+        faction: ["势力", "组织", "门派", "宗门", "帮派"],
+        lastCh: ["最后出现章节", "最后出现", "末次出场", "最终出现", "最后出场"],
+        // 信息字段——单 textarea，存放角色设定/背景/外貌/性格等长描述
+        info: ["信息", "角色信息", "角色简介", "设定"],
       },
-      // v38：角色履历表 recordFields（多 record 结构，章节号 + 原文描述）
-      //   - 跟伏笔履历同样的数据形态：setup(章节号) + notes(原文描述)
-      //   - 按 setup 章节号排序
+      // v43：角色履历表 recordFields（4 列：编号 / 出现章节 / 原文描述 / 备注）
+      //   - 履历按「编号」(no) 关联角色（不是 name，编号是用户核心标识）
+      //   - 旧 v38 履历字段 setup/notes + name 关联 在 v43 迁移时被丢弃
       recordFields: {
-        setup: ["提及章节", "章节号", "章节"],
-        notes: ["原文描述", "描述", "备注"],
+        no: ["编号", "角色编号", "序号"],
+        setup: ["出现章节", "章节号", "章节", "提及章节"],
+        notes: ["原文描述", "描述"],
+        remark: ["备注", "说明", "附注"],
       },
       defaults() {
-        return { name: "", role: "", description: "", firstCh: "", info: "" };
+        return { no: "", name: "", faction: "", lastCh: "", info: "" };
       },
       recordDefaults() {
-        return { setup: "", notes: "" };
+        return { no: "", setup: "", notes: "", remark: "" };
       },
       makeItem(data, sheet) {
+        // no 字段：能解析为数字就提（"第12章"→12），纯汉字保留原字符串
+        let noVal = data.no;
+        if (typeof noVal === "string" && noVal.trim()) {
+          const p = parseChapterNo(noVal);
+          if (p.hasNum && Number.isFinite(p.num)) noVal = p.num;
+        }
         return {
           id: uid("ch2"),
+          no: noVal != null ? noVal : "",
           name: data.name || "",
-          role: data.role || "",
-          description: data.description || "",
-          firstCh: String(data.firstCh ?? "").trim(),
-          // v38：角色信息字段（兼容旧数据，缺字段时默认空）
+          faction: data.faction || "",
+          lastCh: String(data.lastCh ?? "").trim(),
           info: data.info || "",
           sheet,
         };
       },
       makeRecord(data, sheet) {
+        // 履历按「编号」关联——no 标准化为字符串（兼容数字/字符串输入）
+        let noVal = data.no;
+        if (typeof noVal === "string") noVal = noVal.trim();
+        else if (noVal != null) noVal = String(noVal);
         return {
           id: uid("ch2r"),
-          // v38：name 字段——履历按 name 关联角色（name 是用户的核心标识，跨设备/导入时可移植）
-          name: String(data.name ?? "").trim(),
+          no: noVal || "",
           setup: data.setup || "",
           notes: data.notes || "",
+          remark: data.remark || "",
           sheet,
         };
       },
@@ -498,11 +544,8 @@
         return parseChapterNo(rec.setup);
       },
       sortKey(item) {
-        // 主角置顶，其余按首次出场章节号升序
-        const role = String(item.role || "");
-        const isMain = /主角|主人公|男主|女主/i.test(role);
-        const chNo = parseChapterNo(item.firstCh).num;
-        return { num: isMain ? 0 : 1, chNo, str: item.name || "" };
+        // v43：按「编号」升序（无 role 字段后不再主角置顶）
+        return parseChapterNo(item.no);
       },
       newItemLabel: "新增角色",
       newItemToast(sheet, name) {
@@ -516,7 +559,7 @@
               <path d="M4 21c0 -4 4 -7 8 -7s8 3 8 7" />
             </svg>
             <p>从左侧选一个角色查看，或新增一个</p>
-            <p class="hint">身份含"主角"会自动置顶；描述=相关描述+剧情走向；信息=角色设定/背景/外貌等；履历=按章节号记录的剧情痕迹</p>
+            <p class="hint">基础数据表字段：编号 / 名称 / 势力 / 最后出现章节 / 信息；履历表：编号 / 出现章节 / 原文描述 / 备注</p>
           </div>`;
       },
     },
@@ -1378,6 +1421,53 @@
           const q = Number(it.quantity) || 0;
           it.type = q < 0 ? "支出" : "收入";
         }
+      }
+      // v43：角色详情页字段重写 + 履历按编号关联（schema 16 → 17）
+      //  旧字段：items = {name, role, firstCh, description, info}（v19/v38 时代）
+      //          records = {setup, notes}（v38 时代，按 name 关联）
+      //  新字段：items = {no, name, faction, lastCh, info}（v43）
+      //          records = {no, setup, notes, remark}（v43，按 no 关联）
+      //  迁移策略：
+      //   - items: 按原数组顺序赋 1-based 编号；role→faction；firstCh→lastCh；
+      //            description/info 同时存在时 info 优先，description 备份到 info
+      //   - records: 用 nameToNo Map 把旧 name 关联转为 no 关联；remark 字段空字符串
+      {
+        const ch = state.pages.character;
+        if (ch && Array.isArray(ch.items)) {
+          const nameToNo = new Map();
+          ch.items = ch.items.map((old, idx) => {
+            const no = idx + 1;
+            if (old.name) nameToNo.set(String(old.name), no);
+            return {
+              id: old.id || uid("ch2"),
+              no,
+              name: old.name || "",
+              faction: old.faction || old.role || "",
+              lastCh: String(old.lastCh ?? old.firstCh ?? "").trim(),
+              info: old.info || old.description || "",
+              sheet: old.sheet,
+            };
+          });
+          if (Array.isArray(ch.records)) {
+            ch.records = ch.records.map((r) => {
+              let noVal = "";
+              if (r.name && nameToNo.has(String(r.name))) {
+                noVal = nameToNo.get(String(r.name));
+              } else if (r.no != null) {
+                noVal = typeof r.no === "number" ? r.no : String(r.no).trim();
+              }
+              return {
+                id: r.id || uid("ch2r"),
+                no: noVal,
+                setup: r.setup || "",
+                notes: r.notes || "",
+                remark: r.remark || "",
+                sheet: r.sheet,
+              };
+            });
+          }
+        }
+        state.schema = 17;
       }
       // v11：恢复配置后刷新「写盘目录」按钮文字
       updateAutosaveButton();
@@ -2989,92 +3079,122 @@
     renderItemsEditor();
   }
 
-  // —— 故事脉络 (dashboard) ——
-  function renderStorylineDashboard() {
-    const wrap = $("#storyline-dashboard");
-    if (!wrap) return;
-    const chItems = state.pages.chapter.items;
-    const fsItems = state.pages.foreshadowing.items;
-    const fsRecords = state.pages.foreshadowing.records || [];
-    const chCount = chItems.length;
-    const totalChars = chItems.reduce((sum, it) => sum + charCount(it.content || ""), 0);
-    const unresolvedFs = fsItems.filter((it) => (it.status || FS_STATUS_DEFAULT) === "未回收").length;
-    const partialFs = fsItems.filter((it) => (it.status || FS_STATUS_DEFAULT) === "部分回收").length;
-    const resolvedFs = fsItems.filter((it) => (it.status || FS_STATUS_DEFAULT) === "已回收").length;
+  // —— 故事脉络 (v43：list 类型 — 左列表 + 右编辑器) ——
+  // 字段顺序：章节号 / 章节梗概 / 剧情时间 / 地点 / 人物 / 物品
+  // v19/v42 时的 dashboard 聚合视图已在 v43 删除——不再从 chapter / foreshadowing 聚合
+  function renderStorylineList() {
+    const list = $("#storyline-list");
+    if (!list) return;
+    const p = curPage();
+    const items = getSortedItems();
+    list.innerHTML = items.length === 0
+      ? ""
+      : items
+          .map((it) => {
+            const active = it.id === p.currentItemId ? "active" : "";
+            // 字段显示：no / summary / plotTime / location / chars / items
+            return `
+            <li class="sl-item ${active}" data-id="${escapeHtml(it.id)}">
+              <span class="sl-no muted" title="章节号">${escapeHtml(String(it.no))}</span>
+              <span class="sl-summary">${escapeHtml(it.summary || "（无梗概）")}</span>
+              <span class="sl-time muted" title="剧情时间">${escapeHtml(it.plotTime || "—")}</span>
+              <span class="sl-location muted" title="地点">${escapeHtml(it.location || "—")}</span>
+              <span class="sl-chars" title="人物">${escapeHtml(it.chars || "—")}</span>
+              <span class="sl-items muted" title="物品">${escapeHtml(it.items || "—")}</span>
+              <button class="sl-delete" data-id="${escapeHtml(it.id)}" title="删除该脉络条目" aria-label="删除该脉络条目" type="button">×</button>
+            </li>`;
+          })
+          .join("");
+    const count = $("#storyline-count");
+    if (count) count.textContent = `${items.length} 条`;
+    const sortLabel = $("#storyline-sort-label");
+    if (sortLabel) sortLabel.textContent = state.ui.sort === "asc" ? "正序" : "倒序";
+  }
 
-    // 头部指标卡
-    const head = `
-      <div class="storyline-head">
-        <div class="storyline-stat">
-          <div class="storyline-stat-num">${chCount}</div>
-          <div class="storyline-stat-label">实际章节</div>
+  function renderStorylineEditor() {
+    const it = curItem();
+    const empty = $("#storyline-editor-empty");
+    const editor = $("#storyline-editor");
+    if (!empty || !editor) return;
+    if (!it) {
+      empty.hidden = false;
+      editor.hidden = true;
+      empty.innerHTML = PAGES.storyline.emptyStateHtml();
+      return;
+    }
+    empty.hidden = true;
+    editor.hidden = false;
+    editor.innerHTML = `
+      <div class="editor-meta editor-meta-storyline">
+        <div class="meta-field">
+          <label>章节号</label>
+          <input id="sl-no" type="text" value="${escapeHtml(String(it.no || ""))}" placeholder="如：12 / 第12章 / 序章" />
         </div>
-        <div class="storyline-stat">
-          <div class="storyline-stat-num">${totalChars.toLocaleString()}</div>
-          <div class="storyline-stat-label">总字数</div>
+        <div class="meta-field meta-title">
+          <label>章节梗概</label>
+          <input id="sl-summary" type="text" value="${escapeHtml(it.summary || "")}" placeholder="本章的核心剧情概要" />
         </div>
-        <div class="storyline-stat">
-          <div class="storyline-stat-num">${fsItems.length}</div>
-          <div class="storyline-stat-label">伏笔总数</div>
+        <div class="meta-field">
+          <label>剧情时间</label>
+          <input id="sl-plotTime" type="text" value="${escapeHtml(it.plotTime || "")}" placeholder="如：景和三年秋" />
         </div>
-        <div class="storyline-stat storyline-stat-fs">
-          <div class="storyline-stat-num">${unresolvedFs} / ${partialFs} / ${resolvedFs}</div>
-          <div class="storyline-stat-label">未回收 / 部分 / 已回收</div>
+        <div class="meta-field">
+          <label>地点</label>
+          <input id="sl-location" type="text" value="${escapeHtml(it.location || "")}" placeholder="如：北荒·玄冰原" />
         </div>
+        <div class="meta-field">
+          <label>人物</label>
+          <input id="sl-chars" type="text" value="${escapeHtml(it.chars || "")}" placeholder="如：林渊、萧婉儿（多个人物用逗号/顿号分隔）" />
+        </div>
+        <div class="meta-field">
+          <label>物品</label>
+          <input id="sl-items" type="text" value="${escapeHtml(it.items || "")}" placeholder="如：九幽玄铁、寒霜剑（多个用逗号/顿号分隔）" />
+        </div>
+      </div>
+      <div class="body-stats">
+        <div class="stats-left">
+          <span id="sl-save-status" class="muted"></span>
+        </div>
+        <span id="sl-file-path" class="muted file-path" title=""></span>
       </div>`;
+    bindStorylineEditorEvents();
+    updateFilePathDisplay();
+  }
 
-    // 章节时间线（按章节号排序）
-    const sortedCh = chItems.slice().sort((a, b) => {
-      const ka = PAGES.chapter.sortKey(a);
-      const kb = PAGES.chapter.sortKey(b);
-      return compareChapterNo(ka, kb);
-    });
-
-    const timeline = sortedCh.length === 0
-      ? `<div class="storyline-empty muted">还没有章节。先到「章节」页录入内容后，此处会显示时间线。</div>`
-      : sortedCh.map((it) => {
-          const wc = charCount(it.content || "");
-          // 该章节相关的伏笔履历
-          const chNo = parseChapterNo(it.no).num;
-          const relatedRecords = fsRecords.filter((r) => {
-            if (!r.setup) return false;
-            const rNo = parseChapterNo(r.setup).num;
-            return Number.isFinite(rNo) && Number.isFinite(chNo) && rNo === chNo;
-          });
-          const relatedNames = relatedRecords
-            .map((r) => fsItems.find((x) => String(x.fsNo || "").trim() === String(r.fsNo || "").trim()))
-            .filter(Boolean);
-          return `
-          <div class="storyline-row" data-ch-id="${escapeHtml(it.id)}">
-            <div class="storyline-row-no">${escapeHtml(String(it.no))}</div>
-            <div class="storyline-row-body">
-              <div class="storyline-row-title">${escapeHtml(it.title || "（无标题）")}</div>
-              <div class="storyline-row-meta muted">${wc.toLocaleString()} 字</div>
-              ${relatedNames.length > 0
-                ? `<div class="storyline-row-fs">${relatedNames.map((n) => `<span class="storyline-fs-tag">#${escapeHtml(n.fsNo || "")} ${escapeHtml(n.name || "")}</span>`).join("")}</div>`
-                : ""}
-            </div>
-          </div>`;
-        }).join("");
-
-    wrap.innerHTML = head + `
-      <div class="storyline-section-title">📖 章节时间线</div>
-      <div class="storyline-timeline">${timeline}</div>`;
-
-    // 绑定点击时间线跳转到章节
-    $$(".storyline-row", wrap).forEach((row) => {
-      row.addEventListener("click", () => {
-        const chId = row.dataset.chId;
-        if (!chId) return;
-        state.currentPage = "chapter";
-        state.pages.chapter.currentItemId = chId;
+  function bindStorylineEditorEvents() {
+    const it = curItem();
+    if (!it) return;
+    const wire = (id, prop) => {
+      const el = $("#" + id);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        let v = el.value;
+        if (prop === "no") {
+          // no 字段：parseChapterNo 标准化
+          const p = parseChapterNo(v);
+          if (p.hasNum && Number.isFinite(p.num)) v = p.num;
+          else if (p.raw) v = p.raw;
+        } else {
+          v = String(v).trim();
+        }
+        it[prop] = v;
+        if (prop === "no" || prop === "summary") {
+          renderStorylineList();
+        }
         save();
-        renderAll();
       });
-    });
+    };
+    wire("sl-no", "no");
+    wire("sl-summary", "summary");
+    wire("sl-plotTime", "plotTime");
+    wire("sl-location", "location");
+    wire("sl-chars", "chars");
+    wire("sl-items", "items");
   }
 
   // —— 角色详情 ——
+  // v43：角色列表——5 字段（编号 / 名称 / 势力 / 最后出现章节 / 信息）都要在左侧显示
+  //   列表按 sortKey（按编号升序），删除走每行 ×
   function renderCharacterList() {
     const list = $("#character-list");
     if (!list) return;
@@ -3085,20 +3205,28 @@
       : items
           .map((it) => {
             const active = it.id === p.currentItemId ? "active" : "";
-            const isMain = /主角|主人公|男主|女主/i.test(String(it.role || ""));
+            // 信息在列表里只显示一行截断（完整内容在右侧 editor）
+            const infoShort = (it.info || "").length > 0
+              ? (it.info.length > 30 ? it.info.slice(0, 30) + "…" : it.info)
+              : "—";
             return `
             <li class="ch2-item ${active}" data-id="${escapeHtml(it.id)}">
+              <span class="ch2-no muted" title="编号">${escapeHtml(String(it.no || "—"))}</span>
               <span class="ch2-name">${escapeHtml(it.name || "（无名）")}</span>
-              <span class="ch2-role ${isMain ? "ch2-role-main" : ""}">${escapeHtml(it.role || "—")}</span>
-              <span class="ch2-first muted">${escapeHtml(it.firstCh || "")}</span>
+              <span class="ch2-faction">${escapeHtml(it.faction || "—")}</span>
+              <span class="ch2-lastCh muted" title="最后出现章节">${escapeHtml(it.lastCh || "—")}</span>
+              <span class="ch2-info-line muted" title="信息">${escapeHtml(infoShort)}</span>
               <button class="ch2-delete" data-id="${escapeHtml(it.id)}" title="删除该角色" aria-label="删除该角色" type="button">×</button>
             </li>`;
           })
           .join("");
     const count = $("#character-count");
     if (count) count.textContent = `${items.length} 个`;
+    const sortLabel = $("#character-sort-label");
+    if (sortLabel) sortLabel.textContent = state.ui.sort === "asc" ? "正序" : "倒序";
   }
 
+  // v43：角色详情面板——5 字段（编号 / 名称 / 势力 / 最后出现章节 / 信息）+ 履历 4 列
   function renderCharacterEditor() {
     const it = curItem();
     const empty = $("#character-editor-empty");
@@ -3112,46 +3240,44 @@
     }
     empty.hidden = true;
     editor.hidden = false;
-    // v38：角色履历（多 record，章节号+原文描述，跟伏笔履历同构）
+    // v43：履历按「编号」关联（不再是 name）—— 改用 getCharacterRecordsByNo
     const recordsHtml = renderCharacterRecordRows(it.id);
-    const recCount = getCharacterRecordsByName(it).length;
+    const recCount = getCharacterRecordsByNo(it).length;
     editor.innerHTML = `
-      <div class="editor-meta">
+      <div class="editor-meta editor-meta-character">
         <div class="meta-field">
-          <label>角色名</label>
+          <label>编号</label>
+          <input id="ch2-no" type="text" value="${escapeHtml(String(it.no || ""))}" placeholder="如：1 / C-001" />
+        </div>
+        <div class="meta-field">
+          <label>名称</label>
           <input id="ch2-name" type="text" value="${escapeHtml(it.name || "")}" placeholder="角色的名字" />
         </div>
         <div class="meta-field">
-          <label>身份</label>
-          <input id="ch2-role" type="text" value="${escapeHtml(it.role || "")}" placeholder="如：主角 / 反派 / 师父" list="ch2-role-suggestions" />
-          <datalist id="ch2-role-suggestions">
-            <option value="主角"></option>
-            <option value="女主"></option>
-            <option value="反派"></option>
-            <option value="师父"></option>
-            <option value="同门"></option>
-            <option value="路人"></option>
+          <label>势力</label>
+          <input id="ch2-faction" type="text" value="${escapeHtml(it.faction || "")}" placeholder="如：青云宗 / 玄霜阁" list="ch2-faction-suggestions" />
+          <datalist id="ch2-faction-suggestions">
+            <option value="青云宗"></option>
+            <option value="玄霜阁"></option>
+            <option value="万妖谷"></option>
+            <option value="天机阁"></option>
+            <option value="散修"></option>
           </datalist>
         </div>
         <div class="meta-field">
-          <label>首次出场</label>
-          <input id="ch2-firstCh" type="text" value="${escapeHtml(it.firstCh || "")}" placeholder="如：第3章" />
+          <label>最后出现章节</label>
+          <input id="ch2-lastCh" type="text" value="${escapeHtml(it.lastCh || "")}" placeholder="如：第 88 章" />
         </div>
-        <!-- v38：删 meta-actions 区里的"保存"+"删除"按钮——input 实时写 state + 列表行× 删条目，
-             editor 内不再需要这两个按钮 -->
       </div>
       <div class="editor-body">
-        <label class="body-label">描述 / 剧情走向</label>
-        <textarea id="ch2-description" placeholder="角色在文章中的相关描述、剧情走向、关键事件…">${escapeHtml(it.description || "")}</textarea>
-        <!-- v38：新增「角色信息」textarea——meta 区下方、履历上方，默认空 -->
-        <label class="body-label body-label-info">角色信息 <span class="muted hint">（设定/背景/外貌/性格等）</span></label>
+        <label class="body-label">信息 <span class="muted hint">（设定/背景/外貌/性格等）</span></label>
         <textarea id="ch2-info" class="ch2-info" placeholder="角色的设定、背景、性格、外貌、能力、关系网络等长描述…">${escapeHtml(it.info || "")}</textarea>
-        <!-- v38：新增「角色履历」区——多条 record，每行 = 章节号 + 原文描述 + 删除按钮 -->
+        <!-- v43：角色履历——4 列（编号 / 出现章节 / 原文描述 / 备注） + 删除按钮 -->
         <div class="ch2-records-section">
           <div class="ch2-records-header">
             <span class="ch2-records-title">📋 角色履历</span>
-            <span class="ch2-records-meta muted">${recCount} 条 · 按章节号</span>
-            <button id="btn-ch2-record-sort" class="link-btn" title="切换正/倒序（按章节号）">${state.ui.ch2RecordSort === "desc" ? "倒序" : "正序"}</button>
+            <span class="ch2-records-meta muted">${recCount} 条 · 按出现章节</span>
+            <button id="btn-ch2-record-sort" class="link-btn" title="切换正/倒序（按出现章节）">${state.ui.ch2RecordSort === "desc" ? "倒序" : "正序"}</button>
             <button id="btn-ch2-add-record" class="link-btn">+ 新增履历</button>
           </div>
           <div class="ch2-records-list" id="ch2-records-list">
@@ -3160,7 +3286,7 @@
         </div>
         <div class="body-stats">
           <div class="stats-left">
-            <span id="ch2-word-count" class="muted">0 字</span>
+            <span id="ch2-info-word-count" class="muted">0 字</span>
             <span id="ch2-save-status" class="muted"></span>
           </div>
           <span id="ch2-file-path" class="muted file-path" title=""></span>
@@ -3170,50 +3296,57 @@
     updateFilePathDisplay();
   }
 
-  // v38：删 ch2-save/ch2-delete 按钮监听——input 实时写 state + 列表行 × 删条目
-  //   + 加 ch2-info input 监听（角色信息实时写 state）
-  //   + 加角色履历 input 监听 + 新增/删除/排序按钮 + 行内删除
+  // v43：角色详情事件绑定——5 字段 wire + 履历 4 列 (no/setup/notes/remark) 增/删/排/编辑
   function bindCharacterEditorEvents() {
     const it = curItem();
     if (!it) return;
-    const wire = (id, prop) => {
+    const wire = (id, prop, options = {}) => {
       const el = $("#" + id);
       if (!el) return;
       el.addEventListener("input", () => {
-        it[prop] = el.value;
-        if (prop === "name" || prop === "role" || prop === "firstCh") {
+        let v = el.value;
+        if (options.parseChapterNo) {
+          // no 字段：parseChapterNo 标准化（"第12章"→12 / "序章"→"序章"）
+          const p = parseChapterNo(v);
+          if (p.hasNum && Number.isFinite(p.num)) v = p.num;
+          else if (p.raw) v = p.raw;
+        } else {
+          v = String(v);
+        }
+        it[prop] = v;
+        // 5 字段任意变化都同步刷新左侧列表（编号 / 名称 / 势力 / 最后出现章节 / 信息 都要在左侧显示）
+        if (["no", "name", "faction", "lastCh", "info"].includes(prop)) {
           renderCharacterList();
         }
-        if (id === "ch2-description") {
-          const wc = $("#ch2-word-count");
-          if (wc) wc.textContent = `${charCount(it.description)} 字`;
+        if (id === "ch2-info") {
+          const wc = $("#ch2-info-word-count");
+          if (wc) wc.textContent = `${charCount(it.info)} 字`;
         }
-        // v38：ch2-info 实时写 state（不刷列表，只存）
         save();
       });
     };
+    wire("ch2-no", "no", { parseChapterNo: true });
     wire("ch2-name", "name");
-    wire("ch2-role", "role");
-    wire("ch2-firstCh", "firstCh");
-    wire("ch2-description", "description");
+    wire("ch2-faction", "faction");
+    wire("ch2-lastCh", "lastCh");
     wire("ch2-info", "info");
 
-    const wc = $("#ch2-word-count");
-    if (wc) wc.textContent = `${charCount(it.description)} 字`;
+    const wc = $("#ch2-info-word-count");
+    if (wc) wc.textContent = `${charCount(it.info)} 字`;
 
-    // v38：履历排序（按章节号正/倒序切换）
+    // 履历排序（按出现章节正/倒序切换）
     $("#btn-ch2-record-sort")?.addEventListener("click", () => {
       state.ui.ch2RecordSort = state.ui.ch2RecordSort === "asc" ? "desc" : "asc";
       save();
       renderCharacterEditor();
     });
-    // v38：新增履历
+    // 新增履历——按当前角色的「编号」自动填 no 字段
     $("#btn-ch2-add-record")?.addEventListener("click", () => {
       if (!Array.isArray(state.pages.character.records)) {
         state.pages.character.records = [];
       }
       const newRec = PAGES.character.makeRecord(
-        { name: it.name || "", setup: "", notes: "" },
+        { no: it.no || "", setup: "", notes: "", remark: "" },
         it.sheet
       );
       state.pages.character.records.push(newRec);
@@ -3227,7 +3360,7 @@
         if (input) input.focus();
       }, 30);
     });
-    // v38：履历编辑（事件委托：input/textarea input 时写回 state）
+    // 履历编辑（事件委托：input/textarea input 时写回 state，4 字段：no/setup/notes/remark）
     const list = $("#ch2-records-list");
     list?.addEventListener("input", (e) => {
       const target = e.target;
@@ -3242,12 +3375,13 @@
       if (rec) {
         rec[field] = target.value;
         debouncedPushHistory();
-        if (field === "notes") {
+        // notes textarea 自动拓展
+        if (field === "notes" || field === "remark") {
           autoResizeTextarea(target);
         }
       }
     });
-    // v38：删除履历（点击每行 × 按钮）
+    // 删除履历（点击每行 × 按钮）
     list?.addEventListener("click", (e) => {
       const btn = e.target.closest(".ch2-rec-delete");
       if (!btn) return;
@@ -3264,25 +3398,27 @@
     });
   }
 
-  // v38：渲染角色履历行 HTML（章节号 + 原文描述 + 删除按钮）
+  // v43：渲染角色履历行 HTML——4 列（编号 / 出现章节 / 原文描述 / 备注） + 删除按钮
   function renderCharacterRecordRows(itemId) {
     const item = state.pages.character.items.find((x) => x.id === itemId);
     if (!item) return "";
-    const records = getCharacterRecordsByName(item);
+    const records = getCharacterRecordsByNo(item);
     if (records.length === 0) return "";
     return records
       .map((r) => {
-        const setupParsed = parseChapterNo(r.setup || "");
-        const setupNum = setupParsed.hasNum && Number.isFinite(setupParsed.num)
-          ? String(setupParsed.num)
-          : "";
         return `
           <div class="ch2-record-row" data-record-id="${escapeHtml(r.id)}">
+            <div class="ch2-rec-col-no">
+              <input type="text" data-field="no" value="${escapeHtml(String(r.no ?? ""))}" placeholder="编号" class="ch2-rec-no-input ch2-rec-underline" />
+            </div>
             <div class="ch2-rec-col-setup">
               <input type="text" data-field="setup" value="${escapeHtml(r.setup || "")}" placeholder="章节号" class="ch2-rec-setup-big ch2-rec-underline" />
             </div>
             <div class="ch2-rec-col-notes">
               <textarea data-field="notes" rows="1" placeholder="原文描述" class="ch2-rec-underline ch2-rec-notes-autogrow">${escapeHtml(r.notes || "")}</textarea>
+            </div>
+            <div class="ch2-rec-col-remark">
+              <textarea data-field="remark" rows="1" placeholder="备注" class="ch2-rec-underline ch2-rec-notes-autogrow">${escapeHtml(r.remark || "")}</textarea>
             </div>
             <button class="ch2-rec-delete" data-record-id="${escapeHtml(r.id)}" title="删除该履历" aria-label="删除该履历" type="button">×</button>
           </div>`;
@@ -3290,15 +3426,15 @@
       .join("");
   }
 
-  // v38：取当前角色的所有履历（按 setup 章节号排序，方向取 state.ui.ch2RecordSort）
-  function getCharacterRecordsByName(item) {
+  // v43：取当前角色的所有履历（按「编号」关联，按 setup 章节号排序，方向取 state.ui.ch2RecordSort）
+  function getCharacterRecordsByNo(item) {
     if (!item) return [];
-    const name = String(item.name || "").trim();
+    const noKey = String(item.no ?? "").trim();
     const p = state.pages.character;
     if (!Array.isArray(p.records)) p.records = [];
-    // 履历按 name 关联（不按 id，删除角色后履历仍可保留）
+    // 履历按「编号」关联（不按 id，删除角色后履历仍可保留）
     const list = p.records.filter(
-      (r) => String(r.name || "").trim() === name
+      (r) => String(r.no ?? "").trim() === noKey
     );
     const dir = state.ui.ch2RecordSort === "desc" ? "desc" : "asc";
     list.sort((a, b) => {
@@ -3310,7 +3446,7 @@
     return list;
   }
 
-  // v38：切角色时从 DOM 抓 records / info 写回 state（参考 v32 flushFsDetail）
+  // v43：切角色时从 DOM 抓 records / info 写回 state——4 字段 (no/setup/notes/remark)
   function flushCharacterDetail() {
     const it = curItem();
     if (!it) return;
@@ -3320,7 +3456,7 @@
     // ch2-info
     const chInfo = $("#ch2-info");
     if (chInfo) it.info = chInfo.value ?? "";
-    // 履历：遍历所有 ch2-record-row 抓 setup/notes
+    // 履历：遍历所有 ch2-record-row 抓 no/setup/notes/remark
     const rows = document.querySelectorAll("#ch2-records-list .ch2-record-row");
     const records = state.pages.character.records;
     rows.forEach((row) => {
@@ -3328,10 +3464,14 @@
       if (!recId) return;
       const rec = records.find((r) => r.id === recId);
       if (!rec) return;
+      const noEl = row.querySelector('input[data-field="no"]');
       const setup = row.querySelector('input[data-field="setup"]');
       const notes = row.querySelector('textarea[data-field="notes"]');
+      const remark = row.querySelector('textarea[data-field="remark"]');
+      if (noEl) rec.no = noEl.value;
       if (setup) rec.setup = setup.value;
       if (notes) rec.notes = notes.value;
+      if (remark) rec.remark = remark.value;
     });
   }
 
@@ -3869,7 +4009,9 @@
       // v21：goods 是 compound，渲染时调 renderCompoundGoods 一次性渲染 lingshi + items
       renderCompoundGoods();
     } else if (state.currentPage === "storyline") {
-      renderStorylineDashboard();
+      // v43：storyline 改 list 类型——左列表 + 右编辑器（跟 chapter/character 一样结构）
+      renderStorylineList();
+      renderStorylineEditor();
     } else if (state.currentPage === "character") {
       renderCharacterList();
       renderCharacterEditor();
@@ -5118,6 +5260,67 @@
       allowTargetPage: false,
       isRecord: false,
     },
+    // v43：故事脉络导入（章节号 / 章节梗概 / 剧情时间 / 地点 / 人物 / 物品）
+    storyline: {
+      key: "storyline",
+      pid: "storyline",
+      table: "items",
+      containerId: "import-section-storyline",
+      dropId: "import-storyline-drop",
+      fileInputId: "file-storyline",
+      textId: "import-storyline-text",
+      sheetWrapId: "import-storyline-sheet-wrap",
+      sheetSelectId: "import-storyline-sheet-select",
+      skipHeaderId: "import-storyline-skip-header",
+      statsId: "import-storyline-stats",
+      previewId: "import-storyline-preview",
+      fileInfoId: "import-storyline-file-info",
+      clearSel: '[data-clear-section="storyline"]',
+      confirmId: "btn-import-storyline-confirm",
+      allowTargetPage: false,
+      isRecord: false,
+    },
+    // v43：角色主表导入（编号 / 名称 / 势力 / 最后出现章节 / 信息）
+    "character-main": {
+      key: "character-main",
+      pid: "character",
+      table: "items",
+      containerId: "import-section-character",
+      dropId: "import-character-main-drop",
+      fileInputId: "file-character-main",
+      textId: "import-character-main-text",
+      sheetWrapId: "import-character-main-sheet-wrap",
+      sheetSelectId: "import-character-main-sheet-select",
+      skipHeaderId: "import-character-main-skip-header",
+      statsId: "import-character-main-stats",
+      previewId: "import-character-main-preview",
+      fileInfoId: "import-character-main-file-info",
+      clearSel: '[data-clear-section="character-main"]',
+      confirmId: "btn-import-character-main-confirm",
+      allowTargetPage: false,
+      isRecord: false,
+    },
+    // v43：角色履历表导入（编号 / 出现章节 / 原文描述 / 备注）
+    "character-record": {
+      key: "character-record",
+      pid: "character",
+      table: "records",
+      containerId: "import-section-character",
+      dropId: "import-character-record-drop",
+      fileInputId: "file-character-record",
+      textId: "import-character-record-text",
+      sheetWrapId: "import-character-record-sheet-wrap",
+      sheetSelectId: "import-character-record-sheet-select",
+      skipHeaderId: "import-character-record-skip-header",
+      statsId: "import-character-record-stats",
+      previewId: "import-character-record-preview",
+      fileInfoId: "import-character-record-file-info",
+      clearSel: '[data-clear-section="character-record"]',
+      // v43：character-record 独立按钮（character-main 各自独立，user 可单独导入主表/履历表）
+      confirmId: "btn-import-character-record-confirm",
+      allowTargetPage: false,
+      isRecord: true,
+    },
   };
 
   // 每个 section 的运行时状态
@@ -5129,6 +5332,10 @@
     // v21：lingshi / items 各自独立的导入 state
     lingshi: { allSheets: null, currentSheet: null, targetPage: "lingshi", allSheetsTarget: null, lastParsed: null },
     items: { allSheets: null, currentSheet: null, targetPage: "items", allSheetsTarget: null, lastParsed: null },
+    // v43：storyline / character-main / character-record
+    storyline: { allSheets: null, currentSheet: null, targetPage: "storyline", allSheetsTarget: null, lastParsed: null },
+    "character-main": { allSheets: null, currentSheet: null, targetPage: "character", allSheetsTarget: null, lastParsed: null },
+    "character-record": { allSheets: null, currentSheet: null, targetPage: "character", allSheetsTarget: null, lastParsed: null },
   };
 
   function getImportFieldsDef(sectionKey) {
@@ -5568,9 +5775,9 @@
       renderImportPreviewSection(rows, sec, sec.isRecord ? "records" : "items");
       const okCount = rows.filter((r) => !r._error).length;
       if (isFsCombined) {
-        // 暂存到 importState 上，updateFsCombinedConfirmBtn 会读
+        // 暂存到 importState 上，combined confirm 按钮会读
         st.lastParsed = { rows, sheet: target.name, page: st.targetPage };
-        updateFsCombinedConfirmBtn();
+        if (isFsCombined) updateFsCombinedConfirmBtn();
       } else {
         const btn = $("#" + sec.confirmId);
         if (btn) {
@@ -5590,7 +5797,7 @@
       renderImportPreviewSection(rows, sec, sec.isRecord ? "records" : "items");
       if (isFsCombined) {
         st.lastParsed = { rows, sheet: "", page: sec.pid };
-        updateFsCombinedConfirmBtn();
+        if (isFsCombined) updateFsCombinedConfirmBtn();
       } else {
         const btn = $("#" + sec.confirmId);
         if (btn) {
@@ -5606,7 +5813,7 @@
     }
   }
 
-  // v25：合并刷新 fs-main + fs-record 共享的 #btn-import-fs-confirm 按钮
+  // v25：合并刷新 fs-main + fs-record 共享的 #btn-import-fs-confirm 按钮  // v25：合并刷新 fs-main + fs-record 共享的 #btn-import-fs-confirm 按钮
   //  - 任一 section 有有效 rows → 按钮启用
   //  - dataset 记录各 section 的解析结果（点击时按 fs-main → fs-record 顺序 commit）
   function updateFsCombinedConfirmBtn() {
@@ -5844,16 +6051,22 @@
     const makeFn = isRecord ? def.makeRecord : def.makeItem;
     let added = 0, replaced = 0;
     rows.forEach((r) => {
-      // 去重 key：items 用 sheet+no；records 用 sheet+no+fsNo
-      const existingIdx = isRecord
-        ? target.findIndex(
-            (x) => x.sheet === sheetName &&
-                   String(x.fsNo || "") === String(r.fsNo || "") &&
-                   String(x.setup || "") === String(r.setup || "")
-          )
-        : target.findIndex(
-            (x) => Number(x.no) === Number(r.no) && x.sheet === sheetName
-          );
+      // 去重 key：items 用 sheet+no（章节/故事脉络都用）；records 通用化——sheet + setup + 第一列 recordFields key
+      //   - fs-record：fsNo+setup 唯一
+      //   - character-record：no+setup 唯一
+      let existingIdx;
+      if (isRecord) {
+        const firstKey = Object.keys(fieldsDef)[0]; // 履历表第一列（fs-record=fsNo, character-record=no）
+        existingIdx = target.findIndex(
+          (x) => x.sheet === sheetName &&
+                 String(x[firstKey] || "") === String(r[firstKey] || "") &&
+                 String(x.setup || "") === String(r.setup || "")
+        );
+      } else {
+        existingIdx = target.findIndex(
+          (x) => Number(x.no) === Number(r.no) && x.sheet === sheetName
+        );
+      }
       const data = defaultsFn();
       for (const k of Object.keys(fieldsDef)) {
         if (k in r) data[k] = r[k];

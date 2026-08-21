@@ -3168,109 +3168,89 @@ input[type="range"]::-moz-range-thumb {
 .editor-meta-items .meta-title { grid-column: span 1; }
 
 /* ============================================
-   v19：故事脉络 (storyline) — dashboard
+   v43：故事脉络 (storyline) — list（从 v19 dashboard 改造）
+   字段顺序：章节号 / 章节梗概 / 剧情时间 / 地点 / 人物 / 物品
    ============================================ */
-.storyline-dashboard {
-  padding: 20px 24px;
-  max-width: 920px;
-  margin: 0 auto;
+.sl-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  flex: 1;
+  overflow-y: auto;
 }
-.storyline-head {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 24px;
-}
-.storyline-stat {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
+.sl-list:empty::before {
+  content: "暂无脉络条目";
+  display: block;
   text-align: center;
-}
-.storyline-stat-num {
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-.storyline-stat-label {
-  font-size: 12px;
   color: var(--muted);
-  margin-top: 4px;
+  font-size: 12px;
+  padding: 24px 0;
 }
-.storyline-section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  margin: 0 0 12px 0;
-}
-.storyline-timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  border-left: 2px solid var(--border);
-  margin-left: 12px;
-  padding-left: 16px;
-}
-.storyline-row {
+.sl-item {
   display: grid;
-  grid-template-columns: 50px 1fr;
-  gap: 12px;
-  padding: 12px 0;
+  /* 6 列：no / summary / plotTime / location / chars / items + 末尾 delete */
+  grid-template-columns: 50px minmax(140px, 1.6fr) 90px 110px 130px 110px 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
   cursor: pointer;
-  position: relative;
-  transition: background var(--transition);
-  border-radius: 4px;
+  border-left: 2px solid transparent;
+  transition: background var(--transition), border-color var(--transition);
 }
-.storyline-row::before {
-  content: "";
-  position: absolute;
-  left: -23px;
-  top: 18px;
-  width: 8px;
-  height: 8px;
-  background: var(--accent);
-  border-radius: 50%;
-  opacity: 0.5;
-}
-.storyline-row:hover { background: var(--hover); }
-.storyline-row:hover::before { opacity: 1; }
-.storyline-row-no {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  padding-top: 2px;
-}
-.storyline-row-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
-  margin-bottom: 4px;
-}
-.storyline-row-meta {
-  font-size: 11px;
-}
-.storyline-row-fs {
-  margin-top: 6px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.storyline-fs-tag {
-  font-size: 10px;
-  padding: 2px 6px;
+.sl-item:hover { background: var(--hover); }
+.sl-item.active {
   background: var(--selected);
-  border-radius: 8px;
-  color: var(--text);
+  border-left-color: var(--accent);
 }
-.storyline-empty {
-  text-align: center;
-  padding: 32px 0;
+.sl-no {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sl-item.active .sl-no { color: var(--accent); }
+.sl-summary {
   font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
+.sl-time,
+.sl-location,
+.sl-chars,
+.sl-items {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.sl-chars { color: var(--text); } /* 人物名次稍微强调 */
+.sl-delete {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity var(--transition), color var(--transition);
+  padding: 0;
+}
+.sl-item:hover .sl-delete,
+.sl-item.active .sl-delete,
+.sl-delete:focus-visible { opacity: 1; }
+.sl-delete:hover { color: #c0392b; }
 
 /* ============================================
    v19：角色详情 (character)
@@ -3292,7 +3272,8 @@ input[type="range"]::-moz-range-thumb {
 }
 .ch2-item {
   display: grid;
-  grid-template-columns: 1fr 80px 80px 24px;
+  /* v43：5 字段（编号 / 名称 / 势力 / 最后出现章节 / 信息） + delete */
+  grid-template-columns: 50px minmax(80px, 1.4fr) 90px 90px 1fr 24px;
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
@@ -3305,6 +3286,16 @@ input[type="range"]::-moz-range-thumb {
   background: var(--selected);
   border-left-color: var(--accent);
 }
+.ch2-no {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch2-item.active .ch2-no { color: var(--accent); }
 .ch2-name {
   font-size: 13px;
   color: var(--text);
@@ -3313,22 +3304,30 @@ input[type="range"]::-moz-range-thumb {
   white-space: nowrap;
   font-weight: 500;
 }
-.ch2-role {
+.ch2-faction {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text);
   text-align: center;
   padding: 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.ch2-role-main {
-  color: var(--accent);
-  font-weight: 600;
-  background: var(--selected);
-  border-radius: 8px;
-}
-.ch2-first {
+.ch2-lastCh {
   font-size: 11px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch2-info-line {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .ch2-delete {
   flex-shrink: 0;
@@ -3399,7 +3398,8 @@ input[type="range"]::-moz-range-thumb {
 }
 .ch2-record-row {
   display: grid;
-  grid-template-columns: minmax(30px, 45px) 1fr;
+  /* v43：4 列（编号 / 出现章节 / 原文描述 / 备注） + delete 绝对定位 */
+  grid-template-columns: minmax(30px, 50px) minmax(60px, 80px) minmax(140px, 1.4fr) minmax(100px, 1fr);
   gap: 10px;
   padding: 10px 32px 10px 10px;
   background: var(--card-bg, rgba(255, 255, 255, 0.4));
@@ -3408,12 +3408,19 @@ input[type="range"]::-moz-range-thumb {
   align-items: start;
   position: relative;
 }
+.ch2-rec-col-no,
 .ch2-rec-col-setup,
-.ch2-rec-col-notes {
+.ch2-rec-col-notes,
+.ch2-rec-col-remark {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+}
+.ch2-rec-col-no {
+  align-self: start;
+  word-break: break-word;
+  align-items: stretch;
 }
 .ch2-rec-col-setup {
   align-self: start;
@@ -3424,10 +3431,16 @@ input[type="range"]::-moz-range-thumb {
   font-size: 13px;
   text-align: left;
 }
+.ch2-rec-no-input {
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 /* v38：复用 .fs-rec-underline 的下划线样式——直接共用同一个 class
    （.fs-rec-underline 已是全局样式，ch2- 不需要再定义） */
 .ch2-rec-col-notes { width: 100%; }
-.ch2-rec-notes {
+.ch2-rec-col-remark { width: 100%; }
+.ch2-rec-notes, .ch2-rec-remark {
   width: 100%;
   box-sizing: border-box;
   resize: none;
