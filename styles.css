@@ -3775,8 +3775,10 @@ input[type="range"]::-moz-range-thumb {
 .fs-item .fs-col-name {
   /* v33：column 布局——名称占满宽度，2 行截断 + 左对齐
    * v38-UI：名称字号增大一倍（13px → 26px）
-   * v39 调整：用户改主意——字号改 16px，行数 3 行（line-clamp 2 → 3） */
-  flex: 1 1 auto;
+   * v39 调整：用户改主意——字号改 16px，行数 3 行（line-clamp 2 → 3）
+   * v42 修复：flex 1 1 auto 会让父级（fs-card-head，min-height 192px）把 name 撑成 ~166px，
+   *      Chrome 141 下 line-clamp 视觉失效（高度超出 3 行）。改 0 0 auto 让高度回到内容本身（line-clamp 真正生效） */
+  flex: 0 0 auto;
   min-width: 0;
   width: 100%;
   font-size: 16px;
@@ -4032,7 +4034,10 @@ input[type="range"]::-moz-range-thumb {
   display: grid;
   grid-template-columns: 80px 1fr;
   gap: 10px;
-  align-items: end;
+  /* v42 修复：用户要求「伏笔编号应该与伏笔名称顶端对齐」
+   *      之前 align-items: end 让两列都贴底，但 textarea 高度（autoResize 之后）跟 input 不一致，
+   *      导致两个输入框的顶端不对齐。改为 start，让两列从顶端开始布局，label/input 顶端都对齐 */
+  align-items: start;
 }
 .fs-panel-meta .meta-field {
   display: flex;

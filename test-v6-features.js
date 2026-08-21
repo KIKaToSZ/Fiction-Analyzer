@@ -4819,6 +4819,49 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v41 改动:", t41All ? "PASS" : "FAIL");
   if (!t41All) allPass = false;
 
+  // ============================================================
+  // v42 改动（2 个修复：卡片标题 line-clamp 真正生效 + 详情编号/名称顶端对齐）
+  //   需求 1：伏笔卡片中，标题依旧可以超过 3 行
+  //     根因：.fs-item .fs-col-name 的 flex: 1 1 auto 让父级（.fs-card-head，min-height 192px）把 name 撑成 ~166px，
+  //           Chrome 141 下 -webkit-line-clamp 视觉失效（高度超出 3 行）
+  //     修：flex 改 0 0 auto，让高度回到内容本身（line-clamp 真正生效）
+  //   需求 2：伏笔详情中，伏笔编号应该与伏笔名称顶端对齐
+  //     根因：.fs-panel-meta-row 的 align-items: end 让两列都贴底，
+  //           但 textarea 高度（autoResize 之后）跟 input 不一致，导致两个输入框的顶端不对齐
+  //     修：align-items 改 start，让两列从顶端开始布局
+  // ============================================================
+  console.log("\n--- v42 改动（卡片 line-clamp 修复 + 详情编号/名称顶端对齐）---");
+
+  // 42.1 卡片 .fs-col-name 的 flex 改 0 0 auto（关键修复——之前是 1 1 auto 撑高 166px）
+  const cardNameFlex = /\.fs-item\s+\.fs-col-name\s*\{[\s\S]{0,500}flex:\s*0\s+0\s+auto[\s\S]{0,500}-webkit-line-clamp:\s*3/.test(cssText);
+  console.log(`  卡片 .fs-col-name flex 0 0 auto + line-clamp 3: ${cardNameFlex ? "✓" : "✗"}`);
+  if (!cardNameFlex) allPass = false;
+
+  // 42.2 line-clamp 3 仍保留（不破坏 v39 引入的截断）
+  const cardNameClamp3 = /\.fs-item\s+\.fs-col-name\s*\{[\s\S]{0,500}-webkit-line-clamp:\s*3[\s\S]{0,500}overflow:\s*hidden/.test(cssText);
+  console.log(`  卡片 .fs-col-name line-clamp 3 + overflow:hidden: ${cardNameClamp3 ? "✓" : "✗"}`);
+  if (!cardNameClamp3) allPass = false;
+
+  // 42.3 .fs-panel-meta-row align-items 改 start
+  const panelRowAlignStart = /\.fs-panel-meta-row\s*\{[\s\S]{0,300}align-items:\s*start/.test(cssText);
+  console.log(`  .fs-panel-meta-row align-items: start: ${panelRowAlignStart ? "✓" : "✗"}`);
+  if (!panelRowAlignStart) allPass = false;
+
+  // 42.4 旧 align-items: end 已移除（剥掉注释再匹配，v42 修复注释里出现了 "align-items: end" 字样）
+  const cssNoComments42 = cssText.replace(/\/\*[\s\S]*?\*\//g, "");
+  const oldAlignEndGone = !/\.fs-panel-meta-row\s*\{[^}]*align-items:\s*end/.test(cssNoComments42);
+  console.log(`  旧 .fs-panel-meta-row align-items: end 已移除: ${oldAlignEndGone ? "✓" : "✗"}`);
+  if (!oldAlignEndGone) allPass = false;
+
+  // 42.5 旧 .fs-col-name flex: 1 1 auto 已移除（防止有人改回去又踩坑；同样剥注释）
+  const oldFlexGone = !/\.fs-item\s+\.fs-col-name\s*\{[^}]*flex:\s*1\s+1\s+auto/.test(cssNoComments42);
+  console.log(`  旧 .fs-col-name flex: 1 1 auto 已移除: ${oldFlexGone ? "✓" : "✗"}`);
+  if (!oldFlexGone) allPass = false;
+
+  const t42All = cardNameFlex && cardNameClamp3 && panelRowAlignStart && oldAlignEndGone && oldFlexGone;
+  console.log("  v42 改动:", t42All ? "PASS" : "FAIL");
+  if (!t42All) allPass = false;
+
   allPass = true;
 
 
