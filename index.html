@@ -407,18 +407,57 @@
             </div>
           </section>
 
-          <!-- ===================== 故事脉络页（v19，dashboard） ===================== -->
+          <!-- ===================== 故事脉络页（v43：list — 左列表 + 右编辑器） ===================== -->
           <section class="page-view" data-page-view="storyline" hidden>
             <div class="page-toolbar">
-              <span class="muted page-toolbar-meta">聚合视图 · 不需要单独录入</span>
+              <button id="btn-new-storyline" class="tool-btn" title="新增脉络">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>新增脉络</span>
+              </button>
+              <!-- v43：支持 .xlsx / .json / 文本粘贴导入 -->
+              <button id="btn-import" class="tool-btn" title="从 xlsx / json / 文本导入脉络">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span>导入</span>
+              </button>
+              <button id="btn-storyline-sort" class="tool-btn" title="切换正/倒序（按章节号）">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                <span id="storyline-sort-label">正序</span>
+              </button>
               <span class="page-toolbar-spacer"></span>
+              <span id="storyline-count" class="muted page-toolbar-meta">0 条</span>
             </div>
-            <div id="storyline-dashboard" class="storyline-dashboard">
-              <!-- 由 renderStorylineDashboard 动态生成 -->
+            <div class="two-cols">
+              <aside class="col col-list">
+                <ul id="storyline-list" class="sl-list"></ul>
+              </aside>
+              <div class="resizer resizer-col-list" data-resizer="two-list" title="拖动调整脉络列表宽度（双击重置）" role="separator" aria-orientation="vertical" tabindex="0">
+                <span class="resizer-reset-hint">双击重置</span>
+              </div>
+              <main class="col col-editor">
+                <div id="storyline-editor-empty" class="empty-state">
+                  <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+                    <path d="M3 12h4l3 -8l4 16l3 -8h4" />
+                  </svg>
+                  <p>故事脉络</p>
+                  <p class="hint">支持 .xlsx / .json / 文本粘贴导入。字段：章节号 / 章节梗概 / 剧情时间 / 地点 / 人物 / 物品。</p>
+                </div>
+                <article id="storyline-editor" class="editor" hidden>
+                  <!-- 由 renderStorylineEditor 动态生成 -->
+                </article>
+              </main>
             </div>
           </section>
 
-          <!-- ===================== 角色详情页（v19） ===================== -->
+          <!-- ===================== 角色详情页（v43：5 字段 + 履历 4 列） ===================== -->
           <section class="page-view" data-page-view="character" hidden>
             <div class="page-toolbar">
               <button id="btn-new-ch2" class="tool-btn" title="新增角色">
@@ -427,6 +466,21 @@
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
                 <span>新增角色</span>
+              </button>
+              <!-- v43：支持角色基础数据 + 履历 各自独立导入 -->
+              <button id="btn-import" class="tool-btn" title="从 xlsx / json / 文本导入角色数据 / 履历">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span>导入</span>
+              </button>
+              <button id="btn-character-sort" class="tool-btn" title="切换正/倒序（按角色编号）">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                <span id="character-sort-label">正序</span>
               </button>
               <span class="page-toolbar-spacer"></span>
               <span id="character-count" class="muted page-toolbar-meta">0 个</span>
@@ -445,7 +499,7 @@
                     <path d="M4 21c0 -4 4 -7 8 -7s8 3 8 7" />
                   </svg>
                   <p>从左侧选一个角色查看，或新增一个</p>
-                  <p class="hint">身份含"主角"会自动置顶；描述可写角色在小说中的相关描述 + 剧情走向</p>
+                  <p class="hint">基础数据表字段：编号 / 名称 / 势力 / 最后出现章节 / 信息；履历表：编号 / 出现章节 / 原文描述 / 备注</p>
                 </div>
                 <article id="character-editor" class="editor" hidden>
                   <!-- 由 renderCharacterEditor 动态生成 -->

@@ -4939,6 +4939,47 @@ console.log("\n测试 9：v9 修复（directoryHandleKey + isEphemeral 兜底不
   console.log("  v43.9 load() 末尾有 v16→v17 角色迁移:", t43_9_migration ? "PASS" : "FAIL");
   if (!t43_9_migration) allPass = false;
 
+  // 10. 故事脉络 HTML section 含 v43 list 结构（左列表 + 右编辑器 + 工具栏 3 按钮）
+  //     —— v43.6 只测了 import 弹窗，没测主页结构——导致 #storyline-list 缺失没被发现
+  const t43_10_slList = /id="storyline-list"/.test(t43_htmlSrc);
+  const t43_10_slCount = /id="storyline-count"/.test(t43_htmlSrc);
+  const t43_10_slSortLabel = /id="storyline-sort-label"/.test(t43_htmlSrc);
+  const t43_10_slEditor = /id="storyline-editor"/.test(t43_htmlSrc);
+  const t43_10_slEditorEmpty = /id="storyline-editor-empty"/.test(t43_htmlSrc);
+  const t43_10_btnNewSl = /id="btn-new-storyline"/.test(t43_htmlSrc);
+  const t43_10_btnStorylineSort = /id="btn-storyline-sort"/.test(t43_htmlSrc);
+  // 故事脉络 section 不应再有 dashboard 容器
+  const t43_10_noDashboard = !/id="storyline-dashboard"/.test(t43_htmlSrc);
+  console.log("  v43.10 故事脉络 HTML 含 v43 list 结构（list/count/sort/editor/3按钮/无dashboard）:",
+    t43_10_slList && t43_10_slCount && t43_10_slSortLabel && t43_10_slEditor && t43_10_slEditorEmpty
+    && t43_10_btnNewSl && t43_10_btnStorylineSort && t43_10_noDashboard ? "PASS" : "FAIL");
+  if (!(t43_10_slList && t43_10_slCount && t43_10_slSortLabel && t43_10_slEditor && t43_10_slEditorEmpty
+    && t43_10_btnNewSl && t43_10_btnStorylineSort && t43_10_noDashboard)) allPass = false;
+
+  // 11. 角色详情 HTML 工具栏含 import + sort 按钮（v43 加的）
+  const t43_11_chSortLabel = /id="character-sort-label"/.test(t43_htmlSrc);
+  const t43_11_btnImport = (t43_htmlSrc.match(/id="btn-import"/g) || []).length >= 2; // foreshadowing + character 都有
+  const t43_11_btnChSort = /id="btn-character-sort"/.test(t43_htmlSrc);
+  console.log("  v43.11 角色详情工具栏含 import + sort + sort-label:",
+    t43_11_chSortLabel && t43_11_btnImport && t43_11_btnChSort ? "PASS" : "FAIL");
+  if (!(t43_11_chSortLabel && t43_11_btnImport && t43_11_btnChSort)) allPass = false;
+
+  // 12. app.js bindEditorButtons 已绑 btn-new-storyline + 2 个 sort 按钮
+  //     实际代码：$("#btn-new-storyline")?.addEventListener(...)，所以 substring 包含 ")"
+  const t43_12_bindNewSl = /btn-new-storyline"\)\?\.addEventListener\("click", \(\) => addNewItemInPage\("storyline"\)\)/.test(SRC);
+  const t43_12_bindSlSort = /btn-storyline-sort"\)\?\.addEventListener/.test(SRC);
+  const t43_12_bindChSort = /btn-character-sort"\)\?\.addEventListener/.test(SRC);
+  console.log("  v43.12 bindEditorButtons 含 btn-new-storyline + 2 个 sort 按钮:",
+    t43_12_bindNewSl && t43_12_bindSlSort && t43_12_bindChSort ? "PASS" : "FAIL");
+  if (!(t43_12_bindNewSl && t43_12_bindSlSort && t43_12_bindChSort)) allPass = false;
+
+  // 13. 角色详情空态提示改为 v43 文案（不再是"身份含主角会自动置顶"）
+  const t43_13_newHint = /基础数据表字段[：:]\s*编号\s*\/\s*名称\s*\/\s*势力/.test(t43_htmlSrc);
+  const t43_13_oldHintGone = !/身份含["']?主角["']?会自动置顶/.test(t43_htmlSrc);
+  console.log("  v43.13 角色详情空态提示改为 v43 文案:",
+    t43_13_newHint && t43_13_oldHintGone ? "PASS" : "FAIL");
+  if (!(t43_13_newHint && t43_13_oldHintGone)) allPass = false;
+
   console.log("  v43 改动:", allPass ? "PASS" : "FAIL");
 
   // 兜底：v43 之前的测试版本（v11/v32/v33/v34/v36/v38/v38-UI）有遗留 FAIL，

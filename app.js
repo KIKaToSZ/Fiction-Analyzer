@@ -3980,6 +3980,7 @@
     setLabel($("#btn-new-fs"));
     setLabel($("#btn-new-gd"));
     setLabel($("#btn-new-ch2"));
+    setLabel($("#btn-new-storyline"));  // v43：故事脉络独立新增按钮
   }
 
   function renderGlobal() {
@@ -6675,7 +6676,19 @@
     $("#btn-new-items")?.addEventListener("click", () => addNewItemInPage("items"));
     // 角色详情用 addNewItemInPage
     $("#btn-new-ch2")?.addEventListener("click", () => addNewItemInPage("character"));
-    // 故事脉络（storyline）没有新增按钮——dashboard 类型
+    // v43：故事脉络（storyline）list 类型，新增按钮走独立 id（不与 #btn-new 冲突）
+    $("#btn-new-storyline")?.addEventListener("click", () => addNewItemInPage("storyline"));
+    // 故事脉络 + 角色排序按钮
+    $("#btn-storyline-sort")?.addEventListener("click", () => {
+      state.ui.sort = state.ui.sort === "asc" ? "desc" : "asc";
+      save();
+      renderStorylineList();
+    });
+    $("#btn-character-sort")?.addEventListener("click", () => {
+      state.ui.sort = state.ui.sort === "asc" ? "desc" : "asc";
+      save();
+      renderCharacterList();
+    });
     // 编辑器按钮是动态生成的，用事件委托
     document.addEventListener("click", (e) => {
       const t = e.target;
